@@ -23,7 +23,7 @@
 #bigThirdBlock {
   background-color: #097284;
   display: grid;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
 }
 #menu {
   background-color: #76358397;
@@ -80,7 +80,20 @@
 }
 
 .card {
-  height: 50%;
+  height: 75%;
   width: 20%;
   background-color: grey;
+}
+@media screen and (max-width: 720px) {
+  #bigFirstBlock {
+    height: 100vh;
+  }
+  #pol {
+    font-size: 20px;
+    width: 55%;
+  }
+  .card {
+    height: 300px;
+    width: 100px;
+  }
 }
