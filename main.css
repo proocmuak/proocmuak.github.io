@@ -11,28 +11,38 @@
   grid-template-rows: 4.4fr 1fr 9fr;
 }
 #bigFirstBlock {
-  background-color: #975689;
   display: grid;
   grid-template-rows: 1fr 9fr;
 }
 #smallSecondBlock {
-  background-color: #309567;
   display: grid;
   padding: 0px 9.2% 0px 9.2%;
 }
 #bigThirdBlock {
-  background-color: #097284;
   display: grid;
   grid-template-rows: 1fr 1fr 1fr;
 }
 #menu {
-  background-color: #76358397;
+  display: flex;
+  align-items: center;
+  font-size: 400%;
+  justify-content: space-between;
+  padding: 0px 30px 0px 30px;
+}
+#delivery {
+  display: flex;
+  height: 100%;
+  width: 20%;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 40%;
 }
 #introduce {
-  background-color: #65240986;
+  background-image: url(img/logo.png);
+  background-size: 100%;
+  background-repeat: no-repeat;
 }
 #category {
-  background-color: #675270;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -66,12 +76,6 @@
 .pol {
   text-transform: uppercase;
 }
-#r {
-  background-color: #839508;
-}
-#e {
-  background-color: #025798;
-}
 .catalogPol {
   display: flex;
   border-top: 2px solid rgb(204, 204, 204);
@@ -95,5 +99,8 @@
   .card {
     height: 300px;
     width: 100px;
+  }
+  #app {
+    grid-template-rows: 4fr 1fr 9fr;
   }
 }
