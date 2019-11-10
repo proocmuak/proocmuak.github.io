@@ -1,0 +1,86 @@
+* {
+  margin: 0;
+  padding: 0;
+  font-family: "Quicksand Bold", arial;
+}
+#app {
+  display: grid;
+  width: 1280;
+  grid-row-gap: 0px;
+  height: 3064px;
+  grid-template-rows: 4.4fr 1fr 9fr;
+}
+#bigFirstBlock {
+  background-color: #975689;
+  display: grid;
+  grid-template-rows: 1fr 9fr;
+}
+#smallSecondBlock {
+  background-color: #309567;
+  display: grid;
+  padding: 0px 9.2% 0px 9.2%;
+}
+#bigThirdBlock {
+  background-color: #097284;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+}
+#menu {
+  background-color: #76358397;
+}
+#introduce {
+  background-color: #65240986;
+}
+#category {
+  background-color: #675270;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+#pol {
+  height: 100%;
+  width: 40%;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  font-size: 1.05vw;
+}
+
+.checkbox {
+  width: 13.5px;
+  height: 13.5px;
+  border: 1.5px solid #aa9b77;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #aa9b77;
+  font-weight: bold;
+  border-radius: 10%;
+}
+.textPol {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.pol {
+  text-transform: uppercase;
+}
+#r {
+  background-color: #839508;
+}
+#e {
+  background-color: #025798;
+}
+.catalogPol {
+  display: flex;
+  border-top: 2px solid rgb(204, 204, 204);
+  justify-content: space-evenly;
+  align-items: center;
+}
+
+.card {
+  height: 50%;
+  width: 20%;
+  background-color: grey;
+}
