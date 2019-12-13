@@ -70,4 +70,11 @@ export default {
   font-size: 50px;
   font-weight: 800;
 }
+@media (max-width: 720px) {
+  .labele {
+    width: 150px;
+    height: 150px;
+    background-size: 100%;
+  }
+}
 </style>

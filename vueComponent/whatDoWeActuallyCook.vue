@@ -57,9 +57,11 @@ export default {
   margin-left: 35px;
 }
 .image {
-  background-color: #fff;
+  background-image: url(../img/da.jpg);
   width: 790px;
   height: 500px;
+  background-repeat: no-repeat;
+  background-size: 100%;
 }
 .all {
   display: grid;

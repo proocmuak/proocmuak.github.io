@@ -41,4 +41,9 @@ export default {};
   font-size: 30px;
   font-weight: 900;
 }
+@media (max-width: 720px) {
+  .menu {
+    font-size: 22.5px;
+  }
+}
 </style>
