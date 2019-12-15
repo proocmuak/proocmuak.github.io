@@ -70,7 +70,7 @@ export default {
   font-size: 50px;
   font-weight: 800;
 }
-@media handheld and (max-width: 768px) {
+@media (max-width: 768px) {
   .labele {
     width: 300px;
     height: 300px;

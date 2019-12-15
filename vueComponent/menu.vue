@@ -50,7 +50,7 @@ export default {};
   transition: 0.5s;
 }
 
-@media handheld and (max-width: 768px) {
+@media (max-width: 768px) {
   .menu {
     font-size: 28px;
   }
