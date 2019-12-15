@@ -32,9 +32,9 @@ export default {
   height: 50vh;
 }
 .labele {
-  background-image: url("../icon.png");
-  width: 100px;
-  height: 100px;
+  background-image: url("../img/labele.png");
+  width: 250px;
+  height: 250px;
   background-size: 100%;
   background-repeat: no-repeat;
 }
@@ -70,11 +70,14 @@ export default {
   font-size: 50px;
   font-weight: 800;
 }
-@media (max-width: 720px) {
+@media (handheld) {
   .labele {
-    width: 150px;
-    height: 150px;
+    width: 300px;
+    height: 300px;
     background-size: 100%;
+  }
+  .buttonLearnMore:hover {
+    width: 400px;
   }
 }
 </style>

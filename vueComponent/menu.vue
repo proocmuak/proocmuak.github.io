@@ -1,6 +1,6 @@
 <template>
   <div class="menu">
-    <ul>
+    <ul class="listForButtonOnMenu">
       <li class="button">Добро пожаловать</li>
       <li class="button">Меню</li>
       <li class="button">События</li>
@@ -16,8 +16,8 @@ export default {};
 * {
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
+
 .button {
   display: inline;
   padding: 0px 15px 0px 15px;
@@ -30,6 +30,7 @@ export default {};
   border-radius: 10%;
   transition: 0.5s;
 }
+
 .menu {
   width: 100vw;
   height: 90px;
@@ -41,9 +42,20 @@ export default {};
   font-size: 30px;
   font-weight: 900;
 }
-@media (max-width: 720px) {
+.textMenuForMobile:hover {
+  color: white;
+  background-color: red;
+  width: auto;
+  border-radius: 10%;
+  transition: 0.5s;
+}
+
+@media (handheld) {
   .menu {
-    font-size: 22.5px;
+    font-size: 28px;
+  }
+  .button:last-child {
+    margin: 10px 0px 0px 40%;
   }
 }
 </style>

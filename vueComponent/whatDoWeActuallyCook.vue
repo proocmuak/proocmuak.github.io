@@ -96,12 +96,26 @@ export default {
 .smallGreyText {
   width: 100%;
   display: flex;
-  color: wheat;
+  color: grey;
   justify-content: center;
 }
 .fonForSmallGreyText {
   width: 50%;
   text-align: center;
   font-size: 1vw;
+}
+@media (handheld) {
+  .image {
+    height: 384px;
+    background-image: url(../img/pizza.jpg);
+    background-size: 100%;
+    width: 50%;
+  }
+  .bigWhiteText {
+    font-size: 27px;
+  }
+  .smallGreyText {
+    font-size: 20px;
+  }
 }
 </style>
