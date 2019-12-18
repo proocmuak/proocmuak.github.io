@@ -104,7 +104,7 @@ export default {
   text-align: center;
   font-size: 1vw;
 }
-@media (handheld) and (max-width: 720px) {
+@media (max-width: 720px) {
   .image {
     height: 384px;
     background-image: url(../img/pizza.jpg);

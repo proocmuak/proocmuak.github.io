@@ -28,7 +28,7 @@ export default {
   height: 200px;
   color: azure;
 }
-@media (handheld) and (max-width: 720px) {
+@media (max-width: 720px) {
   .block {
     background-image: url(../img/fonForPhone.jpg);
   }
