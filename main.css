@@ -1,0 +1,128 @@
+* {
+  margin: 0;
+  padding: 0;
+}
+.shapka {
+  width: 100%;
+  height: 100px;
+  display: flex;
+  justify-content: center;
+  background: #3f4c6b;
+  background: -moz-radial-gradient(
+    center,
+    ellipse cover,
+    #3f4c6b 0%,
+    #3f4c6b 100%
+  );
+  background: -webkit-radial-gradient(
+    center,
+    ellipse cover,
+    #3f4c6b 0%,
+    #3f4c6b 100%
+  );
+  background: radial-gradient(ellipse at center, #3f4c6b 0%, #3f4c6b 100%);
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#3f4c6b', endColorstr='#3f4c6b',GradientType=1 );
+
+  align-items: center;
+}
+.topMenuItem {
+  display: inline;
+  cursor: pointer;
+}
+.list {
+  width: 100%;
+  font-size: 30px;
+  display: flex;
+  justify-content: space-around;
+}
+.app {
+  height: 150vh;
+  width: 100vw;
+  display: flex;
+  justify-content: space-between;
+  flex-direction: column;
+  align-items: center;
+
+  background: #45484d; /* Old browsers */
+  background: -moz-radial-gradient(
+    center,
+    ellipse cover,
+    #45484d 0%,
+    #000000 100%
+  ); /* FF3.6-15 */
+  background: -webkit-radial-gradient(
+    center,
+    ellipse cover,
+    #45484d 0%,
+    #000000 100%
+  ); /* Chrome10-25,Safari5.1-6 */
+  background: radial-gradient(
+    ellipse at center,
+    #45484d 0%,
+    #000000 100%
+  ); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#45484d', endColorstr='#000000',GradientType=1 ); /* IE6-9 fallback on horizontal gradient */
+}
+.menuSearch {
+  background-color: #04001f;
+  width: 70%;
+  height: 70px;
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  border-radius: 35px;
+  position: sticky;
+  top: 10px;
+}
+.menuSlider {
+  background-color: #098377;
+  width: 90%;
+  height: 500px;
+}
+.menuGames {
+  height: 60vh;
+  width: 50%;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  color: #ffffff;
+  grid-column-gap: 10px;
+  grid-row-gap: 10px;
+}
+.windowGames {
+  background-color: #398471;
+}
+.searchName {
+  width: 30%;
+  font-size: 120%;
+  height: 50%;
+  border-radius: 10px;
+}
+.searchCategories {
+  width: 15%;
+  height: 50%;
+  font-size: 120%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: whitesmoke;
+  cursor: pointer;
+}
+.fonForSlider {
+  width: 60%;
+  height: 500px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.leftarrow,
+.rightarrow {
+  width: 5%;
+  height: 100%;
+  color: whitesmoke;
+  font-size: 100px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
