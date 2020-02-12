@@ -144,5 +144,7 @@
   .fonForSlider,
   .menuGames {
     width: 70%;
+    grid-template-columns: repeat(1fr);
+    grid-template-rows: 1fr 1fr;
   }
 }
