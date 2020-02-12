@@ -34,6 +34,7 @@
   font-size: 30px;
   display: flex;
   justify-content: space-around;
+  color: grey;
 }
 .app {
   height: 150vh;
@@ -78,6 +79,7 @@
   background-color: #098377;
   width: 90%;
   height: 500px;
+  z-index: 1;
 }
 .menuGames {
   height: 60vh;
@@ -99,13 +101,13 @@
   border-radius: 10px;
 }
 .searchCategories {
-  width: 15%;
+  width: 20%;
   height: 50%;
-  font-size: 120%;
+  font-size: 150%;
   display: flex;
   justify-content: center;
   align-items: center;
-  color: whitesmoke;
+  color: grey;
   cursor: pointer;
 }
 .fonForSlider {
@@ -119,16 +121,24 @@
 .rightarrow {
   width: 5%;
   height: 100%;
-  color: whitesmoke;
+  color: grey;
   font-size: 100px;
   display: flex;
   justify-content: center;
   align-items: center;
   cursor: pointer;
+  z-index: 2;
 }
 @media (max-width: 720px) {
   .list {
     font-size: 15px;
     width: 100%;
+  }
+  .searchCategories {
+    font-size: 15px;
+  }
+  .fonForSlider,
+  .menuGames {
+    width: 70%;
   }
 }
