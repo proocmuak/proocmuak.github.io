@@ -80,7 +80,6 @@
   background-color: #098377;
   width: 90%;
   height: 500px;
-  z-index: 1;
 }
 .menuGames {
   height: 60vh;
@@ -128,7 +127,6 @@
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  z-index: 2;
 }
 @media (max-width: 720px) {
   .list {
