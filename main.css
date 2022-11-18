@@ -6,6 +6,8 @@ body{  padding-left: 0px;
     margin-left: 0px;
     margin-right: 0px;
     margin-bottom: 0px;
+    width: 100%;
+    height: 100%;
      }
 .buttons {
     display: grid;
@@ -28,7 +30,6 @@ body{  padding-left: 0px;
 .calc{
     display: grid;
     grid-template-columns: 25% 25% ;
-
 }
 #plus{
     font-size: 150%;
@@ -57,7 +58,7 @@ grid-template-rows: 100% 50%;
     height: 50%;
 }
 #equations{
-    margin-top: 15%;
+    margin-top: 30%;
     width: 20%;
 }
 .answer{
