@@ -51,9 +51,16 @@ display: grid;
 grid-template-rows: 100% 50%;
 }
 #variable{
-    margin-left: 40%;
-    width: 20%;
+    margin-top: 0px;
+    margin-left: 50%;
+    width: 50%;
+    height: 50%;
 }
 #equations{
     margin-top: 15%;
+    width: 20%;
+}
+.answer{
+    font-size: 300%;
+    color: red;
 }

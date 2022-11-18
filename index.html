@@ -29,12 +29,14 @@
     <button id="multi">*</button>
     <button id="divide">/</button>
     <button id="equally">=</button>
+    
 </div>
 <button id="variable">x</button>
 <button id="solve">Решить уравнение</button>
 </div>
 </div>
-<div id="equations">AAAA</div>
+<div id="equations"></div>
+<div class="answer"></div>
 </body>
 <script type="text/javascript" >
     $(document).ready(function(){
@@ -54,6 +56,7 @@
     var divide = $('#divide').text();
     var variable = $('#variable').text();
     var equally = $('#equally').text();
+    var answer = $('.answer').text()
     var eq = " ";
     var coef ='';
     var free = '';
@@ -179,8 +182,8 @@ i = i+1
 if (eq[i] == '+') 
 {
     if (truecoef != 0)
-    alert((coefEqually-free)/truecoef)
-    else alert((coefEqually-free)/coef)
+    answer = ((coefEqually-free)/truecoef)
+    else answer = ((coefEqually-free)/coef)
 }
 if (eq[i] == '-') 
 {
@@ -188,6 +191,7 @@ if (eq[i] == '-')
     alert((coefEqually+free)/truecoef)
     else alert((coefEqually+free)/coef)
 }
+$('.answer').text(answer)
    })
 });
 </script>
