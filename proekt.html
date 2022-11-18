@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="code.js"></script>
+    <script type="text/javascript" src="jquery-3.6.1.min.js"></script>
+</head>
+ <body>
+    <div class="calc">
+    <div class="buttons">
+    <button id="one">1</button>
+    <button id="two">2</button>
+    <button id="three">3</button>
+    <button id="four">4</button>
+    <button id="five">5</button>
+    <button id="six">6</button>
+    <button id="seven">7</button>
+    <button id="eight">8</button>
+    <button id="nine">9</button>
+    <button id="zero">0</button>
+</div>
+<div class="group_symbol">
+<div class="sign">
+    <button id="plus">+</button>
+    <button id="minus">-</button>
+    <button id="multi">*</button>
+    <button id="divide">/</button>
+    <button id="equally">=</button>
+</div>
+<button id="variable">x</button>
+<button id="solve">Решить уравнение</button>
+</div>
+</div>
+<div id="equations">AAAA</div>
+</body>
+<script type="text/javascript" >
+    $(document).ready(function(){
+    var one = $('#one').text();
+    var two = $('#two').text();
+    var three = $('#three').text();
+    var four = $('#four').text();
+    var five = $('#five').text();
+    var six = $('#six').text();
+    var seven = $('#seven').text();
+    var eight = $('#eight').text();
+    var nine = $('#nine').text();
+    var zero = $('#zero').text();
+    var plus = $('#plus').text();
+    var minus = $('#minus').text();
+    var multi = $('#multi').text();
+    var divide = $('#divide').text();
+    var variable = $('#variable').text();
+    var equally = $('#equally').text();
+    var eq = " ";
+    var coef ='';
+    var free = '';
+    var truecoef ='';
+    var coefEqually ='';
+    var findX = 0;
+    var i = 0;
+    var n =0;
+    $('#one').click(function(){
+   eq = eq + one;
+   })
+   $('#two').click(function(){
+   eq = eq + two;
+   })
+   $('#three').click(function(){
+   eq = eq + three;
+   })
+   $('#four').click(function(){
+   eq = eq + four;
+   })
+   $('#five').click(function(){
+   eq = eq + five;
+   })
+   $('#six').click(function(){
+   eq = eq + six;
+   })
+   $('#seven').click(function(){
+   eq = eq + seven;
+   })
+   $('#eight').click(function(){
+   eq = eq + eight;
+   })
+   $('#nine').click(function(){
+   eq = eq + nine;
+   })
+   $('#zero').click(function(){
+   eq = eq + zero;
+   })
+   $('#plus').click(function(){
+   eq = eq + plus;
+   })
+   $('#minus').click(function(){
+   eq = eq + minus;
+   })
+   $('#multi').click(function(){
+   eq = eq + multi;
+   })
+   $('#divide').click(function(){
+   eq = eq + divide;
+   })
+$('#equally').click(function(){
+   eq = eq + equally;
+   })
+   $('#variable').click(function(){
+   eq = eq + variable;
+   })
+let timerId = setInterval(() => $('#equations').text(eq), 100)
+$('#solve').click(function(){
+    setTimeout(() => { clearInterval(timerId); }, 5000);
+   lengthEquations = eq.length-1
+//Поиск коэф перед х//
+    for (let char of eq){  
+        if (char == 'x') break
+        else i += 1;    
+    }
+   i = i-1;
+   if (i>1) {
+    while (i > 0) {
+        coef = coef + eq[i]
+        i = i-1
+    }
+        truecoef = coef.split("").reverse().join('')
+
+   }
+  if (i == 1) {
+    coef = eq[i]
+
+  }
+  if (i == 0) {
+    coef = 1
+  }
+
+  //Знак уравнения
+  for (let char of eq){  
+        if (char == 'x') break
+        else i += 1;    
+    }
+
+// Ищем свободный коэф
+i= i+1
+if (coef.length == 1){
+while (i <= lengthEquations){
+    free = free + eq[i]
+    i +=1
+    if (eq[i]== '=') break
+    }
+}
+if (truecoef.length > 1){
+    i = i+1
+while (i <= lengthEquations){
+    free = free + eq[i]
+    i +=1
+    if (eq[i]== '=') break
+    }
+}
+// Ищем знак равно и число после него
+for (let char of eq){  
+        if (char == '=') break
+        else n += 1;    
+    }
+n = n+1;
+while (n <= lengthEquations){
+ coefEqually = coefEqually + eq[n]
+ n +=1
+}
+i = 0
+for (let char of eq){  
+        if (char == 'x') break
+        else i += 1;    
+    }
+i = i+1
+
+if (eq[i] == '+') 
+{
+    if (truecoef != 0)
+    alert((coefEqually-free)/truecoef)
+    else alert((coefEqually-free)/coef)
+}
+if (eq[i] == '-') 
+{
+    if (truecoef != 0)
+    alert((coefEqually+free)/truecoef)
+    else alert((coefEqually+free)/coef)
+}
+   })
+});
+</script>
+</html>
