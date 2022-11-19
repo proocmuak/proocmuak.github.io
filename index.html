@@ -9,6 +9,8 @@
     <script type="text/javascript" src="jquery-3.6.1.min.js"></script>
 </head>
  <body>
+    <div id="all">
+    <div id="allButtons">
     <div class="calc">
     <div class="buttons">
     <button id="one">1</button>
@@ -28,15 +30,19 @@
     <button id="minus">-</button>
     <button id="multi">*</button>
     <button id="divide">/</button>
-    <button id="equally">=</button>
-    
+    <button id="square">^2</button>
+    <button id="equally">=</button>   
 </div>
     <button id="variable">x</button>
-<button id="solve">Решить уравнение</button>
+    <button id="solve">Решить уравнение</button>
 </div>
 </div>
+</div>
+
+<div class="solving">
 <div id="equations"></div>
 <div class="answer"></div>
+</div></div>
 </body>
 <script type="text/javascript" >
     $(document).ready(function(){
@@ -54,6 +60,7 @@
     var minus = $('#minus').text();
     var multi = $('#multi').text();
     var divide = $('#divide').text();
+    var square = $('#square').text();
     var variable = $('#variable').text();
     var equally = $('#equally').text();
     var answer = $('.answer').text()
@@ -63,8 +70,25 @@
     var truecoef ='';
     var coefEqually ='';
     var findX = 0;
+    var kv_coef = "";
+    var kv_freecoef = "";
+    var kv_coefSquareX = '';
+    var sign_beforeX = '';
+    var without_kvX = '';
+    var discr = 0
     var i = 0;
     var n =0;
+    var kvadratnoe = 0;
+    var a = 0;
+    var b = 0;
+    var c = 0;
+    var d = 0;
+    var x1 = 0;
+    var x2 = 0;
+    var kv_answer = x1 + ', ' + x2;
+    var sign_afterX = ''
+    var without_allX = '';
+
     $('#one').click(function(){
    eq = eq + one;
    })
@@ -107,6 +131,10 @@
    $('#divide').click(function(){
    eq = eq + divide;
    })
+   $('#square').click(function(){
+   eq = eq + square;
+   kvadratnoe = 1;
+   })
 $('#equally').click(function(){
    eq = eq + equally;
    })
@@ -115,7 +143,7 @@ $('#equally').click(function(){
    })
 let timerId = setInterval(() => $('#equations').text(eq), 100)
 $('#solve').click(function(){
-    setTimeout(() => { clearInterval(timerId); }, 5000);
+    
    lengthEquations = eq.length-1
 //Поиск коэф перед х//
     for (let char of eq){  
@@ -131,14 +159,16 @@ $('#solve').click(function(){
         truecoef = coef.split("").reverse().join('')
 
    }
+    else { coef = 0;
   if (i == 1) {
     coef = eq[i]
 
   }
   if (i == 0) {
-    coef = 1
+    coef = '1'
   }
-
+}
+i = 0
   //Знак уравнения
   for (let char of eq){  
         if (char == 'x') break
@@ -147,7 +177,8 @@ $('#solve').click(function(){
 
 // Ищем свободный коэф
 i= i+1
-if (coef.length == 1){
+if (coef.length == 1) {
+    
 while (i <= lengthEquations){
     free = free + eq[i]
     i +=1
@@ -183,15 +214,137 @@ if (eq[i] == '+')
 {
     if (truecoef != 0)
     answer = ((coefEqually-free)/truecoef)
+     
     else answer = ((coefEqually-free)/coef)
+    
 }
 if (eq[i] == '-') 
 {
     if (truecoef != 0)
-    alert((coefEqually+free)/truecoef)
-    else alert((coefEqually+free)/coef)
+    answer =((coefEqually+free)/truecoef)
+    else answer =((coefEqually+free)/coef)
 }
 $('.answer').text(answer)
+if(kvadratnoe != 0){
+    for (let char of eq){  
+            if (char == '^') break
+            else a += 1;    
+        }
+    // Записываем в а место нахождения знака степени
+    // Ищем число при степени 
+    
+    a = a - 2
+    if (a>1) {
+    while (a > 0) {
+        kv_coefSquareX  = kv_coefSquareX  + eq[a]
+        a = a-1
+    }
+        kv_coefSquareX = kv_coefSquareX .split("").reverse().join('')
+   }
+   else {
+  if (a == 1) {
+    kv_coefSquareX = eq[a]
+  }
+  if (a == 0) {
+    kv_coefSquareX = '1'
+  }
+}
+    // знак перед коэф при икс
+    a = a + 4
+    sign_beforeX = eq[a]
+    
+    b = a + 1
+    // ищем знак перед икс
+    while (b < eq.length) {
+        without_kvX = without_kvX + eq[b]
+        b += 1
+    }
+    i = 0
+    for (let char of without_kvX){  
+        if (char == 'x') break
+        else i += 1;    
+    }
+    
+   if (i>1) {
+    i= i-1
+    while (i >= 0) {
+        kv_coef = kv_coef + without_kvX[i]
+        i = i - 1
+        
+    }
+    kv_coef = kv_coef.split("").reverse().join('')
+   }
+   
+    else { kv_coef = 0;
+  if (i == 1) {
+    kv_coef = without_kvX[0]
+  }
+  if (i == 0) {
+    kv_coef = '1'
+  }
+}
+for (let char of without_kvX){  
+        if (char == 'x') break
+        else d += 1;    
+    }
+    
+if(without_kvX[d+1] == '='){
+    if (sign_beforeX == "+"){       
+        x2 = -(kv_coef) / kv_coefSquareX 
+    }   
+    if (sign_beforeX == "-"){
+        x2 = kv_coef/kv_coefSquareX
+    }
+    $('.answer').text(x1 + ', ' + x2)
+}
+
+else{ 
+    i = d+1
+    sign_afterX = without_kvX[i]
+    i = i+1
+    while (i < without_kvX.length){
+        
+        kv_freecoef = without_allX + without_kvX[i]
+        i +=1 
+        if (without_kvX[i] == '='){
+            break
+        }
+    }
+    if (sign_afterX == "+") {
+        discr = kv_coef*kv_coef -4*kv_coefSquareX*kv_freecoef
+        
+    }
+    if (sign_afterX == "-") {
+        discr = kv_coef*kv_coef +4*kv_coefSquareX*kv_freecoef
+        
+    }
+    if (discr < 0 ){
+        $('.answer').text('Действительных корней нет')
+    }
+    if (discr == 0){
+        if (sign_afterX == "+") {
+        x1 = -(kv_coef)/ (2*kv_coefSquareX)
+    }
+    if (sign_afterX == "-") {
+        x1 = kv_coef/ (2*kv_coefSquareX)
+    }
+    $('.answer').text(x1)
+    }
+    if (discr > 0){
+        if (sign_beforeX == "+") {
+        x1 = (-(kv_coef)+Math.sqrt(discr))/ (2*kv_coefSquareX)
+        x2 = (-(kv_coef)-Math.sqrt(discr))/ (2*kv_coefSquareX)
+    }
+    if (sign_beforeX == "-") {
+        x1 = (kv_coef+Math.sqrt(discr))/ (2*kv_coefSquareX)
+        x2 = (kv_coef-Math.sqrt(discr))/ (2*kv_coefSquareX)
+    }
+    $('.answer').text(x1 + ', ' + x2)
+    }
+}
+
+
+ }
    })
 });
 </script>
