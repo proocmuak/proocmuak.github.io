@@ -31,10 +31,12 @@
     <button id="multi">*</button>
     <button id="divide">/</button>
     <button id="square">^2</button>
+    <button id="cube">^3</button>
     <button id="equally">=</button>   
 </div>
     <button id="variable">x</button>
     <button id="solve">Решить уравнение</button>
+    <button id="clear">Очистить</button>
 </div>
 </div>
 </div>
@@ -61,6 +63,7 @@
     var multi = $('#multi').text();
     var divide = $('#divide').text();
     var square = $('#square').text();
+    var cube = $('#cube').text();
     var variable = $('#variable').text();
     var equally = $('#equally').text();
     var answer = $('.answer').text()
@@ -73,12 +76,16 @@
     var kv_coef = "";
     var kv_freecoef = "";
     var kv_coefSquareX = '';
+    var kv_coefCubeX = '';
     var sign_beforeX = '';
+    var sign_beforeSquareX = '';
     var without_kvX = '';
+    var without_cubeX = '';
     var discr = 0
     var i = 0;
     var n =0;
     var kvadratnoe = 0;
+    var kubicheskoe = 0;
     var a = 0;
     var b = 0;
     var c = 0;
@@ -88,7 +95,8 @@
     var kv_answer = x1 + ', ' + x2;
     var sign_afterX = ''
     var without_allX = '';
-
+    var randomX = 1;
+    var valueEq = 0
     $('#one').click(function(){
    eq = eq + one;
    })
@@ -128,12 +136,17 @@
    $('#multi').click(function(){
    eq = eq + multi;
    })
-   $('#divide').click(function(){
-   eq = eq + divide;
+   $('#clear').click(function(){
+   eq = ' ';
    })
+   
    $('#square').click(function(){
    eq = eq + square;
    kvadratnoe = 1;
+   })
+   $('#cube').click(function(){
+   eq = eq + cube;
+   kubicheskoe = 1;
    })
 $('#equally').click(function(){
    eq = eq + equally;
@@ -225,7 +238,227 @@ if (eq[i] == '-')
     else answer =((coefEqually+free)/coef)
 }
 $('.answer').text(answer)
-if(kvadratnoe != 0){
+
+if(kubicheskoe = '1'){ 
+        for (let char of eq) {  
+            if (char == '^')  break
+            else a += 1;    
+        }
+        a = a - 2
+    if (a>1) {
+    while (a > 0) {
+        kv_coefCubeX  = kv_coefCubeX  + eq[a]
+        a = a-1
+    }
+    kv_coefCubeX = kv_coefCubeX .split("").reverse().join('')
+   }
+   else {
+  if (a == 1) {
+    kv_coefCubeX = eq[a]
+  }
+  if (a == 0) {
+    kv_coefCubeX = '1'
+  }
+}
+     // знак перед коэф при икс^2
+     a = a + 4
+    sign_beforeSquareX = eq[a]
+    
+    b = a + 1
+    // пересобираем всю эту шляпу без x^3
+    while (b < eq.length) {
+        without_cubeX = without_cubeX + eq[b]
+        b += 1
+    }
+    a = 0 
+    b = 0
+    i = 0
+    char = ''
+    for (let char of without_cubeX){  
+            if (char == '^') break
+            else a += 1;    
+        }
+
+        t = a-2
+    if (t >=1){
+        while (t >= 0) {
+        kv_coefSquareX  = kv_coefSquareX  + without_cubeX[t]
+        t = t-1
+    }
+    
+    kv_coefSquareX = kv_coefSquareX .split("").reverse().join('')
+    }
+    else{
+    if (t == 0){
+        kv_coefSquareX = without_cubeX[a]
+    }
+    if (t < 0){
+        kv_coefSquareX = 1
+    }
+}
+    // знак перед коэф при икс
+    a = a + 2
+    sign_beforeX = without_cubeX[a]
+    b = a + 1
+    // ищем знак перед икс
+    while (b < without_cubeX.length) {
+        without_kvX = without_kvX + without_cubeX[b]
+        b += 1
+    }
+    alert(without_kvX)
+    i = 0
+    for (let char of without_kvX){  
+        if (char == 'x') break
+        else{
+        if (char == '=') break
+        else i += 1;    
+        }
+    }
+    
+   if (i>1) {
+    i= i-1
+    while (i >= 0) {
+        kv_coef = kv_coef + without_kvX[i]
+        i = i - 1
+        
+    }
+    kv_coef = kv_coef.split("").reverse().join('')
+   }
+   
+    else { kv_coef = 0;
+  if (i == 1) {
+    kv_coef = without_kvX[0]
+  }
+  if (i == 0) {
+    kv_coef = '1'
+  }
+}
+i = i + 1
+sign_afterX = without_kvX[i]
+i = i + 1
+while (i < without_kvX.length){
+        
+        kv_freecoef = kv_freecoef + without_kvX[i]
+        i +=1 
+        if (without_kvX[i] == '='){
+            break
+        }
+    }
+    kv_coefCubeX = Number(kv_coefCubeX)
+    kv_coefSquareX = Number(kv_coefSquareX)
+    kv_coef = Number(kv_coef)
+    kv_freecoef = Number(kv_freecoef)
+
+    alert(kv_coefCubeX)
+alert(kv_coefSquareX)
+alert(kv_coef)
+alert(kv_freecoef)
+
+while (randomX >=1){
+    if (sign_beforeSquareX == '+'){
+        if(sign_beforeX == '+'){
+                if (sign_afterX == '+'){
+                    valueEq = kv_coefCubeX*randomX*randomX*randomX + kv_coefSquareX*randomX*randomX + kv_coef*randomX + kv_freecoef
+                }
+                if (sign_afterX == '-'){
+                    valueEq = kv_coefCubeX*randomX*randomX*randomX + kv_coefSquareX*randomX*randomX + kv_coef*randomX - kv_freecoef
+                    
+                }
+        }
+        if(sign_beforeX == '-'){
+            if (sign_afterX == '+'){
+                valueEq = kv_coefCubeX*randomX*randomX*randomX + kv_coefSquareX*randomX*randomX - kv_coef*randomX + kv_freecoef
+                }
+            if (sign_afterX == '-'){
+                valueEq = kv_coefCubeX*randomX*randomX*randomX + kv_coefSquareX*randomX*randomX - kv_coef*randomX - kv_freecoef
+                }
+            
+        }
+    }
+    
+    if (valueEq == 0) {
+        x1 = randomX
+        break
+        }
+        else {
+            randomX += 1
+           
+        }
+    }
+    
+    while (randomX >=1){
+    if (sign_beforeSquareX == '-'){
+        if(sign_beforeX == '+'){
+                if (sign_afterX == '+'){
+                    valueEq = kv_coefCubeX*randomX*randomX*randomX - kv_coefSquareX*randomX*randomX + kv_coef*randomX + kv_freecoef
+                }
+                if (sign_afterX == '-'){
+                    valueEq = kv_coefCubeX*randomX*randomX*randomX - kv_coefSquareX*randomX*randomX + kv_coef*randomX - kv_freecoef
+                    
+                }
+        }
+        if(sign_beforeX == '-'){
+            if (sign_afterX == '+'){
+                valueEq = kv_coefCubeX*randomX*randomX*randomX - kv_coefSquareX*randomX*randomX - kv_coef*randomX + kv_freecoef
+                }
+            if (sign_afterX == '-'){
+                valueEq = kv_coefCubeX*randomX*randomX*randomX - kv_coefSquareX*randomX*randomX - kv_coef*randomX - kv_freecoef
+                }
+        }
+        }
+        if (valueEq == 0) {
+        x1 = randomX
+        break
+        }
+        else {
+            randomX += 1
+           
+        }
+       
+    }
+    
+    alert(x1)
+    
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if(kvadratnoe != 0 && kubicheskoe == 0){
     for (let char of eq){  
             if (char == '^') break
             else a += 1;    
@@ -262,7 +495,10 @@ if(kvadratnoe != 0){
     i = 0
     for (let char of without_kvX){  
         if (char == 'x') break
+        else{
+        if (char == '=') break
         else i += 1;    
+        }
     }
     
    if (i>1) {
@@ -299,6 +535,15 @@ if(without_kvX[d+1] == '='){
 }
 
 else{ 
+    if (without_kvX[d] != 'x'){
+        if (sign_beforeX == "+") {$('.answer').text('x - любое')}
+        if (sign_beforeX == "-") {
+            x1 = Math.sqrt(kv_coef/kv_coefSquareX)
+            x2 = -Math.sqrt(kv_coef/kv_coefSquareX)
+            $('.answer').text(x1 + ', ' + x2)
+        }
+    }
+    else{
     i = d+1
     sign_afterX = without_kvX[i]
     i = i+1
@@ -341,6 +586,7 @@ else{
     }
     $('.answer').text(x1 + ', ' + x2)
     }
+}
 }
 
 
