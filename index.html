@@ -77,6 +77,9 @@
     var kv_freecoef = "";
     var kv_coefSquareX = '';
     var kv_coefCubeX = '';
+    var kub_coef = "";
+    var kub_freecoef = "";
+    var kub_coefSquareX = '';
     var sign_beforeX = '';
     var sign_beforeSquareX = '';
     var without_kvX = '';
@@ -274,28 +277,27 @@ if(kubicheskoe = '1'){
     b = 0
     i = 0
     char = ''
-    for (let char of without_cubeX){  
-            if (char == '^') break
+    for (let char of without_cubeX) {  
+            if (char == '^')  break
             else a += 1;    
         }
-
-        t = a-2
-    if (t >=1){
-        while (t >= 0) {
+        t = a - 2
+    if (t > 0) {
+    while (t >= 0) {
         kv_coefSquareX  = kv_coefSquareX  + without_cubeX[t]
         t = t-1
     }
-    
     kv_coefSquareX = kv_coefSquareX .split("").reverse().join('')
-    }
-    else{
-    if (t == 0){
-        kv_coefSquareX = without_cubeX[a]
-    }
-    if (t < 0){
-        kv_coefSquareX = 1
-    }
+   }
+   else {
+  if (t == 0) {
+    kv_coefSquareX = without_cubeX[t]
+  }
+  if (t < 0) {
+    kv_coefSquareX = '1'
+  }
 }
+
     // знак перед коэф при икс
     a = a + 2
     sign_beforeX = without_cubeX[a]
@@ -305,7 +307,7 @@ if(kubicheskoe = '1'){
         without_kvX = without_kvX + without_cubeX[b]
         b += 1
     }
-    alert(without_kvX)
+
     i = 0
     for (let char of without_kvX){  
         if (char == 'x') break
@@ -333,9 +335,16 @@ if(kubicheskoe = '1'){
     kv_coef = '1'
   }
 }
+i = 0
+    for (let char of without_kvX){  
+        if (char == 'x') break
+        else{
+        if (char == '=') break
+        else i += 1;    
+        }
+    }
 i = i + 1
 sign_afterX = without_kvX[i]
-i = i + 1
 while (i < without_kvX.length){
         
         kv_freecoef = kv_freecoef + without_kvX[i]
@@ -349,10 +358,15 @@ while (i < without_kvX.length){
     kv_coef = Number(kv_coef)
     kv_freecoef = Number(kv_freecoef)
 
-    alert(kv_coefCubeX)
-alert(kv_coefSquareX)
-alert(kv_coef)
-alert(kv_freecoef)
+//     alert(kv_coefCubeX)
+//     alert(kv_coefSquareX)
+//     alert(kv_coef)
+//     alert(kv_freecoef)
+// alert(sign_beforeSquareX)
+// alert(sign_beforeX)
+// alert(sign_afterX)
+
+
 
 while (randomX >=1){
     if (sign_beforeSquareX == '+'){
@@ -385,7 +399,7 @@ while (randomX >=1){
            
         }
     }
-    
+    randomX = 1
     while (randomX >=1){
     if (sign_beforeSquareX == '-'){
         if(sign_beforeX == '+'){
@@ -416,42 +430,93 @@ while (randomX >=1){
         }
        
     }
+    // randomX = 1
+    // while (randomX >=1){
+    // if (sign_beforeSquareX == '+'){
+    //     if(sign_beforeX == '+'){
+    //             if (sign_afterX == '+'){
+    //                 valueEq = kv_coefCubeX*randomX*randomX*randomX + kv_coefSquareX*randomX*randomX + kv_coef*randomX + kv_freecoef
+    //             }
+    //             if (sign_afterX == '-'){
+    //                 valueEq = kv_coefCubeX*randomX*randomX*randomX + kv_coefSquareX*randomX*randomX + kv_coef*randomX - kv_freecoef
+                    
+    //             }
+    //     }
+    //     if(sign_beforeX == '-'){
+    //         if (sign_afterX == '+'){
+    //             valueEq = kv_coefCubeX*randomX*randomX*randomX + kv_coefSquareX*randomX*randomX - kv_coef*randomX + kv_freecoef
+    //             }
+    //         if (sign_afterX == '-'){
+    //             valueEq = kv_coefCubeX*randomX*randomX*randomX + kv_coefSquareX*randomX*randomX - kv_coef*randomX - kv_freecoef
+    //             }
+            
+    //     }
+    // }
     
-    alert(x1)
-    
+    // if (valueEq == 0) {
+    //     x1 = randomX
+    //     break
+    //     }
+    //     else {
+    //         randomX = randomX - 1
+           
+    //     }
+    // }
+    // randomX = 1
+    // while (randomX >=1){
+    // if (sign_beforeSquareX == '-'){
+    //     if(sign_beforeX == '+'){
+    //             if (sign_afterX == '+'){
+    //                 valueEq = kv_coefCubeX*randomX*randomX*randomX - kv_coefSquareX*randomX*randomX + kv_coef*randomX + kv_freecoef
+    //             }
+    //             if (sign_afterX == '-'){
+    //                 valueEq = kv_coefCubeX*randomX*randomX*randomX - kv_coefSquareX*randomX*randomX + kv_coef*randomX - kv_freecoef
+                    
+    //             }
+    //     }
+    //     if(sign_beforeX == '-'){
+    //         if (sign_afterX == '+'){
+    //             valueEq = kv_coefCubeX*randomX*randomX*randomX - kv_coefSquareX*randomX*randomX - kv_coef*randomX + kv_freecoef
+    //             }
+    //         if (sign_afterX == '-'){
+    //             valueEq = kv_coefCubeX*randomX*randomX*randomX - kv_coefSquareX*randomX*randomX - kv_coef*randomX - kv_freecoef
+    //             }
+    //     }
+    //     }
+    //     if (valueEq == 0) {
+    //     x1 = randomX
+    //     break
+    //     }
+    //     else {
+    //         randomX = randomX - 1
+           
+    //     }
+
+    kub_coefSquareX = kv_coefCubeX
+    if (sign_beforeSquareX == '-'){
+            kub_coef = randomX*kub_coefSquareX - kv_coefSquareX
+    }
+    if (sign_beforeSquareX == '+'){
+            kub_coef = randomX*kub_coefSquareX + kv_coefSquareX
+    }
+    if (sign_beforeX == '-'){
+            kub_freecoef = randomX*kub_coef - kv_coef
+    }
+    if (sign_beforeX == '+'){
+            kub_freecoef = randomX*kub_coef + kv_coef
+    }
+    discr = kub_coef*kub_coef - 4*kub_coefSquareX*kub_freecoef
+    discr = Number(discr)
+    if (discr < 0) {$('.answer').text(x1)}
+    if (discr = 0) {
+        x2 = -kub_coef/(2*kub_coefSquareX)
+        $('.answer').text(x1, ', ', x2)
+    }
+    if (discr > 0) {
+        alert('a')
+    }
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
