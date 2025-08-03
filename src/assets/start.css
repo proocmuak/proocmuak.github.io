@@ -1,0 +1,232 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+@font-face {
+	font-family: Evolventa;
+	src: local("Evolventa"), url("/src/assets/evolventa/Evolventa-Regular.woff");
+	font-weight: normal;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: Evolventa;
+	src: local("Evolventa Oblique"), url("/src/assets/evolventa/Evolventa-Oblique.woff");
+	font-weight: normal;
+	font-style: italic;
+}
+
+@font-face {
+	font-family: Evolventa;
+	src: local("Evolventa Bold"), url("/src/assets/evolventa/Evolventa-Bold.woff");
+	font-weight: bold;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: Evolventa;
+	src: local("Evolventa Bold Oblique"), url("/src/assets/evolventa/Evolventa-BoldOblique.woff");
+	font-weight: bold;
+	font-style: italic;
+}
+
+body {
+    background: #f9f8ff;
+    font-family: Evolventa;
+    width: 100%;
+    height: 100%;
+}
+.allpage{
+    display: grid;
+    height: 100vh;
+    grid-template-rows: 7% 81% 12%;
+    gap: 0px;
+    background-image: url(/src/assets/background.png);
+    background-size: cover;
+    background-position:center;
+    background-repeat: no-repeat;
+}
+.topmenu{
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: 20% 22%;
+    column-gap: 55%;
+    padding-left: 8%;
+    color: white;
+    font-size: 1.25vw;
+    background-color: #b241d1;
+}
+.logo{
+    display: grid;
+    place-content: center;
+}
+.rightparttopmenu{
+    display: grid; 
+    grid-template-columns: 25% 30%;
+    column-gap: 7%;
+    font-size: 1vw;
+}
+.courses{
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+}
+.go_back{
+    display: grid;
+    place-items: center;
+}
+.mainpartpage{
+    height: 100%;
+    width: 100%;
+    display: grid;
+    place-items: center;
+}
+
+.circle{
+    background-color: #b241d1;
+    display: grid;
+    place-items: center;
+    width: 5.5vh;
+    height: 5.5vh;
+    border-radius: 50%;
+}
+.centerpart_for_enter{
+    height: 59%;
+    width: 34%;
+    background-color: #f9f8ff;
+    padding: 2%;
+    display: grid;
+    grid-template-rows: 15% 25% 10% 15% 15% 10%;
+    gap: 5%
+}
+.chose_of_login_or_register{
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-rows: 60% 5%;
+}
+.chose_of_login_or_register_text{
+    color: black;
+    font-weight: bold;
+    display: grid;
+    grid-template-columns: 50% 50%;
+    font-size: 1.4vw;
+}
+.chose_of_login_or_register_line{
+    display: grid;
+    grid-template-columns: 50% 50%;
+    align-items: center;
+}
+.chose_of_login_or_register_line_first {
+    background-color: black;
+    height: 100%;
+}
+.chose_of_login_or_register_line_second{
+    background-color: black;
+    height: 50%;
+}
+.chose_enter{
+    display: grid;
+    place-items: center;
+    font-size: 1.5vw;
+}
+.register{
+    display: grid;
+    place-items: center;
+}
+
+.info_about_account{
+    display: grid;
+    grid-template-rows: 40% 40%;
+    gap: 20%;
+
+}
+
+#email_or_phone, #password{
+    border: 0.15vh solid #b241d1;
+    padding-left: 2.5%;
+    font-size: 1vw;
+    font-family: Evolventa;
+    color: black;
+}
+#email_or_phone:focus, #password:focus{
+     outline: none;
+    border: 0.2vh solid #b241d1;
+}
+input::placeholder{
+    color: black;
+    opacity: 1;
+}
+
+.enter_or_forget_password{
+    display: grid;
+    grid-template-columns: 20% 30%;
+    gap: 50%;
+}
+
+.enter_button{
+    background-color: #b241d1;
+    color: white;
+    display: grid;
+    place-items: center;
+    font-size: 1vw;
+}
+.forget_password{
+    display: grid;
+    place-items: center;
+    font-size: 1vw;
+}
+.enter_by_telegram{
+display: grid;
+grid-template-rows: 1% 75%;
+gap: 20%;
+}
+.enter_by_telegram_line{
+    background-color: black;
+}
+.enter_by_telegram_menu{
+    background-color: #b241d1;
+    color: white;
+    display: grid;
+    place-items: center;
+}
+.consent{
+    color: grey;
+    text-align: center;
+}
+
+.bottominfo{
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: 40% 40%;
+    gap: 20%;
+    padding-left: 5%;
+    padding-right: 5%;
+}
+.logo_and_privacy{
+    display: grid;
+    place-items: center;
+    grid-template-columns: 30% 50%;
+    gap: 20%;
+}
+.contact{
+    display: grid;
+    grid-template-columns: 30% 35% 30%;
+    gap: 5%;
+}
+.phone, .mail {
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.icons{
+    display: grid;
+    grid-template-columns: 30% 30% 30%;
+    place-items: center;
+    gap: 5%;
+}
