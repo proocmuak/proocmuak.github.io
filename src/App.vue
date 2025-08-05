@@ -28,7 +28,8 @@ const handleLogin = async () => {
     })
     
     if (error) throw error
-    router.push('/dashboard')
+    localStorage.setItem('userEmail', email.value)
+    window.location.href = '/menu.html';
   } catch (error) {
     errorMessage.value = error.message
   }
@@ -152,15 +153,15 @@ const handleTelegramLogin = async () => {
 
   <div class="bottominfo">
     <div class="logo_and_privacy">
-      <img src="/src/assets/logovector.svg" height="90vh" width="90vh">
+      <img src="/src/assets/logovector.svg" class="logoicon">
       <div class="privacy_policy">Политика конфиденциальности</div>
     </div>
     <div class="contact">
       <div class="phone">
-        <img src="/src/assets/pinkphone.svg"> 
+        <img src="/src/assets/pinkphone.svg" class="logo_without_circle"> 
         +7 (963) 643 4241
       </div>
-      <div class="mail"><img src="/src/assets/pinkmail.svg">Purtoea@gmail.com</div>
+      <div class="mail"><img src="/src/assets/pinkmail.svg" class="logo_without_circle">Purtoea@gmail.com</div>
       <div class="icons">
         <a href="https://t.me/katerinaegechembio">
             <div class="circle">
@@ -218,20 +219,35 @@ const handleTelegramLogin = async () => {
 }
 
 body {
-    background: #f9f8ff;
-    font-family: Evolventa;
-    width: 100%;
-    height: 100%;
-}
-.allpage{
-    display: grid;
-    height: 100vh;
-    grid-template-rows: 7% 81% 12%;
-    gap: 0px;
     background-image: url(/src/assets/background.png);
     background-size: cover;
     background-position:center;
     background-repeat: no-repeat;
+    font-family: Evolventa;
+    width: 100%;
+    height: 100%;
+}
+
+@media (max-width: 767px) {
+   body{
+    font-size: 12px;
+    background-size: cover;
+  }
+}
+
+@media (max-width: 1199) {
+  body{
+    font-size: 14px;
+  }
+}
+
+
+
+.allpage{
+    display: grid;
+    height: 100vh;
+    width:100%;
+    grid-template-rows: 7% 81% 12%; 
 }
 .topmenu{
     width: 100%;
@@ -241,18 +257,25 @@ body {
     column-gap: 55%;
     padding-left: 8%;
     color: white;
-    font-size: 1.25vw;
     background-color: #b241d1;
 }
 .logo{
     display: grid;
     place-content: center;
+    font-size: 1.25vw;
+}
+@media (max-width: 767px){
+  .logo{font-size: 13px;}
 }
 .rightparttopmenu{
     display: grid; 
     grid-template-columns: 25% 30%;
     column-gap: 7%;
-    font-size: 1vw;
+}
+@media (max-width: 767px){
+  .rightparttopmenu{
+    column-gap: 17%;
+  }
 }
 .courses{
     width: 100%;
@@ -263,6 +286,7 @@ body {
 .go_back{
     display: grid;
     place-items: center;
+    white-space: nowrap
 }
 .mainpartpage{
     height: 100%;
@@ -288,6 +312,7 @@ body {
     height: 59%;
     width: 34%;
     background-color: #f9f8ff;
+    border-radius: 2%;
     padding: 2%;
     display: grid;
     grid-template-rows: 15% 25% 10% 15% 15% 10%;
@@ -304,7 +329,12 @@ body {
     font-weight: bold;
     display: grid;
     grid-template-columns: 50% 50%;
-    font-size: 1.4vw;
+    font-size: 1.25vw;
+}
+@media (max-width: 767px){
+  .chose_of_login_or_register_text{
+    font-size: 2.4vw;
+  }
 }
 .chose_of_login_or_register_line{
     display: grid;
@@ -338,7 +368,6 @@ body {
 #email_or_phone, #password{
     border: 0.15vh solid #b241d1;
     padding-left: 2.5%;
-    font-size: 1vw;
     font-family: Evolventa;
     color: black;
 }
@@ -362,21 +391,19 @@ input::placeholder{
   color: white;
   display: grid;
   place-items: center;
-  font-size: 1vw;
   transition: all 0.5s ease;
-  width: auto; /* Изменено с фиксированной ширины */
-  padding: 0 5%; /* Добавлено для отступов */
-  min-width: 90%; /* Минимальная ширина */
+  width: fit-content; /* Изменено с фиксированной ширины */
+  padding: 10%;
 }
 
 /* Специальный стиль для кнопки регистрации */
 .register-button {
-  min-width: 200%; /* Ширина, достаточная для текста "Зарегистрироваться" */
+  width: fit-content; /* Ширина, достаточная для текста "Зарегистрироваться" */
+  padding: 10%;
 }
 .forget_password{
     display: grid;
     place-items: center;
-    font-size: 1vw;
 }
 .enter_by_telegram{
 display: grid;
@@ -396,7 +423,11 @@ gap: 20%;
     color: grey;
     text-align: center;
 }
-
+@media (max-width: 767px){
+  .consent{
+    font-size: 9px;
+  }
+}
 .bottominfo{
     width: 100%;
     height: 100%;
@@ -416,6 +447,7 @@ gap: 20%;
     display: grid;
     grid-template-columns: 30% 35% 30%;
     gap: 5%;
+    font-size: 1.5vh;
 }
 .phone, .mail {
     text-align: center;
@@ -433,19 +465,45 @@ gap: 20%;
     height: 60%;
     width: 60%;
 }
+.logoicon{
+  height: 10vh;
+  width: 10vh;
+}
+.logo_without_circle{
+  height: 3.5vh;
+  width: 3.5vh;
+}
+
+@media (max-width: 767px) {
+  .bottominfo{
+    grid-template-columns: 40% 55%;
+    gap: 5%;
+  }
+   .contact{
+    font-size: 9px;
+    gap: 7%
+   }
+.logo_without_circle{
+  height: 2vh;
+  width: 2vh;
+}
+   .circle{
+    height: 3vh;
+    width: 3vh;
+   }
+}
+
 
 /* Добавляем новые стили для сообщений */
 .error-message {
   color: #ff3333;
   text-align: center;
-  font-size: 0.9vw;
   margin-top: -3%;
 }
 
 .success-message {
   color: #33cc33;
   text-align: center;
-  font-size: 0.9vw;
   margin-top: -3%;
 }
 
