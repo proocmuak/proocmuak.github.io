@@ -194,7 +194,7 @@ export default {
 
 .form-group {
   margin-bottom: 15px;
-  width: 50%;
+  width: 100%;
 }
 
 label {

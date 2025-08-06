@@ -29,7 +29,33 @@ const handleLogin = async () => {
     
     if (error) throw error
     localStorage.setItem('userEmail', email.value)
-    window.location.href = '/menu.html';
+    const { data, error: roleError } = await supabase
+    .from('personalities')
+    .select('role')
+    .eq('email', email.value) // или .eq('user_id', userId), если используете auth.uid
+    .single(); // если email уникальный, иначе используем .maybeSingle()
+    if (roleError) {
+        console.error('Ошибка при получении роли:', roleError);
+        throw roleError;
+    }
+
+      if (!data) {
+        throw new Error('Пользователь не найден в таблице personalities');
+      }
+
+      // Перенаправляем в зависимости от роли
+      switch (data.role) {
+        case 'tutor':
+          window.location.href = '/tutor_menu.html';
+          break;
+        case 'teacher':
+          window.location.href = '/teacher_menu.html';
+          break;
+        default:
+          window.location.href = '/student_menu.html';
+          break;
+      }
+
   } catch (error) {
     errorMessage.value = error.message
   }

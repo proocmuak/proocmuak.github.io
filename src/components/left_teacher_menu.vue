@@ -64,10 +64,10 @@ onMounted(async () => {
 
       <div class="line"></div>
       <div class="menu">
-        <div class="menu_button">Банк заданий</div>
-        <div class="menu_button">Задания по вариантам</div>
-        <div class="menu_button">Мои результаты</div>
-        <div class="menu_button">Домашние задания</div>
+        <div class="menu_button">Редактор курса</div>
+        <div class="menu_button">Редактор банка заданий</div>
+        <div class="menu_button">Редактор куратора</div>
+        <button @click="switchComponent('editor_students')" class="menu_button">Редактор учеников</button>
         <div class="menu_button">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
         <div class="exit">Выйти</div>

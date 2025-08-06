@@ -9,7 +9,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: resolve(__dirname, 'index.html'), // Главная страница
-        menu: resolve(__dirname, 'menu.html'), // Страница "О нас"
+        student_menu: resolve(__dirname, 'student_menu.html'), // Страница "О нас"
         // Добавьте другие страницы
       },
       output: {
