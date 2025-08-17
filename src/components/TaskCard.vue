@@ -38,9 +38,16 @@ export default {
     },
     taskStatus() {
       if (!this.answerChecked) return 'Не решено';
-      if (this.isFullyCorrect) return `✓ Решено (${this.awardedPoints} балл${this.awardedPoints === 1 ? '' : 'а'})`;
-      if (this.isPartiallyCorrect) return `± Частично (${this.awardedPoints} балл)`;
-      return '✗ Неверно';
+      
+      if (this.isFullyCorrect) {
+        return `✓ Верно (${this.awardedPoints}/${this.task.points} балла)`;
+      }
+      
+      if (this.isPartiallyCorrect) {
+        return `± Частично (${this.awardedPoints}/${this.task.points} балла)`;
+      }
+      
+      return `✗ Неверно (0/${this.task.points} балла)`;
     },
     statusClass() {
       return {
@@ -52,12 +59,19 @@ export default {
     }
   },
   methods: {
-    sanitizeHtml(html) {
-      return DOMPurify.sanitize(html, {
-        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
-        ALLOWED_ATTR: ['style', 'class']
-      });
-    },
+sanitizeHtml(html) {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'em', 'sub', 'sup', 
+      'ul', 'ol', 'li', 'div', 'span', 'h3', 'h4',
+      'table', 'tr', 'td', 'th', 'img', 'a'
+    ],
+    ALLOWED_ATTR: [
+      'style', 'class', 'colspan', 'rowspan', 
+      'src', 'alt', 'href', 'target'
+    ]
+  });
+},
     getImageUrl(imagePath) {
       if (imagePath.startsWith('http')) return imagePath;
       
@@ -68,97 +82,135 @@ export default {
       
       return publicUrl;
     },
-    async checkAnswer() {
-      if (!this.userAnswer.trim()) return;
-      
-      const userAnswer = this.userAnswer.trim();
-      const correctAnswer = this.task.answer.toString().trim();
-      
-      this.answerChecked = true;
-      this.isFullyCorrect = userAnswer === correctAnswer;
-      
-      if (this.task.points === 2 && !this.isFullyCorrect) {
-        this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer);
-      }
-      
-      if (this.isFullyCorrect) {
-        this.awardedPoints = this.task.points;
-      } else if (this.isPartiallyCorrect) {
-        this.awardedPoints = 1;
-      } else {
-        this.awardedPoints = 0;
-      }
-      
-      // Сохраняем прогресс
-      await this.saveTaskProgress();
-      
-      this.$emit('answer-checked', {
-        taskId: this.task.id,
-        isCorrect: this.isFullyCorrect,
-        isPartiallyCorrect: this.isPartiallyCorrect,
-        awardedPoints: this.awardedPoints,
-        userAnswer: userAnswer
-      });
-    },
+async checkAnswer() {
+  if (!this.userAnswer.trim()) return;
+
+  const userAnswer = this.userAnswer.trim();
+  const correctAnswer = this.task.answer.toString().trim();
+  
+  this.answerChecked = true;
+  this.isFullyCorrect = userAnswer === correctAnswer;
+  
+  // Для 2-балльных заданий проверяем частичное совпадение
+  if (this.task.points === 2 && !this.isFullyCorrect) {
+    this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer);
+  }
+
+  // Определяем начисляемые баллы
+  this.awardedPoints = this.isFullyCorrect ? this.task.points 
+                      : this.isPartiallyCorrect ? 1 
+                      : 0;
+
+  await this.saveTaskProgress();
+  
+  this.$emit('answer-checked', {
+    taskId: this.task.id,
+    isCorrect: this.isFullyCorrect,
+    isPartiallyCorrect: this.isPartiallyCorrect,
+    awardedPoints: this.awardedPoints
+  });
+},
+
+calculatePoints() {
+  if (this.isFullyCorrect) return this.task.points;
+  if (this.isPartiallyCorrect) return 1;
+  return 0;
+},
     checkPartialMatch(userAnswer, correctAnswer) {
-      // Логика для частично правильного ответа (можно доработать)
+      if (userAnswer === correctAnswer) return false;
+      
+      // Для числовых ответов проверяем частичное совпадение
+      if (/^\d+$/.test(userAnswer)) {
+        if (userAnswer.length !== correctAnswer.length) return false;
+        
+        let diffCount = 0;
+        for (let i = 0; i < userAnswer.length; i++) {
+          if (userAnswer[i] !== correctAnswer[i]) {
+            diffCount++;
+            if (diffCount > 1) return false;
+          }
+        }
+        return diffCount === 1;
+      }
+      
+      // Для текстовых ответов
       const correctParts = correctAnswer.split(/[,;]/).map(part => part.trim());
       const userParts = userAnswer.split(/[,;]/).map(part => part.trim());
       
       return userParts.some(part => correctParts.includes(part));
     },
-    async saveTaskProgress() {
-      if (!this.user) return;
-      
-      try {
-        const tableName = this.task.subject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_progress' 
-          : 'biology_ege_progress';
-        
-        const { error } = await supabase
-          .from(tableName)
-          .upsert({
-            user_id: this.user.id,
-            task_id: this.task.id,
-            is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
-            score: this.awardedPoints
-          });
-        
-        if (error) throw error;
-      } catch (err) {
-        console.error('Ошибка сохранения прогресса:', err);
-      }
-    },
-    async loadTaskProgress() {
-      if (!this.user) return;
-      this.loadingProgress = true;
-      
-      try {
-        const tableName = this.task.subject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_progress' 
-          : 'biology_ege_progress';
-        
-        const { data, error } = await supabase
-          .from(tableName)
-          .select('is_completed, score')
-          .eq('user_id', this.user.id)
-          .eq('task_id', this.task.id)
-          .single();
-        
-        if (!error && data) {
-          this.answerChecked = data.is_completed;
-          this.isFullyCorrect = data.is_completed;
-          this.awardedPoints = data.score || 0;
-          if (data.is_completed) {
-            this.userAnswer = this.task.answer.toString().trim();
-          }
-        }
-      } catch (err) {
-        console.error('Ошибка загрузки прогресса:', err);
-      } finally {
-        this.loadingProgress = false;
-      }
-    },
+async saveTaskProgress() {
+  if (!this.user?.id) return;
+
+  try {
+    const taskId = Number(this.task.id);
+    const { error } = await supabase
+      .from('biology_ege_progress')
+      .upsert({
+        user_id: this.user.id,
+        task_id: taskId,
+        is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
+        score: this.awardedPoints,
+        user_answer: this.userAnswer,
+        last_updated: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,task_id',
+        returning: 'minimal'
+      });
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('Ошибка сохранения прогресса:', error);
+    throw error;
+  }
+},
+async loadTaskProgress() {
+  if (!this.user?.id) return;
+  
+  try {
+    const taskId = Number(this.task.id);
+    const { data, error } = await supabase
+      .from('biology_ege_progress')
+      .select('score, is_completed, user_answer')
+      .eq('user_id', this.user.id)
+      .eq('task_id', taskId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (data) {
+      this.userAnswer = data.user_answer || '';
+      this.awardedPoints = data.score || 0;
+      this.answerChecked = true; // Всегда true, если запись существует
+      this.updateStatusFlags();
+    } else {
+      // Если записи нет, сбрасываем статус
+      this.answerChecked = false;
+      this.awardedPoints = 0;
+      this.userAnswer = '';
+      this.isFullyCorrect = false;
+      this.isPartiallyCorrect = false;
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки прогресса:', error);
+  }
+},
+
+getProgressTableName() {
+  return this.task.subject.includes('Химия') 
+    ? 'chemistry_ege_progress' 
+    : 'biology_ege_progress';
+},
+
+updateStatusFlags() {
+  this.isFullyCorrect = this.awardedPoints === this.task.points;
+  this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
+  
+  // Явно определяем статус "Неверно"
+  if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
+    this.awardedPoints = 0; // Гарантируем 0 баллов за неверный ответ
+  }
+},
     openImageModal(imageUrl) {
       this.selectedImage = imageUrl;
       this.showImageModal = true;
@@ -169,29 +221,39 @@ export default {
       document.body.style.overflow = '';
     }
   },
-  mounted() {
-    this.loadTaskProgress();
+mounted() {
+  this.loadTaskProgress();
+},
+watch: {
+  user: {
+    immediate: true,
+    handler(newVal) {
+      if (newVal) this.loadTaskProgress();
+    }
   },
-  watch: {
-    user(newVal) {
-      if (newVal) {
-        this.loadTaskProgress();
-      }
+  task: {
+    immediate: true,
+    handler() {
+      if (this.user) this.loadTaskProgress();
     }
   }
-};
+}
+}
 </script>
 
 <template>
   <div class="task-card">
-    <div class="task-header">
-      <div class="task-status" :class="statusClass">
-        {{ taskStatus }}
-      </div>
-      <span class="task-topic">Тема: {{ task.topic }}</span>
-      <span class="task-id">#{{ task.id }}</span>
-    </div>
-    
+<div class="task-header">
+  <div class="task-meta">
+    <span class="task-topic">Тема: {{ task.topic }}</span>
+    <span class="task-id">#{{ task.id }}</span>
+  </div>
+<div class="task-status" :class="statusClass">
+  {{ taskStatus }}
+</div>
+
+
+</div>
     <div class="task-content">
       <div class="task-text" v-html="sanitizeHtml(taskTextWithoutTables)" @copy.prevent></div>
       
@@ -237,31 +299,33 @@ export default {
           <button @click="checkAnswer" class="submit-button">Проверить</button>
         </div>
         
-        <div v-if="answerChecked" class="answer-feedback">
-          <template v-if="task.points === 1">
-            <span v-if="isFullyCorrect" class="correct">✓ Верно! +1 балл</span>
-            <span v-else class="incorrect">✗ Неверно. Правильный ответ: {{ task.answer }}</span>
-          </template>
-          
-          <template v-else-if="task.points === 2">
-            <span v-if="isFullyCorrect" class="correct">✓ Верно! +2 балла</span>
-            <span v-else-if="isPartiallyCorrect" class="partial">± Частично верно! +1 балл (правильный ответ: {{ task.answer }})</span>
-            <span v-else class="incorrect">✗ Неверно. Правильный ответ: {{ task.answer }}</span>
-          </template>
-          
-          <template v-else>
-            <div class="correct-answer">
-              Правильный ответ: {{ task.answer }}
-            </div>
-          </template>
+<div v-if="answerChecked" class="answer-feedback" :class="{
+      'correct-feedback': isFullyCorrect,
+      'partial-feedback': isPartiallyCorrect,
+      'incorrect-feedback': !isFullyCorrect && !isPartiallyCorrect
+    }">
+      <transition name="fade" mode="out-in">
+        <div v-if="isFullyCorrect" key="correct" class="feedback-content">
+          <span class="correct-icon">✓</span> Верно! Ответ: {{ task.answer }} ({{ awardedPoints }}/{{ task.points }} балла)
         </div>
+        <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
+          <span class="partial-icon">±</span> Частично верно! Ответ: {{ task.answer }} ({{ awardedPoints }}/{{ task.points }} балла)
+        </div>
+        <div v-else key="incorrect" class="feedback-content">
+          <span class="incorrect-icon">✗</span> Неверно. Ответ: {{ task.answer }} (0/{{ task.points }} балла)
+        </div>
+      </transition>
+    </div>
         
         <div v-else-if="task.points >= 3" class="correct-answer">
           Правильный ответ: {{ task.answer }}
         </div>
       </div>
     </div>
-    
+        <div v-if="answerChecked && task.explanation" class="explanation-section">
+      <div class="explanation-title">Пояснение:</div>
+      <div class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
+    </div>
     <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
       <div class="modal-content">
         <img :src="selectedImage" class="modal-image">
@@ -287,6 +351,7 @@ export default {
 .task-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 0.9rem;
   padding-bottom: 0.6rem;
   border-bottom: 0.0625rem solid #eee;
@@ -294,31 +359,36 @@ export default {
   position: relative;
 }
 
+
 .task-topic {
   font-weight: 500;
   color: #333;
   font-size: 1.1rem;
-  word-break: break-word;
-  flex: 1;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-id {
   color: #888;
   font-size: 0.95rem;
   font-weight: bold;
-  flex-shrink: 0;
+  display: block;
+  margin-top: 0.2rem;
 }
-
+.task-meta {
+  flex: 1;
+  min-width: 0; /* Предотвращает переполнение */
+}
 .task-status {
-  position: absolute;
-  top: -0.5rem;
-  right: 0;
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
   font-size: 0.8rem;
   font-weight: bold;
-  background: #f5f5f5;
-  color: #666;
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+  transition: all 0.3s ease;
 }
 
 .status-not-completed {
@@ -339,6 +409,74 @@ export default {
 .status-incorrect {
   background: #ffebee;
   color: #c62828;
+}
+
+.answer-feedback {
+  padding: 0.75rem;
+  border-radius: 0.4rem;
+  font-weight: 500;
+  margin-top: 0.9rem;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.correct-feedback {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border-left: 4px solid #2e7d32;
+}
+
+.partial-feedback {
+  background-color: #fff3e0;
+  color: #ff8f00;
+  border-left: 4px solid #ff8f00;
+}
+
+.incorrect-feedback {
+  background-color: #ffebee;
+  color: #c62828;
+  border-left: 4px solid #c62828;
+}
+
+.feedback-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.correct-icon, .partial-icon, .incorrect-icon {
+  font-size: 1.2rem;
+}
+
+.correct-icon {
+  color: #2e7d32;
+}
+
+.partial-icon {
+  color: #ff8f00;
+}
+
+.incorrect-icon {
+  color: #c62828;
+}
+
+/* Анимации */
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.pulse-animation {
+  animation: pulse 0.5s ease;
 }
 
 /* Остальные стили остаются без изменений */
@@ -475,7 +613,33 @@ export default {
 .submit-button:hover {
   background-color: #9a36b8;
 }
+.explanation-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+  border-left: 4px solid #b241d1;
+}
 
+.explanation-title {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.explanation-content {
+  line-height: 1.6;
+  color: #444;
+}
+
+.explanation-content p {
+  margin-bottom: 0.8rem;
+}
+
+.explanation-content  p:last-child {
+  margin-bottom: 0;
+}
 .answer-feedback, .correct-answer {
   padding: 0.75rem;
   border-radius: 0.4rem;
@@ -571,7 +735,7 @@ export default {
   }
   
   .task-topic, 
-  .task-id {
+  .task-id-text {
     font-size: 1rem;
     width: 100%;
   }

@@ -78,13 +78,15 @@ export default {
     }
   },
   methods: {
-    async fetchTasksWithProgress() {
+        async fetchTasksWithProgress() {
       this.loading = true;
       this.error = null;
       
       try {
-        // Получаем текущего пользователя
-        const { data: { user } } = await supabase.auth.getUser();
+        // Проверяем аутентификацию
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError) throw authError;
+        
         this.user = user;
         
         const tableName = this.filters.subject === 'Химия ЕГЭ' 
@@ -95,7 +97,7 @@ export default {
           ? 'chemistry_ege_progress'
           : 'biology_ege_progress';
         
-        // Загружаем задания
+        // Загружаем задания с явным указанием столбцов
         const { data: tasks, error: tasksError } = await supabase
           .from(tableName)
           .select('*')
@@ -103,7 +105,7 @@ export default {
         
         if (tasksError) throw tasksError;
         
-        // Загружаем прогресс
+        // Загружаем прогресс только если есть пользователь
         let progress = {};
         if (user) {
           const { data: progressData, error: progressError } = await supabase
@@ -111,17 +113,16 @@ export default {
             .select('task_id, is_completed, score')
             .eq('user_id', user.id);
           
-          if (!progressError) {
-            progressData.forEach(item => {
-              progress[item.task_id] = {
-                isCompleted: item.is_completed,
-                score: item.score
-              };
-            });
-          }
+          if (progressError) throw progressError;
+          
+          progressData.forEach(item => {
+            progress[item.task_id] = {
+              isCompleted: item.is_completed,
+              score: item.score
+            };
+          });
         }
         
-        // Формируем итоговый массив заданий
         this.allTasks = tasks.map(task => ({
           ...task,
           subject: this.filters.subject,
@@ -133,7 +134,7 @@ export default {
         
       } catch (err) {
         console.error('Ошибка загрузки заданий:', err);
-        this.error = err.message;
+        this.error = 'Не удалось загрузить задания. Попробуйте позже.';
       } finally {
         this.loading = false;
       }

@@ -47,15 +47,15 @@
         />
       </div>
 
-     <div class="filter-item" v-if="selectedSubject">
-    <h3 class="filter-label">Номер задания</h3>
-    <CustomDropdown
-      :options="filteredTaskNumbers"
-      placeholder="Выберите номер"
-      v-model="selectedTaskNumber"
-      :multiple="true"
-    />
-  </div>
+<div class="filter-item" v-if="selectedSubject">
+  <h3 class="filter-label">Номер задания</h3>
+  <CustomDropdown
+    :options="filteredTaskNumbers.map(String)"
+    placeholder="Выберите номер"
+    v-model="selectedTaskNumber"
+    :multiple="true"
+  />
+</div>
 
       <!-- Кнопка сброса -->
       <div class="filter-reset">
@@ -162,28 +162,33 @@ export default {
       // Удаляем дубликаты и возвращаем
       return [...new Set(topics)];
     },
-    filteredTaskNumbers() {
-      if (!this.selectedSubject) return [];
-      
-      const isChemistry = this.selectedSubject === 'Химия ЕГЭ';
-      const isFirstPart = this.selectedPart === 'Первая часть';
-      
-      if (isChemistry) {
-        if (isFirstPart) {
-          return Array.from({length: 28}, (_, i) => i + 1);
-        } else if (this.selectedPart === 'Вторая часть') {
-          return Array.from({length: 6}, (_, i) => i + 29);
-        }
-        return Array.from({length: 34}, (_, i) => i + 1);
-      } else { // Биология ЕГЭ
-        if (isFirstPart) {
-          return Array.from({length: 21}, (_, i) => i + 1);
-        } else if (this.selectedPart === 'Вторая часть') {
-          return Array.from({length: 7}, (_, i) => i + 22);
-        }
-        return Array.from({length: 28}, (_, i) => i + 1);
-      }
+filteredTaskNumbers() {
+  if (!this.selectedSubject) return [];
+  
+  const isChemistry = this.selectedSubject === 'Химия ЕГЭ';
+  const maxTasks = isChemistry ? 34 : 28; // Химия: 34, Биология: 28
+  
+  // Если часть не выбрана - возвращаем все номера
+  if (!this.selectedPart) {
+    return Array.from({length: maxTasks}, (_, i) => i + 1);
+  }
+  
+  const isFirstPart = this.selectedPart === 'Первая часть';
+  
+  if (isChemistry) {
+    if (isFirstPart) {
+      return Array.from({length: 28}, (_, i) => i + 1);
+    } else {
+      return Array.from({length: 6}, (_, i) => i + 29);
     }
+  } else { // Биология ЕГЭ
+    if (isFirstPart) {
+      return Array.from({length: 21}, (_, i) => i + 1);
+    } else {
+      return Array.from({length: 7}, (_, i) => i + 22);
+    }
+  }
+}
   },
   watch: {
     selectedTopics() {
@@ -231,11 +236,16 @@ export default {
       this.selectedTopics = [];
       this.emitFiltersChanged();
     },
-    emitFiltersChanged() {
-      this.$nextTick(() => {
-        this.$emit('filters-changed', this.getCurrentFilters());
-      });
-    },
+emitFiltersChanged() {
+  this.$nextTick(() => {
+    const filters = this.getCurrentFilters();
+    // Преобразуем номера заданий в числа, если они есть
+    if (filters.taskNumber) {
+      filters.taskNumber = filters.taskNumber.map(Number);
+    }
+    this.$emit('filters-changed', filters);
+  });
+},
     resetFilters(level) {
       if (level === 'subject') {
         this.selectedSections = [];
@@ -244,11 +254,14 @@ export default {
         this.selectedTaskNumber = null;
       }
     },
-    resetAllFilters() {
-      this.selectedSubject = null;
-      this.resetFilters('subject');
-      this.emitFiltersChanged();
-    },
+resetAllFilters() {
+  this.selectedSubject = null;
+  this.selectedSections = [];
+  this.selectedTopics = [];
+  this.selectedPart = null;
+  this.selectedTaskNumber = null;
+  this.emitFiltersChanged();
+},
     getCurrentFilters() {
       return {
         subject: this.selectedSubject,
