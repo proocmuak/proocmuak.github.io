@@ -25,7 +25,7 @@
           <th>Фамилия</th>
           <th>Предмет 1</th>
           <th>Предмет 2</th>
-          <th>Действия</th>
+          <th>Преподаватель</th>
         </tr>
       </thead>
       <tbody>
@@ -46,7 +46,11 @@
             >
           </td>
           <td>
-            <button @click="deleteStudent(student.user_id)">Удалить</button>
+            <input
+              v-model="student.tutor"
+              @blur="updateStudent(student)"
+              placeholder="Введите преподавателя"
+            >
           </td>
         </tr>
       </tbody>
@@ -61,7 +65,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { supabase } from '../supabase.js'
+import { supabase } from '../supabase';
 
 const students = ref([]);
 const searchQuery = ref('');
@@ -83,7 +87,7 @@ const fetchStudents = async () => {
   // Применяем поиск, если есть запрос
   if (searchQuery.value) {
     query = query.or(
-      `email.ilike.%${searchQuery.value}%,first_name.ilike.%${searchQuery.value}%,last_name.ilike.%${searchQuery.value}%`
+      `email.ilike.%${searchQuery.value}%,first_name.ilike.%${searchQuery.value}%,last_name.ilike.%${searchQuery.value}%,tutor.ilike.%${searchQuery.value}%`
     );
   }
 
@@ -109,7 +113,8 @@ const updateStudent = async (student) => {
     .from('students')
     .update({ 
       subject1: student.subject1 || null,
-      subject2: student.subject2 || null
+      subject2: student.subject2 || null,
+      tutor: student.tutor || null
     })
     .eq('user_id', student.user_id);
 
@@ -117,24 +122,6 @@ const updateStudent = async (student) => {
     console.error('Ошибка обновления:', error);
     alert('Не удалось сохранить изменения!');
   }
-};
-
-// Удаление студента
-const deleteStudent = async (userId) => {
-  if (!confirm('Удалить студента?')) return;
-
-  const { error } = await supabase
-    .from('students')
-    .delete()
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('Ошибка удаления:', error);
-    return;
-  }
-
-  // Перезагружаем данные с учетом текущей страницы
-  await fetchStudents();
 };
 
 // Навигация по страницам
@@ -233,19 +220,6 @@ onMounted(fetchStudents);
   width: 90%;
   border: 1px solid #ccc;
   border-radius: 3px;
-}
-
-button {
-  padding: 6px 12px;
-  background: #ff4444;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-button:hover {
-  background: #cc0000;
 }
 
 .no-data {

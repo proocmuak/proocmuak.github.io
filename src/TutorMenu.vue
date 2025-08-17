@@ -1,22 +1,22 @@
 <script>
-import left_teacher_menu from './components/left_teacher_menu.vue';
+import left_tutor_menu from './components/left_tutor_menu.vue';
 import settings from './components/settings.vue';
-import main_teacher_page from './components/change_courses.vue';
-import editor_students from './components/editor_students.vue'
+import main_tutor_page from './components/main_tutor.vue';
 import { supabase } from './supabase.js'
+import editor_bank_task from './components/editor_bank_task.vue'
 
 export default{
     components: {
-        left_teacher_menu,
+        left_tutor_menu,
         settings,
-        main_teacher_page,
-        editor_students
+        main_tutor_page,
+        editor_bank_task
     },
      data() {
     return {
-      currentComponent: main_teacher_page, // Изначально ничего не отображается
+      currentComponent:         editor_bank_task, // Изначально ничего не отображается
       loading: true,
-      isTeacher: false,
+      isTutor: false,
       error: null
     }
   },
@@ -42,10 +42,10 @@ export default{
       if (!personality) throw new Error('Профиль пользователя не найден')
 
       // 3. Проверяем, является ли пользователь учителем
-      this.isTeacher = personality.role === 'teacher'
+      this.isTutor = personality.role === 'tutor'
 
-      if (!this.isTeacher) {
-        console.warn(`Пользователь ${user.email} пытался получить доступ к TeacherMenu`)
+      if (!this.isTutor) {
+        console.warn(`Пользователь ${user.email} пытался получить доступ к Tutor`)
       }
     } catch (err) {
       this.error = err.message
@@ -65,10 +65,10 @@ export default{
 
 <template>
     <div v-if="loading" class="loading">Проверка доступа...</div>
-  <div v-else-if="!isTeacher" class="access-denied">
+  <div v-else-if="!isTutor" class="access-denied">
     <h2>Доступ запрещён</h2>
-    <p>Эта страница доступна только преподавателям.</p>
-    <a class="isntTeacher" href="../index.html">Вернуться к регистрации</a>
+    <p>Эта страница доступна только кураторам.</p>
+    <a class="isntTutor" href="../index.html">Вернуться к регистрации</a>
   </div>
   <div v-else>
     <div class="allpage">
@@ -80,7 +80,7 @@ export default{
             </div>
         </div> 
         <div class="centerpartpage">
-            <left_teacher_menu @component-change="setCurrentComponent"/>
+            <left_tutor_menu @component-change="setCurrentComponent"/>
             <div class="mainpart">
         <component :is="currentComponent" />
     </div>
@@ -136,7 +136,7 @@ export default{
   background: #9a35b5;
 }
 
-.teacher-content {
+.tutor-content {
   padding: 20px;
 }
 * {
@@ -182,7 +182,7 @@ a{
     color: white;
     text-decoration: none;
 }
-.isntTeacher{
+.isntTutor{
     color: #b241d1;
     text-decoration: none;
 }
@@ -235,9 +235,5 @@ a{
     padding-top: 2%;
     gap: 5%;
 }
-.mainpart{
-    display: grid;
-    grid-template-rows: 10% 85%;
-    gap: 1%;
-}
+
 </style>

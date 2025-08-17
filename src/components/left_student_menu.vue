@@ -1,27 +1,24 @@
 <script setup>
-import { ref, onMounted, defineEmits } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { supabase } from '../supabase.js'
 
 const emit = defineEmits(['component-change'])
-
 const userEmail = ref('')
 const firstName = ref('Добавьте имя')
 const lastName = ref('в настройках')
 const loading = ref(true)
 const error = ref(null)
+let subscription = null
 
 const switchComponent = (componentName) => {
   emit('component-change', componentName)
 }
 
-onMounted(async () => {
+// Функция для загрузки данных пользователя
+const fetchUserData = async () => {
   try {
-    userEmail.value = localStorage.getItem('userEmail') || ''
+    if (!userEmail.value) return
     
-    if (!userEmail.value) {
-      throw new Error('Email не найден в localStorage')
-    }
-
     const { data, error: supabaseError } = await supabase
       .from('personalities')
       .select('first_name, last_name')
@@ -30,20 +27,53 @@ onMounted(async () => {
 
     if (supabaseError) throw supabaseError
     
-    if (!data) {
-      firstName.value = 'Добавьте имя'
-      lastName.value = 'в настройках'
-      return
-    }
-
-    firstName.value = data.first_name || 'Добавьте имя'
-    lastName.value = data.last_name || 'В настройках'
+    firstName.value = data?.first_name || 'Добавьте имя'
+    lastName.value = data?.last_name || 'в настройках'
     
   } catch (err) {
     console.error('Ошибка:', err)
     error.value = err.message
   } finally {
     loading.value = false
+  }
+}
+
+// Подписка на изменения в реальном времени
+const setupRealtime = () => {
+  subscription = supabase
+    .channel('personal_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'personalities',
+        filter: `email=eq.${userEmail.value}`
+      },
+      () => {
+        fetchUserData() // При любом изменении обновляем данные
+      }
+    )
+    .subscribe()
+}
+
+onMounted(async () => {
+  try {
+    userEmail.value = localStorage.getItem('userEmail') || ''
+    if (!userEmail.value) throw new Error('Email не найден в localStorage')
+    
+    await fetchUserData()
+    setupRealtime()
+    
+  } catch (err) {
+    console.error('Ошибка инициализации:', err)
+    error.value = err.message
+  }
+})
+
+onUnmounted(() => {
+  if (subscription) {
+    supabase.removeChannel(subscription)
   }
 })
 </script>
@@ -64,9 +94,9 @@ onMounted(async () => {
 
       <div class="line"></div>
       <div class="menu">
-        <div class="menu_button">Банк заданий</div>
+        <div class="menu_button"> <a href="/task_bank.html" class="black_text_href">Банк заданий</a></div>
         <div class="menu_button">Задания по вариантам</div>
-        <div class="menu_button">Мои результаты</div>
+        <div class="menu_button" @click="switchComponent('SubjectRating')">Мои результаты</div>
         <div class="menu_button">Домашние задания</div>
         <div class="menu_button">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
@@ -188,5 +218,10 @@ onMounted(async () => {
   0% { opacity: 1; }
   50% { opacity: 0.6; }
   100% { opacity: 1; }
+}
+
+.black_text_href{
+  color: black;
+
 }
 </style>

@@ -10,7 +10,9 @@ export default defineConfig({
       input: {
         index: resolve(__dirname, 'index.html'), // Главная страница
         student_menu: resolve(__dirname, 'student_menu.html'), // Страница "О нас"
-        // Добавьте другие страницы
+        teacher_menu: resolve(__dirname, 'teacher_menu.html'),
+        chemistry_ege: resolve (__dirname, 'chemistry_ege.html'),
+        biology_ege: resolve(__dirname, 'biology_ege.html')
       },
       output: {
         // Генерируем предсказуемые имена файлов

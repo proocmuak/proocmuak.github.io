@@ -9,14 +9,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.53.0",
+    "@supabase/supabase-js": "^2.55.0",
     "axios": "^1.11.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
+    "dompurify": "^3.2.6",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mitt": "^3.0.1",
     "mongoose": "^8.17.0",
+    "pinia": "^3.0.3",
+    "uuid": "^11.1.0",
     "vue": "^3.5.17",
+    "vue-multiselect": "^3.3.1",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {

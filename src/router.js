@@ -8,7 +8,9 @@ const router = createRouter({
   routes: [
     { path: '/', component: enter },
     { path: '/menu', component: StudentMenu },
+    
   ],
 });
+
 
 export default router;

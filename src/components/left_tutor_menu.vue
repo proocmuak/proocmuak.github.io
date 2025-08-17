@@ -51,9 +51,9 @@ onMounted(async () => {
 <template>
   <div class="leftpartpage">
     <div class="leftmenu">
-      <div class="about_student_big" @click="switchComponent('main_teacher_page')">
-        <div class="avatar" @click="switchComponent('main_teacher_page')"><img src="../assets/avatar/panda.png" class="photo_avatar"></div>
-        <div class="about_student" @click="switchComponent('main_teacher_page')">
+      <div class="about_student_big" @click="switchComponent('main_tutor_page')">
+        <div class="avatar" @click="switchComponent('main_tutor_page')"><img src="../assets/avatar/panda.png" class="photo_avatar"></div>
+        <div class="about_student" @click="switchComponent('main_tutor_page')">
             <div class="user-info" 
      :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_student_page')">
   {{ firstName }} {{ lastName }}
@@ -64,10 +64,10 @@ onMounted(async () => {
 
       <div class="line"></div>
       <div class="menu">
-        <div class="menu_button" @click="switchComponent('editor_students')"> Редактор курса</div>
-        <div class="menu_button">Редактор банка заданий</div>
-        <div class="menu_button">Редактор куратора</div>
-        <button @click="switchComponent('editor_students')" class="menu_button">Редактор учеников</button>
+        <div class="menu_button" @click="switchComponent('editor_students')">Мои ученики</div>
+        <div class="menu_button">Все домашние задания</div>
+        <div class="menu_button"><a href="/task_bank.html" class="black_text_a">Банк заданий</a></div>
+        <button @click="switchComponent('editor_bank_task')" class="menu_button">Редактор банка заданий</button>
         <div class="menu_button">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
         <div class="exit">Выйти</div>
@@ -183,7 +183,9 @@ onMounted(async () => {
 
   animation: pulse 1.5s infinite;
 }
-
+.black_text_a{
+    color: black;
+}
 @keyframes pulse {
   0% { opacity: 1; }
   50% { opacity: 0.6; }

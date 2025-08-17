@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import quotes from '../assets/motivationalQuotes.js';
+import quotes from '../assets/arrays/motivationalQuotes.js';
 
 export default {
   name: 'DailyMotivation',
