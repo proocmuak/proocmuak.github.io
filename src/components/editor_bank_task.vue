@@ -150,11 +150,21 @@
       </div>
 
       <!-- Поле ответа -->
-      <div class="text-editor">
+      <div class="text-editor" id="answer-editor">
         <label>Ответ:</label>
         <textarea 
           v-model="newTask.answer" 
           placeholder="Введите ответ на задание..."
+          class="task-textarea answer-textarea"
+        ></textarea>
+      </div>
+
+            <!-- Добавляем новое поле для пояснения -->
+      <div class="text-editor" >
+        <label>Пояснение к ответу:</label>
+        <textarea 
+          v-model="newTask.explanation" 
+          placeholder="Введите пояснение к ответу (опционально)..."
           class="task-textarea"
         ></textarea>
       </div>
@@ -273,6 +283,7 @@ export default {
       newTask: {
         text: '',
         answer: '',
+        explanation: '', // Добавляем поле для пояснения
         section: null,
         topic: null,
         part: null,
@@ -361,6 +372,7 @@ export default {
       this.newTask = {
         text: '',
         answer: '',
+        explanation: '', // Добавляем сброс поля пояснения
         section: null,
         topic: null,
         part: null,
@@ -615,8 +627,8 @@ export default {
         this.isUploading = false;
       }
     },
-    async saveTask() {
-try {
+async saveTask() {
+  try {
     const imageUrls = await this.uploadImagesToStorage();
     
     const tableName = this.selectedSubject === 'Химия ЕГЭ' 
@@ -631,34 +643,35 @@ try {
       .insert([{
         text: this.newTask.text,
         answer: this.newTask.answer,
+        explanation: this.newTask.explanation || null, // Добавляем пояснение
         section: this.newTask.section,
         topic: this.newTask.topic,
         part: this.newTask.part,
         number: this.newTask.number,
         points: this.newTask.points,
-        difficulty: parseInt(this.newTask.difficulty), // Добавляем сложность
+        difficulty: parseInt(this.newTask.difficulty),
         images: imageUrls.length ? imageUrls : null,
         has_table: this.newTask.has_table,
         table_data: this.newTask.table_data,
       }])
       .select();
 
-        if (error) throw error;
+    if (error) throw error;
 
-        this.showSuccess = true;
-        this.uploadedImages = [];
-        this.uploadStatus = 'Файлы не выбраны';
-        
-        setTimeout(() => {
-          this.showSuccess = false;
-          this.resetForm();
-        }, 3000);
+    this.showSuccess = true;
+    this.uploadedImages = [];
+    this.uploadStatus = 'Файлы не выбраны';
+    
+    setTimeout(() => {
+      this.showSuccess = false;
+      this.resetForm();
+    }, 3000);
 
-      } catch (error) {
-        console.error('Ошибка при сохранении:', error);
-        alert(`Не удалось сохранить задание: ${error.message}`);
-      }
-    }
+  } catch (error) {
+    console.error('Ошибка при сохранении:', error);
+    alert(`Не удалось сохранить задание: ${error.message}`);
+  }
+}
   },
   watch: {
     tableRows(newVal, oldVal) {
@@ -768,7 +781,11 @@ try {
   resize: vertical;
   box-sizing: border-box;
 }
-
+.answer-textarea {
+  min-height: 80px !important; /* Уменьшаем минимальную высоту */
+  height: 80px !important;     /* Фиксированная высота */
+  resize: vertical;            /* Разрешаем изменять размер только по вертикали */
+}
 .task-textarea:focus {
   outline: none;
   border-color: #b241d1;
