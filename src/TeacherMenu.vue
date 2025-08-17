@@ -3,6 +3,7 @@ import left_teacher_menu from './components/left_teacher_menu.vue';
 import settings from './components/settings.vue';
 import main_teacher_page from './components/change_courses.vue';
 import editor_students from './components/editor_students.vue'
+import editor_bank_task from './components/editor_bank_task.vue';
 import { supabase } from './supabase.js'
 
 export default{
@@ -10,7 +11,8 @@ export default{
         left_teacher_menu,
         settings,
         main_teacher_page,
-        editor_students
+        editor_students,
+        editor_bank_task
     },
      data() {
     return {

@@ -65,7 +65,7 @@ onMounted(async () => {
       <div class="line"></div>
       <div class="menu">
         <div class="menu_button" @click="switchComponent('editor_students')"> Редактор курса</div>
-        <div class="menu_button">Редактор банка заданий</div>
+        <div class="menu_button" @click="switchComponent('editor_bank_task')">Редактор банка заданий</div>
         <div class="menu_button">Редактор куратора</div>
         <button @click="switchComponent('editor_students')" class="menu_button">Редактор учеников</button>
         <div class="menu_button">Уведомления</div>
