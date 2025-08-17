@@ -61,6 +61,15 @@
             <option v-for="n in 4" :value="n" :key="n">{{ n }}</option>
           </select>
         </div>
+
+            <div class="form-item">
+      <label>Сложность:</label>
+      <select v-model="newTask.difficulty" class="points-select">
+        <option value="1">1 (Легкая)</option>
+        <option value="2">2 (Средняя)</option>
+        <option value="3">3 (Сложная)</option>
+      </select>
+    </div>
       </div>
 
       <!-- Текстовое поле задания -->
@@ -270,7 +279,8 @@ export default {
         number: null,
         points: 1,
         has_table: false,
-        table_data: null
+        table_data: null,
+        difficulty: '1',
       },
       uploadedImages: [],
       uploadStatus: 'Файлы не выбраны',
@@ -321,7 +331,8 @@ export default {
         this.newTask.topic &&
         this.newTask.part &&
         this.newTask.number &&
-        this.newTask.points
+        this.newTask.points &&
+        this.newTask.difficulty // Добавляем проверку сложности
       );
     }
   },
@@ -605,31 +616,34 @@ export default {
       }
     },
     async saveTask() {
-      try {
-        const imageUrls = await this.uploadImagesToStorage();
-        
-        const tableName = this.selectedSubject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_task_bank' 
-          : 'biology_ege_task_bank';
-        
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        
-        const { data, error } = await supabase
-          .from(tableName)
-          .insert([{
-            text: this.newTask.text,
-            answer: this.newTask.answer,
-            section: this.newTask.section,
-            topic: this.newTask.topic,
-            part: this.newTask.part,
-            number: this.newTask.number,
-            points: this.newTask.points,
-            images: imageUrls.length ? imageUrls : null,
-            has_table: this.newTask.has_table,
-            table_data: this.newTask.table_data
-          }])
-          .select();
+try {
+    const imageUrls = await this.uploadImagesToStorage();
+    
+    const tableName = this.selectedSubject === 'Химия ЕГЭ' 
+      ? 'chemistry_ege_task_bank' 
+      : 'biology_ege_task_bank';
+    
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    
+    const { data, error } = await supabase
+      .from(tableName)
+      .insert([{
+        text: this.newTask.text,
+        answer: this.newTask.answer,
+        section: this.newTask.section,
+        topic: this.newTask.topic,
+        part: this.newTask.part,
+        number: this.newTask.number,
+        points: this.newTask.points,
+        difficulty: parseInt(this.newTask.difficulty), // Добавляем сложность
+        images: imageUrls.length ? imageUrls : null,
+        has_table: this.newTask.has_table,
+        table_data: this.newTask.table_data,
+        created_at: new Date().toISOString(),
+        author_id: user.id
+      }])
+      .select();
 
         if (error) throw error;
 
@@ -702,7 +716,7 @@ export default {
 .form-grid {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
   gap: 15px;
 }
 
