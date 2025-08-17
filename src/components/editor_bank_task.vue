@@ -640,8 +640,6 @@ try {
         images: imageUrls.length ? imageUrls : null,
         has_table: this.newTask.has_table,
         table_data: this.newTask.table_data,
-        created_at: new Date().toISOString(),
-        author_id: user.id
       }])
       .select();
 
