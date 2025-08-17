@@ -66,7 +66,7 @@ onMounted(async () => {
       <div class="menu">
         <div class="menu_button" @click="switchComponent('editor_students')"> Редактор курса</div>
         <div class="menu_button" @click="switchComponent('editor_bank_task')">Редактор банка заданий</div>
-        <div class="menu_button">Редактор куратора</div>
+        <div class="menu_button"><a href="/task_bank.html" class="black_text_a">Банк заданий</a></div>
         <button @click="switchComponent('editor_students')" class="menu_button">Редактор учеников</button>
         <div class="menu_button">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
@@ -183,7 +183,9 @@ onMounted(async () => {
 
   animation: pulse 1.5s infinite;
 }
-
+.black_text_a{
+  color: black;
+}
 @keyframes pulse {
   0% { opacity: 1; }
   50% { opacity: 0.6; }
