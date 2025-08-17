@@ -12,7 +12,11 @@ export default defineConfig({
         student_menu: resolve(__dirname, 'student_menu.html'), // Страница "О нас"
         teacher_menu: resolve(__dirname, 'teacher_menu.html'),
         chemistry_ege: resolve (__dirname, 'chemistry_ege.html'),
-        biology_ege: resolve(__dirname, 'biology_ege.html')
+        biology_ege: resolve(__dirname, 'biology_ege.html'),
+        biology_oge: resolve(__dirname, 'biology_oge.html'),
+        chemistry_oge: resolve (__dirname, 'chemistry_oge.html'),
+        task_bank: resolve(__dirname, 'task_bank.html'),
+        tutor_menu: resolve(__dirname, 'tutor_menu.html')
       },
       output: {
         // Генерируем предсказуемые имена файлов
