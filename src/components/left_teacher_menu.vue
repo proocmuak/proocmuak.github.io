@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, defineEmits } from 'vue'
+import { ref, onMounted, defineEmits, onUnmounted} from 'vue'
 import { supabase } from '../supabase.js'
 
 const emit = defineEmits(['component-change'])
@@ -7,43 +7,84 @@ const emit = defineEmits(['component-change'])
 const userEmail = ref('')
 const firstName = ref('Добавьте имя')
 const lastName = ref('в настройках')
+const avatarUrl = ref(null)
 const loading = ref(true)
 const error = ref(null)
+let subscription = null
 
 const switchComponent = (componentName) => {
   emit('component-change', componentName)
 }
-
-onMounted(async () => {
+const fetchUserData = async () => {
   try {
-    userEmail.value = localStorage.getItem('userEmail') || ''
+    if (!userEmail.value) return
     
-    if (!userEmail.value) {
-      throw new Error('Email не найден в localStorage')
-    }
-
     const { data, error: supabaseError } = await supabase
       .from('personalities')
-      .select('first_name, last_name')
+      .select('first_name, last_name, avatar_id')
       .eq('email', userEmail.value)
       .single()
 
     if (supabaseError) throw supabaseError
     
-    if (!data) {
-      firstName.value = 'Добавьте имя'
-      lastName.value = 'в настройках'
-      return
+    firstName.value = data?.first_name || 'Добавьте имя'
+    lastName.value = data?.last_name || 'в настройках'
+    
+    // Загружаем аватарку, если она есть
+    if (data?.avatar_id) {
+      const { data: avatarData, error: avatarError } = await supabase
+        .from('avatar')
+        .select('id, name, ref')
+        .eq('id', data.avatar_id)
+        .single()
+      
+      if (!avatarError && avatarData) {
+        avatarUrl.value = avatarData.ref // используем поле ref вместо https
+      }
     }
-
-    firstName.value = data.first_name || 'Добавьте имя'
-    lastName.value = data.last_name || 'В настройках'
     
   } catch (err) {
     console.error('Ошибка:', err)
     error.value = err.message
   } finally {
     loading.value = false
+  }
+}
+const setupRealtime = () => {
+  subscription = supabase
+    .channel('personal_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'personalities',
+        filter: `email=eq.${userEmail.value}`
+      },
+      () => {
+        fetchUserData() // При любом изменении обновляем данные
+      }
+    )
+    .subscribe()
+}
+
+onMounted(async () => {
+  try {
+    userEmail.value = localStorage.getItem('userEmail') || ''
+    if (!userEmail.value) throw new Error('Email не найден в localStorage')
+    
+    await fetchUserData()
+    setupRealtime()
+    
+  } catch (err) {
+    console.error('Ошибка инициализации:', err)
+    error.value = err.message
+  }
+})
+
+onUnmounted(() => {
+  if (subscription) {
+    supabase.removeChannel(subscription)
   }
 })
 </script>
@@ -52,7 +93,10 @@ onMounted(async () => {
   <div class="leftpartpage">
     <div class="leftmenu">
       <div class="about_student_big" @click="switchComponent('main_teacher_page')">
-        <div class="avatar" @click="switchComponent('main_teacher_page')"><img src="../assets/avatar/panda.png" class="photo_avatar"></div>
+        <div class="avatar" @click="switchComponent('main_teacher_page')">
+          <img v-if="avatarUrl" :src="avatarUrl" class="photo_avatar">
+          <div v-else class="default-avatar">Выберите аватарку</div>
+        </div>
         <div class="about_student" @click="switchComponent('main_teacher_page')">
             <div class="user-info" 
      :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_student_page')">
@@ -116,6 +160,20 @@ onMounted(async () => {
 .photo_avatar{
     height: 7vh;
     width: 7vh;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.default-avatar {
+    height: 7vh;
+    width: 7vh;
+    border-radius: 50%;
+    background-color: #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7vw;
+    text-align: center;
+    color: #666;
 }
 .about_student{
     display: grid;

@@ -25,7 +25,7 @@ export default {
     filteredTasks() {
       if (!this.filters.subject) return [];
       
-      return this.allTasks.filter(task => {
+      let tasks = this.allTasks.filter(task => {
         // Фильтрация по предмету
         if (task.subject !== this.filters.subject) return false;
         
@@ -61,8 +61,32 @@ export default {
           return false;
         }
         
+        // Фильтрация по сложности
+        if (this.filters.difficulty) {
+          switch(this.filters.difficulty) {
+            case 'easy':
+              if (task.difficulty !== 1) return false;
+              break;
+            case 'medium':
+              if (task.difficulty !== 2) return false;
+              break;
+            case 'hard':
+              if (task.difficulty !== 3) return false;
+              break;
+          }
+        }
+        
         return true;
       });
+
+      // Сортировка по сложности
+      if (this.filters.difficulty === 'asc') {
+        tasks = [...tasks].sort((a, b) => (a.difficulty || 2) - (b.difficulty || 2));
+      } else if (this.filters.difficulty === 'desc') {
+        tasks = [...tasks].sort((a, b) => (b.difficulty || 2) - (a.difficulty || 2));
+      }
+
+      return tasks;
     }
   },
   watch: {
@@ -78,15 +102,13 @@ export default {
     }
   },
   methods: {
-        async fetchTasksWithProgress() {
+    async fetchTasksWithProgress() {
       this.loading = true;
       this.error = null;
       
       try {
-        // Проверяем аутентификацию
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError) throw authError;
-        
+        // Получаем текущего пользователя
+        const { data: { user } } = await supabase.auth.getUser();
         this.user = user;
         
         const tableName = this.filters.subject === 'Химия ЕГЭ' 
@@ -97,15 +119,16 @@ export default {
           ? 'chemistry_ege_progress'
           : 'biology_ege_progress';
         
-        // Загружаем задания с явным указанием столбцов
+        // Загружаем задания с сортировкой по номеру и сложности
         const { data: tasks, error: tasksError } = await supabase
           .from(tableName)
           .select('*')
-          .order('number', { ascending: true });
+          .order('number', { ascending: true })
+          .order('difficulty', { ascending: true });
         
         if (tasksError) throw tasksError;
         
-        // Загружаем прогресс только если есть пользователь
+        // Загружаем прогресс
         let progress = {};
         if (user) {
           const { data: progressData, error: progressError } = await supabase
@@ -113,28 +136,31 @@ export default {
             .select('task_id, is_completed, score')
             .eq('user_id', user.id);
           
-          if (progressError) throw progressError;
-          
-          progressData.forEach(item => {
-            progress[item.task_id] = {
-              isCompleted: item.is_completed,
-              score: item.score
-            };
-          });
+          if (!progressError) {
+            progressData.forEach(item => {
+              progress[item.task_id] = {
+                isCompleted: item.is_completed,
+                score: item.score
+              };
+            });
+          }
         }
         
+        // Формируем итоговый массив заданий
         this.allTasks = tasks.map(task => ({
           ...task,
           subject: this.filters.subject,
           progress: progress[task.id] || {
             isCompleted: false,
             score: 0
-          }
+          },
+          // Устанавливаем сложность по умолчанию, если не указана
+          difficulty: task.difficulty || 2
         }));
         
       } catch (err) {
         console.error('Ошибка загрузки заданий:', err);
-        this.error = 'Не удалось загрузить задания. Попробуйте позже.';
+        this.error = err.message;
       } finally {
         this.loading = false;
       }

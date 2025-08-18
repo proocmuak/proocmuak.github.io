@@ -59,19 +59,12 @@ export default {
     }
   },
   methods: {
-sanitizeHtml(html) {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'em', 'sub', 'sup', 
-      'ul', 'ol', 'li', 'div', 'span', 'h3', 'h4',
-      'table', 'tr', 'td', 'th', 'img', 'a'
-    ],
-    ALLOWED_ATTR: [
-      'style', 'class', 'colspan', 'rowspan', 
-      'src', 'alt', 'href', 'target'
-    ]
-  });
-},
+    sanitizeHtml(html) {
+      return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
+        ALLOWED_ATTR: ['style', 'class']
+      });
+    },
     getImageUrl(imagePath) {
       if (imagePath.startsWith('http')) return imagePath;
       

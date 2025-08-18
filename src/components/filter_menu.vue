@@ -56,7 +56,15 @@
     :multiple="true"
   />
 </div>
-
+    <!-- Добавляем новый элемент для сортировки -->
+    <div class="filter-item" v-if="selectedSubject">
+      <h3 class="filter-label">Сортировка по сложности</h3>
+      <CustomDropdown
+        :options="difficultyOptions"
+        placeholder="Выберите сложность"
+        v-model="selectedDifficulty"
+      />
+    </div>
       <!-- Кнопка сброса -->
       <div class="filter-reset">
         <button 
@@ -68,6 +76,7 @@
           <span class="reset-icon">×</span> Сбросить
         </button>
       </div>
+      
     </div>
   </div>
 </template>
@@ -104,6 +113,15 @@ export default {
       selectedTaskNumber: null,
       availableSections: [],
       allTopics: [],
+      difficultyOptions: [
+        { value: null, label: 'Все сложности' },
+        { value: 'easy', label: 'Только лёгкие' },
+        { value: 'medium', label: 'Только средние' },
+        { value: 'hard', label: 'Только сложные' },
+        { value: 'asc', label: 'Сначала простые' },
+        { value: 'desc', label: 'Сначала сложные' }
+      ],
+      selectedDifficulty: null,
       topicsData: {
         'Химия ЕГЭ': {},
         'Биология ЕГЭ': {}
@@ -260,6 +278,7 @@ resetAllFilters() {
   this.selectedTopics = [];
   this.selectedPart = null;
   this.selectedTaskNumber = null;
+  this.selectedDifficulty = null;
   this.emitFiltersChanged();
 },
     getCurrentFilters() {
@@ -268,7 +287,8 @@ resetAllFilters() {
         sections: this.selectedSections,
         topics: this.selectedTopics,
         part: this.selectedPart,
-        taskNumber: this.selectedTaskNumber
+        taskNumber: this.selectedTaskNumber,
+        difficulty: this.selectedDifficulty
       };
     }
   }
@@ -351,7 +371,16 @@ resetAllFilters() {
   font-size: 1.1rem;
   line-height: 1;
 }
+.filter-difficulty {
+  margin-top: 1rem;
+}
 
+.difficulty-label {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: #495057;
+  font-weight: 500;
+}
 /* Адаптивность для мобильных устройств */
 @media (max-width: 768px) {
   .filter-grid {

@@ -1,11 +1,12 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, defineEmits} from 'vue'
 import { supabase } from '../supabase.js'
 
 const emit = defineEmits(['component-change'])
 const userEmail = ref('')
 const firstName = ref('Добавьте имя')
 const lastName = ref('в настройках')
+const avatarUrl = ref(null)
 const loading = ref(true)
 const error = ref(null)
 let subscription = null
@@ -21,7 +22,7 @@ const fetchUserData = async () => {
     
     const { data, error: supabaseError } = await supabase
       .from('personalities')
-      .select('first_name, last_name')
+      .select('first_name, last_name, avatar_id')
       .eq('email', userEmail.value)
       .single()
 
@@ -29,6 +30,19 @@ const fetchUserData = async () => {
     
     firstName.value = data?.first_name || 'Добавьте имя'
     lastName.value = data?.last_name || 'в настройках'
+    
+    // Загружаем аватарку, если она есть
+    if (data?.avatar_id) {
+      const { data: avatarData, error: avatarError } = await supabase
+        .from('avatar')
+        .select('id, name, ref')
+        .eq('id', data.avatar_id)
+        .single()
+      
+      if (!avatarError && avatarData) {
+        avatarUrl.value = avatarData.ref // используем поле ref вместо https
+      }
+    }
     
   } catch (err) {
     console.error('Ошибка:', err)
@@ -82,7 +96,10 @@ onUnmounted(() => {
   <div class="leftpartpage">
     <div class="leftmenu">
       <div class="about_student_big" @click="switchComponent('main_student_page')">
-        <div class="avatar" @click="switchComponent('main_student_page')"><img src="../assets/avatar/panda.png" class="photo_avatar"></div>
+        <div class="avatar" @click="switchComponent('main_student_page')">
+          <img v-if="avatarUrl" :src="avatarUrl" class="photo_avatar">
+          <div v-else class="default-avatar">Выберите аватарку</div>
+        </div>
         <div class="about_student" @click="switchComponent('main_student_page')">
             <div class="user-info" 
      :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_student_page')">
@@ -113,7 +130,12 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style>.leftpartpage{
+<style>
+/* Существующие стили остаются без изменений */
+*{
+  font-family: Evolventa;
+}
+.leftpartpage{
     display: grid;
     place-content: center;
     grid-template-rows: 40% 55%;
@@ -146,6 +168,20 @@ onUnmounted(() => {
 .photo_avatar{
     height: 7vh;
     width: 7vh;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.default-avatar {
+    height: 7vh;
+    width: 7vh;
+    border-radius: 50%;
+    background-color: #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7vw;
+    text-align: center;
+    color: #666;
 }
 .about_student{
     display: grid;
@@ -207,10 +243,9 @@ onUnmounted(() => {
     font-weight: bold;
 }
 .user-info.settings-message {
-  color: #b241d1; /* Красный цвет */
+  color: #b241d1;
   font-size: 1.5vh;
   font-weight: bold;
-
   animation: pulse 1.5s infinite;
 }
 
@@ -222,6 +257,5 @@ onUnmounted(() => {
 
 .black_text_href{
   color: black;
-
 }
 </style>
