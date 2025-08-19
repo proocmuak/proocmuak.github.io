@@ -1,30 +1,43 @@
 <script>
+import { markRaw } from 'vue' // Добавляем markRaw
 import left_teacher_menu from './components/left_teacher_menu.vue';
 import settings from './components/settings.vue';
 import main_teacher_page from './components/change_courses.vue';
 import editor_students from './components/editor_students.vue'
 import editor_bank_task from './components/editor_bank_task.vue';
+import editor_homework from './components/editor_homework.vue'
+
 import { supabase } from './supabase.js'
 
-export default{
-    components: {
-        left_teacher_menu,
-        settings,
-        main_teacher_page,
-        editor_students,
-        editor_bank_task
-    },
-     data() {
+// Создаем объект с компонентами, помечая их как нереактивные
+const components = {
+  main_teacher_page: markRaw(main_teacher_page),
+  settings: markRaw(settings),
+  editor_students: markRaw(editor_students),
+  editor_bank_task: markRaw(editor_bank_task),
+  editor_homework: markRaw(editor_homework)
+}
+
+export default {
+  components: {
+    left_teacher_menu,
+    settings,
+    main_teacher_page,
+    editor_students,
+    editor_bank_task,
+    editor_homework
+  },
+  data() {
     return {
-      currentComponent: main_teacher_page, // Изначально ничего не отображается
+      currentComponent: components.main, // Используем помеченный компонент
       loading: true,
       isTeacher: false,
-      error: null
+      error: null,
+      componentMap: components // Добавляем карту компонентов
     }
   },
   async mounted() {
     try {
-      // 1. Проверяем авторизацию пользователя
       const { data: { user }, error: authError } = await supabase.auth.getUser()
       
       if (authError) throw authError
@@ -33,7 +46,6 @@ export default{
         return
       }
 
-      // 2. Проверяем роль пользователя в таблице personalities
       const { data: personality, error: profileError } = await supabase
         .from('personalities')
         .select('role')
@@ -43,7 +55,6 @@ export default{
       if (profileError) throw profileError
       if (!personality) throw new Error('Профиль пользователя не найден')
 
-      // 3. Проверяем, является ли пользователь учителем
       this.isTeacher = personality.role === 'teacher'
 
       if (!this.isTeacher) {
@@ -59,11 +70,15 @@ export default{
   },
   methods: {
     setCurrentComponent(componentName) {
-      this.currentComponent = componentName; // Меняем компонент
+      // Используем карту компонентов вместо прямого доступа
+      const component = this.componentMap[componentName] || components.main
+      this.currentComponent = component
     }
   }
 }
-</script>  
+</script>
+
+<!-- Остальная часть компонента остается без изменений -->  
 
 <template>
     <div v-if="loading" class="loading">Проверка доступа...</div>
@@ -77,7 +92,7 @@ export default{
          <div class="topmenu">
             <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
             <div class="rightparttopmenu">
-                <div class="courses">Училка</div>
+                <div class="courses">На главную</div>
                 <div class="go_back"><a href="../index.html">Выйти</a></div>
             </div>
         </div> 
@@ -214,7 +229,7 @@ a{
 }
 .rightparttopmenu{
     display: grid; 
-    grid-template-columns: 25% 30%;
+    grid-template-columns: 30% 30%;
     column-gap: 7%;
     font-size: 1vw;
 }

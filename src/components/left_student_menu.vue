@@ -124,7 +124,7 @@ onUnmounted(() => {
     <div class="aboutcourses">
       <div class="about_courses_bold">Курсы по химии и биологии</div>  
       <div class="second_line"></div>
-      <div class="about_courses_main_text">Неонлайн школа Purto, текст про курсы</div>
+      <div class="about_courses_main_text">Тут будет что-то грандиозное</div>
       <div class="about_courses_button_chose">Выбрать курс</div> 
     </div>
   </div>

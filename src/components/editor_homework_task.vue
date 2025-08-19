@@ -259,7 +259,21 @@ const processModules = (modules) => {
 };
 
 export default {
-  name: 'TaskEditor',
+  name: 'HomeworkTaskEditor',
+  props: {
+    homeworkId: {
+      type: Number,
+      required: true
+    },
+    homeworkName: {
+      type: String,
+      required: true
+    },
+    subject: {
+      type: String,
+      required: true
+    }
+  },
   components: {
     CustomDropdown: markRaw(CustomDropdown)
   },
@@ -683,51 +697,73 @@ export default {
         this.isUploading = false;
       }
     },
-    async saveTask() {
-      try {
-        const imageUrls = await this.uploadImagesToStorage();
-        
-        const tableName = this.selectedSubject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_task_bank' 
-          : 'biology_ege_task_bank';
-        
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        
-        const { data, error } = await supabase
-          .from(tableName)
-          .insert([{
-            text: this.newTask.text,
-            answer: this.newTask.answer,
-            explanation: this.newTask.explanation || null,
-            section: this.newTask.section,
-            topic: this.newTask.topic,
-            part: this.newTask.part,
-            number: this.newTask.number,
-            points: this.newTask.points,
-            difficulty: parseInt(this.newTask.difficulty),
-            images: imageUrls.length ? imageUrls : null,
-            has_table: this.newTask.has_table,
-            table_data: this.newTask.table_data,
-          }])
-          .select();
+// В методе saveTask() замените жестко заданные значения:
+async saveTask() {
+  try {
+    const imageUrls = await this.uploadImagesToStorage();
+    
+    const tableName = this.selectedSubject === 'Химия ЕГЭ' 
+      ? 'chemistry_ege_task_bank' 
+      : 'biology_ege_task_bank';
+    
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    
+    const { data, error } = await supabase
+      .from(tableName)
+      .insert([{
+        text: this.newTask.text,
+        answer: this.newTask.answer,
+        explanation: this.newTask.explanation || null,
+        section: this.newTask.section,
+        topic: this.newTask.topic,
+        part: this.newTask.part,
+        number: this.newTask.number,
+        points: this.newTask.points,
+        difficulty: parseInt(this.newTask.difficulty),
+        images: imageUrls.length ? imageUrls : null,
+        has_table: this.newTask.has_table,
+        table_data: this.newTask.table_data,
+      }])
+      .select();
 
-        if (error) throw error;
+    if (error) throw error;
 
-        this.showSuccess = true;
-        this.uploadedImages = [];
-        this.uploadStatus = 'Файлы не выбраны';
-        
-        setTimeout(() => {
-          this.showSuccess = false;
-          this.resetForm();
-        }, 3000);
+    // Используем полученные пропсы вместо жестких значений
+    if (data && data.length > 0) {
+      const taskId = data[0].id; // Обратите внимание: вероятно должно быть id, а не task_id
+      
+      const homeworkTableName = this.subject === 'biology' 
+        ? 'biology_ege_homework_tasks' 
+        : 'chemistry_ege_homework_tasks';
+      
+      const { error: homeworkError } = await supabase
+        .from(homeworkTableName)
+        .insert([{
+          task_id: taskId,
+          homework_id: this.homeworkId,
+          homework_name: this.homeworkName
+        }]);
 
-      } catch (error) {
-        console.error('Ошибка при сохранении:', error);
-        alert(`Не удалось сохранить задание: ${error.message}`);
+      if (homeworkError) {
+        console.error('Ошибка при добавлении в homework_tasks:', homeworkError);
       }
     }
+
+    this.showSuccess = true;
+    this.uploadedImages = [];
+    this.uploadStatus = 'Файлы не выбраны';
+    
+    setTimeout(() => {
+      this.showSuccess = false;
+      this.resetForm();
+    }, 3000);
+
+  } catch (error) {
+    console.error('Ошибка при сохранении:', error);
+    alert(`Не удалось сохранить задание: ${error.message}`);
+  }
+}
   },
   watch: {
     tableRows(newVal, oldVal) {

@@ -108,10 +108,11 @@ onUnmounted(() => {
 
       <div class="line"></div>
       <div class="menu">
-        <div class="menu_button" @click="switchComponent('editor_students')"> Редактор курса</div>
+        <div class="menu_button" @click="switchComponent('main_teacher_page')"> Редактор курса</div>
         <div class="menu_button" @click="switchComponent('editor_bank_task')">Редактор банка заданий</div>
         <div class="menu_button"><a href="/task_bank.html" class="black_text_a">Банк заданий</a></div>
         <button @click="switchComponent('editor_students')" class="menu_button">Редактор учеников</button>
+        <div class="menu_button" @click="switchComponent('editor_homework')">Редактор домашек</div>
         <div class="menu_button">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
         <div class="exit">Выйти</div>
@@ -121,7 +122,7 @@ onUnmounted(() => {
     <div class="aboutcourses">
       <div class="about_courses_bold">Курсы по химии и биологии</div>  
       <div class="second_line"></div>
-      <div class="about_courses_main_text">Неонлайн школа Purto, текст про курсы</div>
+      <div class="about_courses_main_text">Тут будет что-то грандиозное</div>
       <div class="about_courses_button_chose">Выбрать курс</div> 
     </div>
   </div>
@@ -143,7 +144,7 @@ onUnmounted(() => {
 .leftmenu{
     display: grid;
     grid-template-rows: 20% 0.65% 60%;
-    gap: 7.5%;
+    gap: 5.5%;
     background-color: #f9f8ff;
     border-radius: 5%;
 }
@@ -196,7 +197,7 @@ onUnmounted(() => {
 .menu{
     display: grid;
     grid-template-rows: 12% 12% 12% 12% 12% 12% 12% 12% 12%;
-    gap: 3%;
+    gap: 2%;
     padding-left: 10%;
 }
 .menu_button{

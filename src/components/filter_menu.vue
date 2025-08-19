@@ -115,9 +115,6 @@ export default {
       allTopics: [],
       difficultyOptions: [
         { value: null, label: 'Все сложности' },
-        { value: 'easy', label: 'Только лёгкие' },
-        { value: 'medium', label: 'Только средние' },
-        { value: 'hard', label: 'Только сложные' },
         { value: 'asc', label: 'Сначала простые' },
         { value: 'desc', label: 'Сначала сложные' }
       ],
@@ -221,6 +218,10 @@ filteredTaskNumbers() {
     selectedPart() {
       // Сбрасываем выбранный номер при изменении части
       this.selectedTaskNumber = null;
+      this.emitFiltersChanged();
+    },
+    selectedDifficulty(newVal) {
+      console.log('Выбрана сложность:', newVal);
       this.emitFiltersChanged();
     },
   },

@@ -16,7 +16,8 @@ export default defineConfig({
         biology_oge: resolve(__dirname, 'biology_oge.html'),
         chemistry_oge: resolve (__dirname, 'chemistry_oge.html'),
         task_bank: resolve(__dirname, 'task_bank.html'),
-        tutor_menu: resolve(__dirname, 'tutor_menu.html')
+        tutor_menu: resolve(__dirname, 'tutor_menu.html'),
+        homework: resolve(__dirname, 'homework.html')
       },
       output: {
         // Генерируем предсказуемые имена файлов

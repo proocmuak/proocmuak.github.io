@@ -18,7 +18,9 @@ export default {
       allTasks: [],
       loading: false,
       error: null,
-      user: null
+      user: null,
+      visibleCount: 50,
+      scrollThreshold: 200
     };
   },
   computed: {
@@ -34,13 +36,13 @@ export default {
         if (this.filters.showCompleted === 'not' && task.progress.isCompleted) return false;
         
         // Фильтрация по разделам
-        if (this.filters.sections.length > 0 && 
+        if (this.filters.sections && this.filters.sections.length > 0 && 
             !this.filters.sections.includes(task.section)) {
           return false;
         }
         
         // Фильтрация по темам
-        if (this.filters.topics.length > 0 && 
+        if (this.filters.topics && this.filters.topics.length > 0 && 
             !this.filters.topics.includes(task.topic)) {
           return false;
         }
@@ -56,24 +58,9 @@ export default {
         }
         
         // Фильтрация по номеру задания
-        if (this.filters.taskNumber && 
+        if (this.filters.taskNumber && this.filters.taskNumber.length > 0 && 
             !this.filters.taskNumber.includes(task.number)) {
           return false;
-        }
-        
-        // Фильтрация по сложности
-        if (this.filters.difficulty) {
-          switch(this.filters.difficulty) {
-            case 'easy':
-              if (task.difficulty !== 1) return false;
-              break;
-            case 'medium':
-              if (task.difficulty !== 2) return false;
-              break;
-            case 'hard':
-              if (task.difficulty !== 3) return false;
-              break;
-          }
         }
         
         return true;
@@ -81,12 +68,26 @@ export default {
 
       // Сортировка по сложности
       if (this.filters.difficulty === 'asc') {
-        tasks = [...tasks].sort((a, b) => (a.difficulty || 2) - (b.difficulty || 2));
+        tasks = [...tasks].sort((a, b) => {
+          const diffA = a.difficulty || 2;
+          const diffB = b.difficulty || 2;
+          return diffA - diffB;
+        });
       } else if (this.filters.difficulty === 'desc') {
-        tasks = [...tasks].sort((a, b) => (b.difficulty || 2) - (a.difficulty || 2));
+        tasks = [...tasks].sort((a, b) => {
+          const diffA = a.difficulty || 2;
+          const diffB = b.difficulty || 2;
+          return diffB - diffA;
+        });
       }
 
       return tasks;
+    },
+    visibleTasks() {
+      return this.filteredTasks.slice(0, this.visibleCount);
+    },
+    hasMoreTasks() {
+      return this.visibleCount < this.filteredTasks.length;
     }
   },
   watch: {
@@ -95,19 +96,26 @@ export default {
       handler(newVal) {
         if (newVal) {
           this.fetchTasksWithProgress();
+          this.resetPagination();
         } else {
           this.allTasks = [];
+          this.resetPagination();
         }
       }
+    },
+    filteredTasks() {
+      this.resetPagination();
     }
   },
   methods: {
+    resetPagination() {
+      this.visibleCount = 50;
+    },
     async fetchTasksWithProgress() {
       this.loading = true;
       this.error = null;
       
       try {
-        // Получаем текущего пользователя
         const { data: { user } } = await supabase.auth.getUser();
         this.user = user;
         
@@ -119,12 +127,10 @@ export default {
           ? 'chemistry_ege_progress'
           : 'biology_ege_progress';
         
-        // Загружаем задания с сортировкой по номеру и сложности
+        // Загружаем все задания
         const { data: tasks, error: tasksError } = await supabase
           .from(tableName)
-          .select('*')
-          .order('number', { ascending: true })
-          .order('difficulty', { ascending: true });
+          .select('*');
         
         if (tasksError) throw tasksError;
         
@@ -154,9 +160,11 @@ export default {
             isCompleted: false,
             score: 0
           },
-          // Устанавливаем сложность по умолчанию, если не указана
           difficulty: task.difficulty || 2
         }));
+        
+        console.log('Загружено заданий:', this.allTasks.length);
+        console.log('Пример задания:', this.allTasks[0]);
         
       } catch (err) {
         console.error('Ошибка загрузки заданий:', err);
@@ -165,11 +173,25 @@ export default {
         this.loading = false;
       }
     },
+    loadMoreTasks() {
+      if (this.hasMoreTasks) {
+        this.visibleCount += 50;
+        console.log('Загружено заданий:', this.visibleCount, 'из', this.filteredTasks.length);
+      }
+    },
+    handleScroll() {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      if (scrollTop + windowHeight >= documentHeight - this.scrollThreshold) {
+        this.loadMoreTasks();
+      }
+    },
     selectTask(task) {
       this.$emit('task-selected', task);
     },
     handleAnswerChecked(result) {
-      // Обновляем прогресс в локальном состоянии
       const taskIndex = this.allTasks.findIndex(t => t.id === result.taskId);
       if (taskIndex !== -1) {
         this.allTasks[taskIndex].progress = {
@@ -178,6 +200,12 @@ export default {
         };
       }
     }
+  },
+  mounted() {
+    window.addEventListener('scroll', this.handleScroll);
+  },
+  beforeUnmount() {
+    window.removeEventListener('scroll', this.handleScroll);
   }
 };
 </script>
@@ -187,19 +215,33 @@ export default {
     <div v-if="loading" class="loading-indicator">Загрузка заданий...</div>
     
     <div v-else>
+      <div class="filters-info" v-if="filters.difficulty">
+        Сортировка: {{ filters.difficulty === 'asc' ? 'сначала простые' : 'сначала сложные' }}
+      </div>
+      
       <div v-if="filteredTasks.length === 0" class="no-tasks">
         Задания не найдены. Попробуйте изменить параметры фильтрации.
       </div>
       
       <div v-else class="tasks-list">
         <TaskCard 
-          v-for="task in filteredTasks" 
+          v-for="task in visibleTasks" 
           :key="task.id" 
           :task="task"
           :user="user"
           @task-selected="selectTask"
           @answer-checked="handleAnswerChecked"
         />
+        
+        <div v-if="hasMoreTasks" class="load-more-container">
+          <button @click="loadMoreTasks" class="load-more-button">
+            Показать еще задания ({{ visibleCount }}/{{ filteredTasks.length }})
+          </button>
+        </div>
+        
+        <div v-else-if="filteredTasks.length > 0" class="all-loaded">
+          Все задания загружены ({{ filteredTasks.length }})
+        </div>
       </div>
     </div>
   </div>
@@ -211,6 +253,15 @@ export default {
   width: 100%;
   margin: 0px;
   box-sizing: border-box;
+}
+
+.filters-info {
+  padding: 0.5rem 1rem;
+  background-color: #f0f0f0;
+  border-radius: 0.25rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #666;
 }
 
 .loading-indicator,
@@ -234,8 +285,35 @@ export default {
   flex-direction: column;
   gap: 1.25rem;
   width: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+}
+
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.load-more-button {
+  padding: 0.75rem 1.5rem;
+  background-color: #b241d1;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s;
+}
+
+.load-more-button:hover {
+  background-color: #9a36b8;
+}
+
+.all-loaded {
+  text-align: center;
+  padding: 1.5rem;
+  color: #666;
+  font-style: italic;
 }
 
 @media (max-width: 48rem) {
@@ -247,6 +325,11 @@ export default {
   .loading-indicator,
   .no-tasks {
     padding: 1.5rem;
+  }
+  
+  .load-more-button {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
   }
 }
 </style>
