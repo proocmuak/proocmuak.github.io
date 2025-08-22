@@ -111,68 +111,112 @@ export default {
     resetPagination() {
       this.visibleCount = 50;
     },
-    async fetchTasksWithProgress() {
-      this.loading = true;
-      this.error = null;
+async fetchTasksWithProgress() {
+  this.loading = true;
+  this.error = null;
+  
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    this.user = user;
+    
+    const tableName = this.filters.subject === 'Химия ЕГЭ' 
+      ? 'chemistry_ege_task_bank' 
+      : 'biology_ege_task_bank';
+    
+    const progressTable = this.filters.subject === 'Химия ЕГЭ'
+      ? 'chemistry_ege_progress'
+      : 'biology_ege_progress';
+    
+    // Загружаем все задания с пагинацией
+    let allTasks = [];
+    let from = 0;
+    let to = 999;
+    const batchSize = 1000;
+
+    while (true) {
+      const { data: tasksBatch, error: tasksError } = await supabase
+        .from(tableName)
+        .select('*')
+        .range(from, to);
       
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        this.user = user;
+      if (tasksError) throw tasksError;
+      
+      if (tasksBatch && tasksBatch.length > 0) {
+        allTasks = [...allTasks, ...tasksBatch];
+      }
+      
+      if (!tasksBatch || tasksBatch.length < batchSize) {
+        break;
+      }
+      
+      from += batchSize;
+      to += batchSize;
+      
+      // Небольшая задержка между запросами
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    // Загружаем прогресс
+    let progress = {};
+    if (user) {
+      // Также используем пагинацию для прогресса
+      let allProgress = [];
+      let progressFrom = 0;
+      let progressTo = 999;
+      
+      while (true) {
+        const { data: progressBatch, error: progressError } = await supabase
+          .from(progressTable)
+          .select('task_id, is_completed, score')
+          .eq('user_id', user.id)
+          .range(progressFrom, progressTo);
         
-        const tableName = this.filters.subject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_task_bank' 
-          : 'biology_ege_task_bank';
+        if (progressError) throw progressError;
         
-        const progressTable = this.filters.subject === 'Химия ЕГЭ'
-          ? 'chemistry_ege_progress'
-          : 'biology_ege_progress';
-        
-        // Загружаем все задания
-        const { data: tasks, error: tasksError } = await supabase
-          .from(tableName)
-          .select('*');
-        
-        if (tasksError) throw tasksError;
-        
-        // Загружаем прогресс
-        let progress = {};
-        if (user) {
-          const { data: progressData, error: progressError } = await supabase
-            .from(progressTable)
-            .select('task_id, is_completed, score')
-            .eq('user_id', user.id);
-          
-          if (!progressError) {
-            progressData.forEach(item => {
-              progress[item.task_id] = {
-                isCompleted: item.is_completed,
-                score: item.score
-              };
-            });
-          }
+        if (progressBatch && progressBatch.length > 0) {
+          allProgress = [...allProgress, ...progressBatch];
         }
         
-        // Формируем итоговый массив заданий
-        this.allTasks = tasks.map(task => ({
-          ...task,
-          subject: this.filters.subject,
-          progress: progress[task.id] || {
-            isCompleted: false,
-            score: 0
-          },
-          difficulty: task.difficulty || 2
-        }));
+        if (!progressBatch || progressBatch.length < batchSize) {
+          break;
+        }
         
-        console.log('Загружено заданий:', this.allTasks.length);
-        console.log('Пример задания:', this.allTasks[0]);
+        progressFrom += batchSize;
+        progressTo += batchSize;
         
-      } catch (err) {
-        console.error('Ошибка загрузки заданий:', err);
-        this.error = err.message;
-      } finally {
-        this.loading = false;
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    },
+      
+      allProgress.forEach(item => {
+        progress[item.task_id] = {
+          isCompleted: item.is_completed,
+          score: item.score
+        };
+      });
+    }
+    
+    // Формируем итоговый массив заданий
+    this.allTasks = allTasks.map(task => ({
+      ...task,
+      subject: this.filters.subject,
+      progress: progress[task.id] || {
+        isCompleted: false,
+        score: 0
+      },
+      difficulty: task.difficulty || 2
+    }));
+    
+    console.log('Загружено заданий:', this.allTasks.length);
+    console.log('ID первого задания:', this.allTasks[0]?.id);
+    console.log('ID последнего задания:', this.allTasks[this.allTasks.length - 1]?.id);
+    
+  } catch (err) {
+    console.error('Ошибка загрузки заданий:', err);
+    this.error = err.message;
+  } finally {
+    this.loading = false;
+  }
+},
     loadMoreTasks() {
       if (this.hasMoreTasks) {
         this.visibleCount += 50;

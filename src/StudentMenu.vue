@@ -3,13 +3,16 @@ import Left_student_menu from './components/left_student_menu.vue';
 import settings from './components/settings.vue';
 import main_student_page from './components/main_student_page.vue';
 import SubjectRating from './components/SubjectRating.vue';
+import HomeworkList from './components/HomeworkList.vue';
+
 
 export default{
     components: {
         Left_student_menu,
         settings,
         main_student_page,
-        SubjectRating
+        SubjectRating, 
+        HomeworkList
     },
     data() {
     return {

@@ -105,7 +105,6 @@ onUnmounted(() => {
      :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_student_page')">
   {{ firstName }} {{ lastName }}
 </div>
-          <div class="number_of_points">5465 баллов</div>
         </div>
       </div>
 
@@ -114,7 +113,7 @@ onUnmounted(() => {
         <div class="menu_button"> <a href="/task_bank.html" class="black_text_href">Банк заданий</a></div>
         <div class="menu_button">Задания по вариантам</div>
         <div class="menu_button" @click="switchComponent('SubjectRating')">Мои результаты</div>
-        <div class="menu_button">Домашние задания</div>
+        <div class="menu_button" @click="switchComponent('HomeworkList')">Домашние задания</div>
         <div class="menu_button">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
         <div class="exit">Выйти</div>
@@ -140,7 +139,10 @@ onUnmounted(() => {
     place-content: center;
     grid-template-rows: 40% 55%;
     gap: 5%;
-}
+    height: 80vh;
+    position: sticky;
+    top: 0;
+  }
 .error-message {
   color: #ff0000;
   padding: 10px;

@@ -3,16 +3,15 @@
   <div v-else-if="error" class="error">{{ error }}</div>
   <div v-else-if="subject2" class="block">
     <div class="subject_name">{{ subject2 }}</div>
-    <div class="score">Количество баллов: {{ score }}</div>
-    <div class="rating">Место в рейтинге: {{ rating }}</div>
+    <div class="score">Количество баллов: {{ total_score }}</div>
+    <div class="rating">Место в рейтинге: {{ global_rating }}</div>
     <a v-if="subject2 === 'Биология ЕГЭ'" href="/biology_ege.html" class="button">
-  Перейти
-</a>
+      Перейти
+    </a>
     <a v-if="subject2 === 'Биология ОГЭ'" href="/biology_oge.html" class="button">
-  Перейти
-</a>
+      Перейти
+    </a>
   </div>  
-  
 </template>
 
 <script>
@@ -22,8 +21,8 @@ export default {
   data() {
     return {
       subject2: null,
-      score: 0,
-      rating: 0,
+      total_score: 0,
+      global_rating: 0,
       loading: true,
       error: null,
       user_id: null
@@ -31,7 +30,6 @@ export default {
   },
   async mounted() {
     try {
-      // Получаем текущего авторизованного пользователя
       const { data: { user }, error: authError } = await supabase.auth.getUser()
       
       if (authError) throw authError
@@ -39,6 +37,8 @@ export default {
 
       this.user_id = user.id
       await this.fetchStudentData()
+      await this.fetchBiologyRating()
+      await this.calculateGlobalRating()
     } catch (err) {
       this.error = err.message || 'Ошибка при загрузке данных'
       console.error(err)
@@ -48,19 +48,61 @@ export default {
   },
   methods: {
     async fetchStudentData() {
-      // Запрос к таблице students с использованием user_id
       const { data, error } = await supabase
         .from('students')
-        .select('subject2, score, rating')
-        .eq('user_id', this.user_id)  // Используем user_id вместо id
+        .select('subject2')
+        .eq('user_id', this.user_id)
         .single()
 
       if (error) throw error
       
       if (data) {
         this.subject2 = data.subject2
-        this.score = data.score || 0
-        this.rating = data.rating || 0
+      }
+    },
+
+    async fetchBiologyRating() {
+      const { data, error } = await supabase
+        .from('biology_rating')
+        .select('total_score')
+        .eq('user_id', this.user_id)
+        .single()
+
+      if (error) {
+        // Если записи нет, создаем новую с нулевым счетом
+        if (error.code === 'PGRST116') {
+          const { error: insertError } = await supabase
+            .from('biology_rating')
+            .insert([{ 
+              user_id: this.user_id, 
+              total_score: 0 
+            }])
+
+          if (insertError) throw insertError
+          this.total_score = 0
+        } else {
+          throw error
+        }
+      } else if (data) {
+        this.total_score = data.total_score || 0
+      }
+    },
+
+    async calculateGlobalRating() {
+      // Получаем всех пользователей с их баллами, отсортированными по убыванию
+      const { data: allRatings, error } = await supabase
+        .from('biology_rating')
+        .select('user_id, total_score')
+        .order('total_score', { ascending: false })
+
+      if (error) throw error
+
+      if (allRatings) {
+        // Находим позицию текущего пользователя в рейтинге
+        const userIndex = allRatings.findIndex(rating => rating.user_id === this.user_id)
+        if (userIndex !== -1) {
+          this.global_rating = userIndex + 1 // +1 потому что индекс начинается с 0
+        }
       }
     }
   }
@@ -68,7 +110,6 @@ export default {
 </script>
 
 <style>
-/* Ваши существующие стили */
 .block {
   background-color: #b241d1;
   border-radius: 5%;
@@ -93,7 +134,8 @@ export default {
   display: grid;
   justify-content: center;
   align-items: center;
-  border-radius: 5vw; 
+  border-radius: 5vw;
+  text-decoration: none;
 }
 .loading, .error, .no-data {
   padding: 20px;
