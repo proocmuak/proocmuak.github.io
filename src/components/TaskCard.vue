@@ -24,7 +24,8 @@ export default {
       showImageModal: false,
       selectedImage: '',
       loadingProgress: false,
-       showAnswerOnly: false 
+      showAnswerOnly: false,
+      showExplanation: false // Оставляем для управления видимостью
     };
   },
   computed: {
@@ -57,6 +58,16 @@ export default {
         'status-partial': this.isPartiallyCorrect && !this.isFullyCorrect,
         'status-incorrect': this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect
       };
+    },
+    hasAnswerImages() {
+      return this.task.image_answer && this.task.image_answer.length > 0;
+    },
+    hasExplanationImages() {
+      return this.task.image_explanation && this.task.image_explanation.length > 0;
+    },
+    // Добавляем вычисляемое свойство для проверки, можно ли показывать пояснение
+    canShowExplanation() {
+      return this.answerChecked && (this.task.explanation || this.hasExplanationImages);
     }
   },
   methods: {
@@ -77,57 +88,70 @@ export default {
       return publicUrl;
     },
     showAnswer() {
-    this.showAnswerOnly = true;
-    // Не сохраняем в БД для заданий с 3+ баллами
-  },
-async checkAnswer() {
-  if (!this.userAnswer.trim()) {
-    alert('Пожалуйста, введите ответ');
-    return;
-  }
-    if (this.task.points >= 3) {
       this.showAnswerOnly = true;
-      return;
-    }
+      // Автоматически показываем пояснение при показе ответа для заданий с 3+ баллами
+      if (this.task.points >= 3 && this.canShowExplanation) {
+        this.showExplanation = true;
+      }
+    },
+    toggleExplanation() {
+      if (this.canShowExplanation) {
+        this.showExplanation = !this.showExplanation;
+      }
+    },
+    async checkAnswer() {
+      if (!this.userAnswer.trim()) {
+        alert('Пожалуйста, введите ответ');
+        return;
+      }
+      if (this.task.points >= 3) {
+        this.showAnswerOnly = true;
+        // Автоматически показываем пояснение для заданий с 3+ баллами
+        if (this.canShowExplanation) {
+          this.showExplanation = true;
+        }
+        return;
+      }
 
-  const userAnswer = this.userAnswer.trim();
-  const correctAnswer = this.task.answer.toString().trim();
-  
-  this.answerChecked = true;
-  this.isFullyCorrect = userAnswer === correctAnswer;
-  
-  // Для 2-балльных заданий проверяем частичное совпадение
-  if (this.task.points === 2 && !this.isFullyCorrect) {
-    this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer);
-  } else {
-    this.isPartiallyCorrect = false;
-  }
+      const userAnswer = this.userAnswer.trim();
+      const correctAnswer = this.task.answer.toString().trim();
+      
+      this.answerChecked = true;
+      this.isFullyCorrect = userAnswer === correctAnswer;
+      
+      if (this.task.points === 2 && !this.isFullyCorrect) {
+        this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer);
+      } else {
+        this.isPartiallyCorrect = false;
+      }
 
-  // Определяем начисляемые баллы
-  this.awardedPoints = this.isFullyCorrect ? this.task.points 
-                      : this.isPartiallyCorrect ? 1 
-                      : 0;
+      this.awardedPoints = this.isFullyCorrect ? this.task.points 
+                        : this.isPartiallyCorrect ? 1 
+                        : 0;
 
-  await this.saveTaskProgress();
-  
-  this.$emit('answer-checked', {
-    taskId: this.task.id,
-    isCorrect: this.isFullyCorrect,
-    isPartiallyCorrect: this.isPartiallyCorrect,
-    awardedPoints: this.awardedPoints,
-    userAnswer: userAnswer
-  });
-},
-
-calculatePoints() {
-  if (this.isFullyCorrect) return this.task.points;
-  if (this.isPartiallyCorrect) return 1;
-  return 0;
-},
+      await this.saveTaskProgress();
+      
+      this.$emit('answer-checked', {
+        taskId: this.task.id,
+        isCorrect: this.isFullyCorrect,
+        isPartiallyCorrect: this.isPartiallyCorrect,
+        awardedPoints: this.awardedPoints,
+        userAnswer: userAnswer
+      });
+      
+      // Автоматически показываем пояснение после проверки ответа
+      if (this.canShowExplanation) {
+        this.showExplanation = true;
+      }
+    },
+    calculatePoints() {
+      if (this.isFullyCorrect) return this.task.points;
+      if (this.isPartiallyCorrect) return 1;
+      return 0;
+    },
     checkPartialMatch(userAnswer, correctAnswer) {
       if (userAnswer === correctAnswer) return false;
       
-      // Для числовых ответов проверяем частичное совпадение
       if (/^\d+$/.test(userAnswer)) {
         if (userAnswer.length !== correctAnswer.length) return false;
         
@@ -141,84 +165,85 @@ calculatePoints() {
         return diffCount === 1;
       }
       
-      // Для текстовых ответов
       const correctParts = correctAnswer.split(/[,;]/).map(part => part.trim());
       const userParts = userAnswer.split(/[,;]/).map(part => part.trim());
       
       return userParts.some(part => correctParts.includes(part));
     },
-async saveTaskProgress() {
-  if (!this.user?.id) return;
+    async saveTaskProgress() {
+      if (!this.user?.id) return;
 
-  try {
-    const taskId = Number(this.task.id);
-    const { error } = await supabase
-      .from('biology_ege_progress')
-      .upsert({
-        user_id: this.user.id,
-        task_id: taskId,
-        is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
-        score: this.awardedPoints,
-        user_answer: this.userAnswer,
-        last_updated: new Date().toISOString()
-      }, {
-        onConflict: 'user_id,task_id',
-        returning: 'minimal'
-      });
+      try {
+        const taskId = Number(this.task.id);
+        const { error } = await supabase
+          .from('biology_ege_progress')
+          .upsert({
+            user_id: this.user.id,
+            task_id: taskId,
+            is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
+            score: this.awardedPoints,
+            user_answer: this.userAnswer,
+            last_updated: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,task_id',
+            returning: 'minimal'
+          });
 
-    if (error) throw error;
-  } catch (error) {
-    console.error('Ошибка сохранения прогресса:', error);
-    throw error;
-  }
-},
-async loadTaskProgress() {
-  if (!this.user?.id) return;
-  
-  try {
-    const taskId = Number(this.task.id);
-    const { data, error } = await supabase
-      .from('biology_ege_progress')
-      .select('score, is_completed, user_answer')
-      .eq('user_id', this.user.id)
-      .eq('task_id', taskId)
-      .maybeSingle();
+        if (error) throw error;
+      } catch (error) {
+        console.error('Ошибка сохранения прогресса:', error);
+        throw error;
+      }
+    },
+    async loadTaskProgress() {
+      if (!this.user?.id) return;
+      
+      try {
+        const taskId = Number(this.task.id);
+        const { data, error } = await supabase
+          .from('biology_ege_progress')
+          .select('score, is_completed, user_answer')
+          .eq('user_id', this.user.id)
+          .eq('task_id', taskId)
+          .maybeSingle();
 
-    if (error) throw error;
+        if (error) throw error;
 
-    if (data) {
-      this.userAnswer = data.user_answer || '';
-      this.awardedPoints = data.score || 0;
-      this.answerChecked = true; // Всегда true, если запись существует
-      this.updateStatusFlags();
-    } else {
-      // Если записи нет, сбрасываем статус
-      this.answerChecked = false;
-      this.awardedPoints = 0;
-      this.userAnswer = '';
-      this.isFullyCorrect = false;
-      this.isPartiallyCorrect = false;
-    }
-  } catch (error) {
-    console.error('Ошибка загрузки прогресса:', error);
-  }
-},
-
-getProgressTableName() {
-  return this.task.subject.includes('Химия') 
-    ? 'chemistry_ege_progress' 
-    : 'biology_ege_progress';
-},
-
-updateStatusFlags() {
-  this.isFullyCorrect = this.awardedPoints === this.task.points;
-  this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
-  
-  // Явно определяем статус "Неверно"
-  if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
-    this.awardedPoints = 0; // Гарантируем 0 баллов за неверный ответ
-  }
-},
+        if (data) {
+          this.userAnswer = data.user_answer || '';
+          this.awardedPoints = data.score || 0;
+          this.answerChecked = true;
+          this.updateStatusFlags();
+          
+          // При загрузке прогресса автоматически показываем пояснение
+          if (this.canShowExplanation) {
+            this.showExplanation = true;
+          }
+        } else {
+          this.answerChecked = false;
+          this.awardedPoints = 0;
+          this.userAnswer = '';
+          this.isFullyCorrect = false;
+          this.isPartiallyCorrect = false;
+          this.showExplanation = false;
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки прогресса:', error);
+      }
+    },
+    getProgressTableName() {
+      return this.task.subject.includes('Химия') 
+        ? 'chemistry_ege_progress' 
+        : 'biology_ege_progress';
+    },
+    updateStatusFlags() {
+      this.isFullyCorrect = this.awardedPoints === this.task.points;
+      this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
+      
+      if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
+        this.awardedPoints = 0;
+      }
+    },
     openImageModal(imageUrl) {
       this.selectedImage = imageUrl;
       this.showImageModal = true;
@@ -229,39 +254,38 @@ updateStatusFlags() {
       document.body.style.overflow = '';
     }
   },
-mounted() {
-  this.loadTaskProgress();
-},
-watch: {
-  user: {
-    immediate: true,
-    handler(newVal) {
-      if (newVal) this.loadTaskProgress();
-    }
+  mounted() {
+    this.loadTaskProgress();
   },
-  task: {
-    immediate: true,
-    handler() {
-      if (this.user) this.loadTaskProgress();
+  watch: {
+    user: {
+      immediate: true,
+      handler(newVal) {
+        if (newVal) this.loadTaskProgress();
+      }
+    },
+    task: {
+      immediate: true,
+      handler() {
+        if (this.user) this.loadTaskProgress();
+      }
     }
   }
-}
 }
 </script>
 
 <template>
   <div class="task-card">
-<div class="task-header">
-  <div class="task-meta">
-    <span class="task-topic">Тема: {{ task.topic }}</span>
-    <span class="task-id">#{{ task.id }}</span>
-  </div>
-<div class="task-status" :class="statusClass">
-  {{ taskStatus }}
-</div>
-
-
-</div>
+    <div class="task-header">
+      <div class="task-meta">
+        <span class="task-topic">Тема: {{ task.topic }}</span>
+        <span class="task-id">#{{ task.id }}</span>
+      </div>
+      <div class="task-status" :class="statusClass">
+        {{ taskStatus }}
+      </div>
+    </div>
+    
     <div class="task-content">
       <div class="task-text" v-html="sanitizeHtml(taskTextWithoutTables)" @copy.prevent></div>
       
@@ -293,60 +317,111 @@ watch: {
         </div>
       </div>
 
-<div class="answer-section">
-  <div v-if="task.points <= 2" class="answer-input-container">
-    <input 
-      v-model="userAnswer" 
-      type="text" 
-      placeholder="Введите ответ" 
-      class="answer-input"
-      @keyup.enter="checkAnswer"
-      inputmode="numeric"
-      pattern="[0-9]*"
-    >
-    <button @click="checkAnswer" class="submit-button">Проверить</button>
-  </div>
-  
-  <div v-else class="show-answer-container">
-    <button @click="showAnswer" class="show-answer-button">Показать ответ</button>
-  </div>
+      <div class="answer-section">
+        <div v-if="task.points <= 2" class="answer-input-container">
+          <input 
+            v-model="userAnswer" 
+            type="text" 
+            placeholder="Введите ответ" 
+            class="answer-input"
+            @keyup.enter="checkAnswer"
+            inputmode="numeric"
+            pattern="[0-9]*"
+          >
+          <button @click="checkAnswer" class="submit-button">Проверить</button>
+        </div>
         
-<div v-if="answerChecked" class="answer-feedback" :class="{
-  'correct-feedback': isFullyCorrect,
-  'partial-feedback': isPartiallyCorrect,
-  'incorrect-feedback': !isFullyCorrect && !isPartiallyCorrect
-}">
-  <transition name="fade" mode="out-in">
-    <div v-if="isFullyCorrect" key="correct" class="feedback-content">
-      <span class="correct-icon">✓</span> 
-      <strong>Ваш ответ:</strong> {{ userAnswer }} - верно! 
-      <strong>Правильный ответ:</strong> {{ task.answer }} 
-      ({{ awardedPoints }}/{{ task.points }} балла)
-    </div>
-    <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
-      <span class="partial-icon">±</span> 
-      <strong>Ваш ответ:</strong> {{ userAnswer }} - частично верно! 
-      <strong>Правильный ответ:</strong> {{ task.answer }} 
-      ({{ awardedPoints }}/{{ task.points }} балла)
-    </div>
-    <div v-else key="incorrect" class="feedback-content">
-      <span class="incorrect-icon">✗</span> 
-      <strong>Ваш ответ:</strong> {{ userAnswer }} - неверно. 
-      <strong>Правильный ответ:</strong> {{ task.answer }} 
-      (0/{{ task.points }} балла)
-    </div>
-  </transition>
-</div>
+        <div v-else class="show-answer-container">
+          <button @click="showAnswer" class="show-answer-button">Показать ответ</button>
+        </div>
         
-  <div v-if="showAnswerOnly" class="correct-answer">
-    <strong>Правильный ответ:</strong> {{ task.answer }}
-  </div>
+        <div v-if="answerChecked" class="answer-feedback" :class="{
+          'correct-feedback': isFullyCorrect,
+          'partial-feedback': isPartiallyCorrect,
+          'incorrect-feedback': !isFullyCorrect && !isPartiallyCorrect
+        }">
+          <transition name="fade" mode="out-in">
+            <div v-if="isFullyCorrect" key="correct" class="feedback-content">
+              <span class="correct-icon">✓</span> 
+              <strong>Ваш ответ:</strong> {{ userAnswer }} - верно! 
+              <strong>Правильный ответ:</strong> {{ task.answer }} 
+              ({{ awardedPoints }}/{{ task.points }} балла)
+            </div>
+            <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
+              <span class="partial-icon">±</span> 
+              <strong>Ваш ответ:</strong> {{ userAnswer }} - частично верно! 
+              <strong>Правильный ответ:</strong> {{ task.answer }} 
+              ({{ awardedPoints }}/{{ task.points }} балла)
+            </div>
+            <div v-else key="incorrect" class="feedback-content">
+              <span class="incorrect-icon">✗</span> 
+              <strong>Ваш ответ:</strong> {{ userAnswer }} - неверно. 
+              <strong>Правильный ответ:</strong> {{ task.answer }} 
+              (0/{{ task.points }} балла)
+            </div>
+          </transition>
+        </div>
+        
+        <div v-if="showAnswerOnly" class="correct-answer">
+          <strong>Правильный ответ:</strong> {{ task.answer }}
+          
+          <div v-if="hasAnswerImages" class="answer-images">
+            <div class="image-grid">
+              <div 
+                class="image-container" 
+                v-for="(image, index) in task.image_answer" 
+                :key="'answer-'+index"
+              >
+                <img 
+                  :src="getImageUrl(image)" 
+                  :alt="'Изображение ответа ' + task.id" 
+                  class="task-image"
+                  @click="openImageModal(getImageUrl(image))"
+                  loading="lazy"
+                >
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-        <div v-if="answerChecked && task.explanation" class="explanation-section">
-      <div class="explanation-title">Пояснение:</div>
-      <div class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
+
+    <!-- Блок пояснения показывается только после решения -->
+    <div v-if="canShowExplanation" class="explanation-section">
+      <div class="explanation-header" @click="toggleExplanation" style="cursor: pointer;">
+        <div class="explanation-title">
+          Пояснение: 
+          <span class="explanation-toggle">
+            {{ showExplanation ? '▲' : '▼' }}
+          </span>
+        </div>
+      </div>
+      
+      <transition name="slide">
+        <div v-if="showExplanation" class="explanation-content-container">
+          <div v-if="task.explanation" class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
+          
+          <div v-if="hasExplanationImages" class="explanation-images">
+            <div class="image-grid">
+              <div 
+                class="image-container" 
+                v-for="(image, index) in task.image_explanation" 
+                :key="'explanation-'+index"
+              >
+                <img 
+                  :src="getImageUrl(image)" 
+                  :alt="'Изображение пояснения ' + task.id" 
+                  class="task-image"
+                  @click="openImageModal(getImageUrl(image))"
+                  loading="lazy"
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
     </div>
+
     <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
       <div class="modal-content">
         <img :src="selectedImage" class="modal-image">
@@ -837,5 +912,53 @@ watch: {
     height: 2rem;
     font-size: 1.2rem;
   }
+}
+</style>
+
+
+<style scoped>
+/* Все существующие стили остаются без изменений */
+
+/* Добавляем новые стили для изображений ответа и пояснения */
+.answer-images,
+.explanation-images {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.answer-images .image-grid,
+.explanation-images .image-grid {
+  margin-top: 0.5rem;
+}
+
+/* Стили для анимации раскрытия пояснения */
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.3s ease;
+  max-height: 1000px;
+  overflow: hidden;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+
+.explanation-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.explanation-toggle {
+  font-size: 0.8rem;
+  color: #b241d1;
+}
+
+.explanation-content-container {
+  margin-top: 0.5rem;
 }
 </style>

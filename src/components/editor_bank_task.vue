@@ -162,9 +162,6 @@
         <button @click="insertSuperscript('answer')" class="toolbar-button" title="Верхний индекс">
           <span class="button-text">x<span class="superscript">2</span></span>
         </button>
-        <button @click="triggerFileInput('answer')" class="toolbar-button" title="Добавить изображение">
-          📷
-        </button>
       </div>
       <textarea 
         v-model="newTask.answer" 
@@ -172,16 +169,6 @@
         class="task-textarea answer-textarea"
         ref="answerTextarea"
       ></textarea>
-      
-      <!-- Препросмотр изображений ответа -->
-      <div class="image-preview" v-if="answerImages.length > 0">
-        <div v-for="(image, index) in answerImages" :key="image.id" class="preview-item">
-          <img :src="image.preview" class="preview-image">
-          <button @click="removeAnswerImage(index)" class="remove-image-btn" :disabled="isUploading">
-            ×
-          </button>
-        </div>
-      </div>
     </div>
 
     <!-- Поле для пояснения с инструментами -->
@@ -341,7 +328,6 @@ export default {
         difficulty: '1',
       },
       uploadedImages: [],
-      answerImages: [],
       explanationImages: [],
       uploadStatus: 'Файлы не выбраны',
       currentUploadType: 'text',
@@ -648,9 +634,7 @@ export default {
           };
           
           // Добавляем изображение в соответствующий массив
-          if (this.currentUploadType === 'answer') {
-            this.answerImages.push(imageData);
-          } else if (this.currentUploadType === 'explanation') {
+          if (this.currentUploadType === 'explanation') {
             this.explanationImages.push(imageData);
           } else {
             this.uploadedImages.push(imageData);
@@ -669,10 +653,9 @@ export default {
     
     updateUploadStatus() {
       const textCount = this.uploadedImages.length;
-      const answerCount = this.answerImages.length;
       const explanationCount = this.explanationImages.length;
       
-      this.uploadStatus = `Текст: ${textCount}, Ответ: ${answerCount}, Пояснение: ${explanationCount}`;
+      this.uploadStatus = `Текст: ${textCount}, Пояснение: ${explanationCount}`;
     },
     getImagePreview(file) {
       return new Promise((resolve) => {
@@ -683,11 +666,6 @@ export default {
     },
     removeImage(index) {
       this.uploadedImages.splice(index, 1);
-      this.updateUploadStatus();
-    },
-
-    removeAnswerImage(index) {
-      this.answerImages.splice(index, 1);
       this.updateUploadStatus();
     },
 
@@ -741,9 +719,8 @@ export default {
         this.isUploading = true;
         
         // Загружаем изображения для каждого типа
-        const [textImageUrls, answerImageUrls, explanationImageUrls] = await Promise.all([
+        const [textImageUrls, explanationImageUrls] = await Promise.all([
           this.uploadImagesToStorage(this.uploadedImages, 'text'),
-          this.uploadImagesToStorage(this.answerImages, 'answer'),
           this.uploadImagesToStorage(this.explanationImages, 'explanation')
         ]);
         
@@ -767,7 +744,6 @@ export default {
             points: this.newTask.points,
             difficulty: parseInt(this.newTask.difficulty),
             images: textImageUrls.length ? textImageUrls : null,
-            image_answer: answerImageUrls.length ? answerImageUrls : null,
             image_explanation: explanationImageUrls.length ? explanationImageUrls : null,
             has_table: this.newTask.has_table,
             table_data: this.newTask.table_data,
@@ -778,7 +754,6 @@ export default {
 
         this.showSuccess = true;
         this.uploadedImages = [];
-        this.answerImages = [];
         this.explanationImages = [];
         this.uploadStatus = 'Файлы не выбраны';
         
@@ -810,7 +785,6 @@ export default {
         difficulty: '1'
       };
       this.uploadedImages = [];
-      this.answerImages = [];
       this.explanationImages = [];
       this.uploadStatus = 'Файлы не выбраны';
     }
@@ -830,6 +804,8 @@ export default {
   }
 };
 </script>
+
+
 
 <style scoped>
 /* Все стили остаются без изменений */
