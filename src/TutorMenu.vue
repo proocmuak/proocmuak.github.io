@@ -4,17 +4,18 @@ import settings from './components/settings.vue';
 import main_tutor_page from './components/main_tutor.vue';
 import { supabase } from './supabase.js'
 import editor_bank_task from './components/editor_bank_task.vue'
-
+import MyStudents from './components/MyStudents.vue';
 export default{
     components: {
         left_tutor_menu,
         settings,
         main_tutor_page,
-        editor_bank_task
+        editor_bank_task,
+        MyStudents
     },
      data() {
     return {
-      currentComponent:         editor_bank_task, // Изначально ничего не отображается
+      currentComponent:         MyStudents, // Изначально ничего не отображается
       loading: true,
       isTutor: false,
       error: null

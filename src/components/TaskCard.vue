@@ -23,7 +23,8 @@ export default {
       awardedPoints: 0,
       showImageModal: false,
       selectedImage: '',
-      loadingProgress: false
+      loadingProgress: false,
+       showAnswerOnly: false 
     };
   },
   computed: {
@@ -75,8 +76,19 @@ export default {
       
       return publicUrl;
     },
+    showAnswer() {
+    this.showAnswerOnly = true;
+    // Не сохраняем в БД для заданий с 3+ баллами
+  },
 async checkAnswer() {
-  if (!this.userAnswer.trim()) return;
+  if (!this.userAnswer.trim()) {
+    alert('Пожалуйста, введите ответ');
+    return;
+  }
+    if (this.task.points >= 3) {
+      this.showAnswerOnly = true;
+      return;
+    }
 
   const userAnswer = this.userAnswer.trim();
   const correctAnswer = this.task.answer.toString().trim();
@@ -87,6 +99,8 @@ async checkAnswer() {
   // Для 2-балльных заданий проверяем частичное совпадение
   if (this.task.points === 2 && !this.isFullyCorrect) {
     this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer);
+  } else {
+    this.isPartiallyCorrect = false;
   }
 
   // Определяем начисляемые баллы
@@ -100,7 +114,8 @@ async checkAnswer() {
     taskId: this.task.id,
     isCorrect: this.isFullyCorrect,
     isPartiallyCorrect: this.isPartiallyCorrect,
-    awardedPoints: this.awardedPoints
+    awardedPoints: this.awardedPoints,
+    userAnswer: userAnswer
   });
 },
 
@@ -278,41 +293,54 @@ watch: {
         </div>
       </div>
 
-      <div class="answer-section">
-        <div class="answer-input-container" v-if="task.points <= 2 && !answerChecked">
-          <input 
-            v-model="userAnswer" 
-            type="text" 
-            placeholder="Введите ответ" 
-            class="answer-input"
-            @keyup.enter="checkAnswer"
-            inputmode="numeric"
-            pattern="[0-9]*"
-          >
-          <button @click="checkAnswer" class="submit-button">Проверить</button>
-        </div>
+<div class="answer-section">
+  <div v-if="task.points <= 2" class="answer-input-container">
+    <input 
+      v-model="userAnswer" 
+      type="text" 
+      placeholder="Введите ответ" 
+      class="answer-input"
+      @keyup.enter="checkAnswer"
+      inputmode="numeric"
+      pattern="[0-9]*"
+    >
+    <button @click="checkAnswer" class="submit-button">Проверить</button>
+  </div>
+  
+  <div v-else class="show-answer-container">
+    <button @click="showAnswer" class="show-answer-button">Показать ответ</button>
+  </div>
         
 <div v-if="answerChecked" class="answer-feedback" :class="{
-      'correct-feedback': isFullyCorrect,
-      'partial-feedback': isPartiallyCorrect,
-      'incorrect-feedback': !isFullyCorrect && !isPartiallyCorrect
-    }">
-      <transition name="fade" mode="out-in">
-        <div v-if="isFullyCorrect" key="correct" class="feedback-content">
-          <span class="correct-icon">✓</span> Верно! Ответ: {{ task.answer }} ({{ awardedPoints }}/{{ task.points }} балла)
-        </div>
-        <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
-          <span class="partial-icon">±</span> Частично верно! Ответ: {{ task.answer }} ({{ awardedPoints }}/{{ task.points }} балла)
-        </div>
-        <div v-else key="incorrect" class="feedback-content">
-          <span class="incorrect-icon">✗</span> Неверно. Ответ: {{ task.answer }} (0/{{ task.points }} балла)
-        </div>
-      </transition>
+  'correct-feedback': isFullyCorrect,
+  'partial-feedback': isPartiallyCorrect,
+  'incorrect-feedback': !isFullyCorrect && !isPartiallyCorrect
+}">
+  <transition name="fade" mode="out-in">
+    <div v-if="isFullyCorrect" key="correct" class="feedback-content">
+      <span class="correct-icon">✓</span> 
+      <strong>Ваш ответ:</strong> {{ userAnswer }} - верно! 
+      <strong>Правильный ответ:</strong> {{ task.answer }} 
+      ({{ awardedPoints }}/{{ task.points }} балла)
     </div>
+    <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
+      <span class="partial-icon">±</span> 
+      <strong>Ваш ответ:</strong> {{ userAnswer }} - частично верно! 
+      <strong>Правильный ответ:</strong> {{ task.answer }} 
+      ({{ awardedPoints }}/{{ task.points }} балла)
+    </div>
+    <div v-else key="incorrect" class="feedback-content">
+      <span class="incorrect-icon">✗</span> 
+      <strong>Ваш ответ:</strong> {{ userAnswer }} - неверно. 
+      <strong>Правильный ответ:</strong> {{ task.answer }} 
+      (0/{{ task.points }} балла)
+    </div>
+  </transition>
+</div>
         
-        <div v-else-if="task.points >= 3" class="correct-answer">
-          Правильный ответ: {{ task.answer }}
-        </div>
+  <div v-if="showAnswerOnly" class="correct-answer">
+    <strong>Правильный ответ:</strong> {{ task.answer }}
+  </div>
       </div>
     </div>
         <div v-if="answerChecked && task.explanation" class="explanation-section">
@@ -329,6 +357,9 @@ watch: {
 </template>
 
 <style scoped>
+*{
+  font-family: Evolventa;
+}
 .task-card {
   border: 0.0625rem solid #b241d1;
   border-radius: 0.5rem;
@@ -403,7 +434,35 @@ watch: {
   background: #ffebee;
   color: #c62828;
 }
+/* Добавьте стили для кнопки показа ответа */
+.show-answer-container {
+  margin-bottom: 0.6rem;
+}
 
+.show-answer-button {
+  padding: 0.6rem 1.25rem;
+  background-color: #b241d1;
+  color: white;
+  border: none;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 1rem;
+}
+
+.show-answer-button:hover {
+  background-color: #b241d1;
+}
+
+.correct-answer {
+  padding: 0.9rem;
+  background-color: #f0faf0;
+  border-left: 0.25rem solid #2e7d32;
+  border-radius: 0.4rem;
+  margin-top: 0.9rem;
+  color: #2e7d32;
+  font-weight: 500;
+}
 .answer-feedback {
   padding: 0.75rem;
   border-radius: 0.4rem;
@@ -602,7 +661,22 @@ watch: {
   flex: 1 1 30%;
   min-width: fit-content;
 }
+/* Добавьте стили для выделения текста ответов */
+.feedback-content strong {
+  font-weight: 600;
+}
 
+.correct-feedback .feedback-content strong {
+  color: #1b5e20;
+}
+
+.partial-feedback .feedback-content strong {
+  color: #e65100;
+}
+
+.incorrect-feedback .feedback-content strong {
+  color: #b71c1c;
+}
 .submit-button:hover {
   background-color: #9a36b8;
 }

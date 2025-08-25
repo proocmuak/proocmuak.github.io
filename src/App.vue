@@ -414,6 +414,7 @@ input::placeholder{
 
 .enter_button {
   background-color: #b241d1;
+  border-radius: 8px;
   color: white;
   display: grid;
   place-items: center;
@@ -435,6 +436,7 @@ input::placeholder{
 display: grid;
 grid-template-rows: 1% 75%;
 gap: 20%;
+
 }
 .enter_by_telegram_line{
     background-color: black;
@@ -444,6 +446,7 @@ gap: 20%;
     color: white;
     display: grid;
     place-items: center;
+      border-radius: 8px;
 }
 .consent{
     color: grey;

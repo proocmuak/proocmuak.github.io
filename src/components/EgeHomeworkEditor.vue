@@ -289,6 +289,9 @@ openHomework() {
 </script>
 
 <style scoped>
+*{
+  font-family: Evolventa;
+}
 .homework-editor {
   max-width: 100%;
   margin: 0 auto;

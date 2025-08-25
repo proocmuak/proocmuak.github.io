@@ -1,10 +1,9 @@
-
 <template>
   <div class="allpage">
     <div class="topmenu">
       <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
       <div class="rightparttopmenu">
-        <div class="redirect_menu" @click="redirectToMenu" >На главную</div>
+        <div class="redirect_menu" @click="redirectToMenu">На главную</div>
         <div class="go_back"><a href="index.html">Выйти</a></div>
       </div>
     </div> 
@@ -14,12 +13,12 @@
         <!-- Заголовок домашнего задания -->
         <div class="homework-header">
           <h1>{{ homeworkName }}</h1>
-<div class="homework-meta">
-  <span class="lesson-info">Урок {{ homeworkData.lesson_number || 'Н/Д' }}: {{ homeworkData.lesson_name || 'Н/Д' }}</span>
-  <span class="deadline" :class="deadlineStatus">
-    Дедлайн: {{ formatDate(homeworkData.deadline) }}
-  </span>
-</div>
+          <div class="homework-meta">
+            <span class="lesson-info">Урок {{ homeworkData.lesson_number || 'Н/Д' }}: {{ homeworkData.lesson_name || 'Н/Д' }}</span>
+            <span class="deadline" :class="deadlineStatus">
+              Дедлайн: {{ formatDate(homeworkData.deadline) }}
+            </span>
+          </div>
         </div>
 
         <!-- Список заданий -->
@@ -76,24 +75,45 @@
                   </div>
 
                   <div class="answer-section">
-                    <div class="answer-input-container" v-if="task.points <= 2 && !task.userAnswer">
-                      <input 
-                        v-model="task.userAnswerInput" 
-                        type="text" 
-                        :placeholder="`Введите ответ (${task.points} балла)`" 
-                        class="answer-input"
-                        @keyup.enter="checkAnswer(task)"
-                      >
-                      <button @click="checkAnswer(task)" class="submit-button">Проверить</button>
+                    <div v-if="task.points <= 2 && !task.userAnswer && !isViewMode && !isCompleted">
+                      <div class="answer-input-container">
+                        <input 
+                          v-model="task.userAnswerInput" 
+                          type="text" 
+                          :placeholder="`Введите ответ (${task.points} балла)`" 
+                          class="answer-input"
+                          @keyup.enter="saveAnswer(task)"
+                        >
+                        <button @click="saveAnswer(task)" class="submit-button">Сохранить</button>
+                      </div>
+                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
                     </div>
                     
-                    <div v-if="task.userAnswer" class="answer-feedback" :class="getFeedbackClass(task)">
-                      <div class="feedback-content">
-                        <span v-if="task.isCorrect" class="correct-icon">✓</span>
-                        <span v-else-if="task.isPartiallyCorrect" class="partial-icon">±</span>
-                        <span v-else class="incorrect-icon">✗</span>
-                        {{ getFeedbackText(task) }}
+                    <!-- Отображаем ответы только после завершения работы -->
+                    <div v-if="(isCompleted || task.userAnswer) && showAnswers" class="answer-result">
+                      <div class="answer-feedback" :class="getFeedbackClass(task)">
+                        <div class="feedback-content">
+                          <span v-if="task.isCorrect" class="correct-icon">✓</span>
+                          <span v-else-if="task.isPartiallyCorrect" class="partial-icon">±</span>
+                          <span v-else class="incorrect-icon">✗</span>
+                          
+                          <span class="user-answer-text">
+                            <strong>Ваш ответ:</strong> {{ task.userAnswer }} - 
+                            <span v-if="task.isCorrect">верно!</span>
+                            <span v-else-if="task.isPartiallyCorrect">частично верно!</span>
+                            <span v-else>неверно.</span>
+                          </span>
+                          
+                          <span class="correct-answer-text">
+                            <strong>Правильный ответ:</strong> {{ task.answer }}
+                            ({{ task.awardedPoints }}/{{ task.points }} балла)
+                          </span>
+                        </div>
                       </div>
+                    </div>
+                    
+                    <div v-else-if="task.userAnswer && !showAnswers" class="answer-saved">
+                      <span class="saved-icon">✓</span> Ответ сохранен
                     </div>
                     
                     <div v-else-if="task.points >= 3" class="correct-answer">
@@ -102,7 +122,7 @@
                   </div>
                 </div>
 
-                <div v-if="task.userAnswer && task.explanation" class="explanation-section">
+                <div v-if="task.userAnswer && task.explanation && showAnswers" class="explanation-section">
                   <div class="explanation-title">Пояснение:</div>
                   <div class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
                 </div>
@@ -112,7 +132,7 @@
         </div>
 
         <!-- Кнопка завершения -->
-        <div class="completion-section" v-if="!isCompleted && hasAnswers">
+        <div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
           <button @click="completeHomework" class="complete-btn">
             Завершить домашнее задание
           </button>
@@ -157,6 +177,9 @@ export default {
     const totalScore = ref(0)
     const showImageModal = ref(false)
     const selectedImage = ref('')
+    const showAnswers = ref(false)
+    const subject = ref('')
+    const homeworkId = ref('')
 
     // Получаем параметры из URL
     const getUrlParams = () => {
@@ -166,15 +189,16 @@ export default {
         homework_id: params.get('homework_id'),
         homework_name: params.get('homework_name'),
         lesson_number: params.get('lesson_number'),
-        lesson_name: params.get('lesson_name')
+        lesson_name: params.get('lesson_name'),
+        view_mode: params.get('view_mode'),
+        student_id: params.get('student_id')
       }
     }
 
     const urlParams = getUrlParams()
-    const subject = urlParams.subject
-    const homeworkId = urlParams.homework_id
+    subject.value = urlParams.subject
+    homeworkId.value = urlParams.homework_id
 
-    // Заполняем базовые данные из URL параметров
     homeworkData.value = {
       homework_name: urlParams.homework_name || '',
       lesson_number: urlParams.lesson_number || '',
@@ -184,6 +208,10 @@ export default {
 
     // Получение ID текущего пользователя
     const getCurrentUserId = async () => {
+      if (urlParams.view_mode === 'tutor' && urlParams.student_id) {
+        return urlParams.student_id;
+      }
+      
       try {
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         if (authError) {
@@ -194,6 +222,52 @@ export default {
       } catch (err) {
         console.error('Ошибка получения ID пользователя:', err)
         return null
+      }
+    }
+
+    const isViewMode = computed(() => {
+      return urlParams.view_mode === 'tutor';
+    });
+
+    // Метод для перенаправления в меню
+    async function redirectToMenu() {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError) throw userError;
+        if (!user) {
+          window.location.href = '/login.html';
+          return;
+        }
+
+        const { data: personalityData, error: personalityError } = await supabase
+          .from('personalities')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+
+        if (personalityError) throw personalityError;
+        if (!personalityData) {
+          alert('Профиль пользователя не найден');
+          return;
+        }
+
+        switch(personalityData.role) {
+          case 'student':
+            window.location.href = '/student_menu.html';
+            break;
+          case 'teacher':
+            window.location.href = '/teacher_menu.html';
+            break;
+          case 'tutor':
+            window.location.href = '/tutor_menu.html';
+            break;
+          default:
+            alert('Неизвестная роль пользователя');
+        }
+      } catch (err) {
+        console.error('Ошибка при перенаправлении:', err);
+        alert('Произошла ошибка при переходе на главную');
       }
     }
 
@@ -229,175 +303,10 @@ export default {
       return task.has_table ? task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : task.text;
     }
 
-    // Загрузка заданий домашнего задания
-// Загрузка заданий домашнего задания
-const fetchHomeworkTasks = async () => {
-  try {
-    loading.value = true
-    error.value = null
-    user_id.value = await getCurrentUserId()
-
-    if (!user_id.value) {
-      throw new Error('Пользователь не авторизован')
-    }
-
-    if (!subject || !homeworkId) {
-      throw new Error('Не указаны параметры домашнего задания')
-    }
-
-// Загрузка информации о домашнем задании (включая дедлайн)
-const { data: homeworkInfo, error: homeworkInfoError } = await supabase
-  .from(`${subject}_homework_list`) // Исправлено на _homework_list
-  .select('deadline, homework_name, lesson_number, lesson_name')
-  .eq('homework_id', homeworkId)
-  .single()
-
-if (homeworkInfoError) {
-  console.error('Ошибка загрузки информации о домашнем задании:', homeworkInfoError)
-  // Продолжаем работу с данными из URL, если не удалось загрузить из БД
-  console.log('Используются данные из URL параметров')
-} else if (homeworkInfo) {
-  // Обновляем данные домашнего задания
-  homeworkData.value = {
-    ...homeworkData.value,
-    deadline: homeworkInfo.deadline,
-    homework_name: homeworkInfo.homework_name || homeworkData.value.homework_name,
-    lesson_number: homeworkInfo.lesson_number || homeworkData.value.lesson_number,
-    lesson_name: homeworkInfo.lesson_name || homeworkData.value.lesson_name
-  }
-}
-
-    // Загружаем задания домашнего задания
-    const { data: homeworkTasks, error: homeworkError } = await supabase
-      .from(`${subject}_homework_tasks`)
-      .select('*')
-      .eq('homework_id', homeworkId)
-      .order('number', { ascending: true })
-
-    if (homeworkError) {
-      console.error('Ошибка загрузки заданий домашнего задания:', homeworkError)
-      throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
-    }
-
-    if (!homeworkTasks || homeworkTasks.length === 0) {
-      throw new Error('Задания для этого домашнего задания не найдены')
-    }
-
-    // Остальной код остается без изменений...
-    // Загружаем детали заданий из банка задач
-    const taskIds = homeworkTasks.map(task => task.task_id)
-    const { data: taskDetails, error: taskError } = await supabase
-      .from('biology_ege_task_bank')
-      .select('*')
-      .in('id', taskIds)
-
-    if (taskError) {
-      console.error('Ошибка загрузки деталей заданий:', taskError)
-      throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
-    }
-
-    // Объединяем данные
-    tasks.value = homeworkTasks.map(homeworkTask => {
-      const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
-      return {
-        ...homeworkTask,
-        ...taskDetail,
-        userAnswerInput: '',
-        userAnswer: null,
-        isCorrect: false,
-        isPartiallyCorrect: false,
-        awardedPoints: 0
-      }
-    })
-
-    // Загружаем прогресс выполнения
-    await loadTasksProgress()
-
-    // Проверяем статус выполнения домашнего задания
-    await checkHomeworkCompletion()
-
-  } catch (err) {
-    error.value = err.message
-    console.error('Ошибка загрузки заданий:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-    // Загрузка прогресса выполнения заданий
-    const loadTasksProgress = async () => {
-      if (!user_id.value) return
-
-      try {
-        const taskIds = tasks.value.map(task => task.task_id)
-        const { data: progressData, error: progressError } = await supabase
-          .from('biology_ege_progress')
-          .select('*')
-          .eq('user_id', user_id.value)
-          .in('task_id', taskIds)
-
-        if (progressError) {
-          console.error('Ошибка загрузки прогресса:', progressError)
-          return
-        }
-
-        // Обновляем задачи с данными о прогрессе
-        tasks.value = tasks.value.map(task => {
-          const progress = progressData?.find(p => p.task_id === task.task_id)
-          if (progress) {
-            return {
-              ...task,
-              userAnswer: progress.user_answer,
-              isCorrect: progress.score === task.points,
-              isPartiallyCorrect: progress.score > 0 && progress.score < task.points,
-              awardedPoints: progress.score || 0
-            }
-          }
-          return task
-        })
-
-      } catch (err) {
-        console.error('Ошибка загрузки прогресса:', err)
-      }
-    }
-
-    // Проверка ответа на задание
-    const checkAnswer = async (task) => {
-      if (!task.userAnswerInput.trim()) return
-
-      try {
-        const userAnswer = task.userAnswerInput.trim()
-        const correctAnswer = task.answer.toString().trim()
-        
-        task.userAnswer = userAnswer
-        task.isCorrect = userAnswer === correctAnswer
-        
-        // Для 2-балльных заданий проверяем частичное совпадение
-        if (task.points === 2 && !task.isCorrect) {
-          task.isPartiallyCorrect = checkPartialMatch(userAnswer, correctAnswer)
-        } else {
-          task.isPartiallyCorrect = false
-        }
-
-        // Определяем начисляемые баллы
-        task.awardedPoints = task.isCorrect ? task.points 
-                              : task.isPartiallyCorrect ? 1 
-                              : 0
-
-        // Сохраняем прогресс
-        await saveTaskProgress(task)
-
-      } catch (err) {
-        console.error('Ошибка проверки ответа:', err)
-        error.value = 'Ошибка при сохранении ответа: ' + err.message
-      }
-    }
-
     // Проверка частичного совпадения
     const checkPartialMatch = (userAnswer, correctAnswer) => {
       if (userAnswer === correctAnswer) return false
       
-      // Для числовых ответов
       if (/^\d+$/.test(userAnswer)) {
         if (userAnswer.length !== correctAnswer.length) return false
         
@@ -411,109 +320,262 @@ if (homeworkInfoError) {
         return diffCount === 1
       }
       
-      // Для текстовых ответов
       const correctParts = correctAnswer.split(/[,;]/).map(part => part.trim())
       const userParts = userAnswer.split(/[,;]/).map(part => part.trim())
       
       return userParts.some(part => correctParts.includes(part))
     }
 
-    // Сохранение прогресса выполнения задания
-    const saveTaskProgress = async (task) => {
-      if (!user_id.value) return
+    // Сохранение ответа
+    const saveAnswer = async (task) => {
+      if (!task.userAnswerInput.trim()) {
+        alert('Пожалуйста, введите ответ');
+        return;
+      }
 
       try {
+        task.saving = true;
+        const userAnswer = task.userAnswerInput.trim();
+        
+        task.userAnswer = userAnswer;
+        
+        await saveTaskProgress(task, false);
+        
+        task.saving = false;
+
+      } catch (err) {
+        console.error('Ошибка сохранения ответа:', err);
+        task.saving = false;
+        error.value = 'Ошибка при сохранении ответа: ' + err.message;
+      }
+    }
+
+    // Сохранение прогресса выполнения задания
+    const saveTaskProgress = async (task, checkCorrectness = false) => {
+      if (!user_id.value) return;
+
+      let score = 0;
+      let is_completed = false;
+
+      if (checkCorrectness) {
+        const correctAnswer = task.answer.toString().trim();
+        const isCorrect = task.userAnswer === correctAnswer;
+        let isPartiallyCorrect = false;
+        
+        if (task.points === 2 && !isCorrect) {
+          isPartiallyCorrect = checkPartialMatch(task.userAnswer, correctAnswer);
+        }
+
+        score = isCorrect ? task.points 
+                : isPartiallyCorrect ? 1 
+                : 0;
+        
+        is_completed = isCorrect || isPartiallyCorrect;
+        
+        task.isCorrect = isCorrect;
+        task.isPartiallyCorrect = isPartiallyCorrect;
+        task.awardedPoints = score;
+      }
+
+      try {
+        const progressTable = `${subject.value}_progress`;
         const { error } = await supabase
-          .from('biology_ege_progress')
+          .from(progressTable)
           .upsert({
             user_id: user_id.value,
             task_id: task.task_id,
-            is_completed: task.isCorrect || task.isPartiallyCorrect,
-            score: task.awardedPoints,
+            is_completed: is_completed,
+            score: score,
             user_answer: task.userAnswer,
             last_updated: new Date().toISOString()
           }, {
             onConflict: 'user_id,task_id'
-          })
+          });
 
-        if (error) {
-          console.error('Ошибка сохранения прогресса:', error)
-          throw new Error('Не удалось сохранить ответ: ' + error.message)
-        }
+        if (error) throw error;
 
       } catch (err) {
-        console.error('Ошибка сохранения прогресса:', err)
-        throw err
+        console.error('Ошибка сохранения прогресса:', err);
+        throw err;
       }
     }
 
     // Завершение домашнего задания
-// Завершение домашнего задания
-const completeHomework = async () => {
-  try {
-    error.value = null
+    const completeHomework = async () => {
+      try {
+        error.value = null;
 
-    // Сохраняем все ответы
-    for (const task of tasks.value) {
-      if (task.userAnswerInput && !task.userAnswer) {
-        await checkAnswer(task)
+        // Проверяем и сохраняем все ответы с определением правильности
+        for (const task of tasks.value) {
+          if (task.userAnswer) {
+            await saveTaskProgress(task, true);
+          }
+        }
+
+        // Сохраняем завершение домашнего задания
+        const { error: completionError } = await supabase
+          .from(`${subject.value}_homework_completed`)
+          .upsert({
+            homework_id: homeworkId.value,
+            user_id: user_id.value,
+            is_completed: true,
+            score: totalScore.value,
+            completed_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,homework_id'
+          });
+
+        if (completionError) throw completionError;
+
+        isCompleted.value = true;
+        showAnswers.value = true;
+        
+        alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value);
+
+      } catch (err) {
+        error.value = err.message;
+        console.error('Ошибка завершения домашнего задания:', err);
+        alert('Ошибка: ' + err.message);
       }
     }
 
-    // Сначала проверяем, существует ли уже запись
-    const { data: existingRecord, error: checkError } = await supabase
-      .from(`${subject}_homework_completed`)
-      .select('*')
-      .eq('homework_id', homeworkId)
-      .eq('user_id', user_id.value)
-      .maybeSingle()
+    // Загрузка заданий домашнего задания
+    const fetchHomeworkTasks = async () => {
+      try {
+        loading.value = true
+        error.value = null
+        user_id.value = await getCurrentUserId()
 
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.error('Ошибка проверки существующей записи:', checkError)
-      throw new Error('Не удалось проверить статус выполнения: ' + checkError.message)
-    }
+        if (!user_id.value) {
+          throw new Error('Пользователь не авторизован')
+        }
 
-    if (existingRecord) {
-      // Обновляем существующую запись
-      const { error: updateError } = await supabase
-        .from(`${subject}_homework_completed`)
-        .update({
-          is_completed: true,
-          score: totalScore.value,
+        if (!subject.value || !homeworkId.value) {
+          throw new Error('Не указаны параметры домашнего задания')
+        }
+
+        // Загрузка информации о домашнем задании
+        const { data: homeworkInfo, error: homeworkInfoError } = await supabase
+          .from(`${subject.value}_homework_list`)
+          .select('deadline, homework_name, lesson_number, lesson_name')
+          .eq('homework_id', homeworkId.value)
+          .single()
+
+        if (homeworkInfoError) {
+          console.error('Ошибка загрузки информации о домашнем задании:', homeworkInfoError)
+        } else if (homeworkInfo) {
+          homeworkData.value = {
+            ...homeworkData.value,
+            deadline: homeworkInfo.deadline,
+            homework_name: homeworkInfo.homework_name || homeworkData.value.homework_name,
+            lesson_number: homeworkInfo.lesson_number || homeworkData.value.lesson_number,
+            lesson_name: homeworkInfo.lesson_name || homeworkData.value.lesson_name
+          }
+        }
+
+        // Загружаем задания домашнего задания
+        const { data: homeworkTasks, error: homeworkError } = await supabase
+          .from(`${subject.value}_homework_tasks`)
+          .select('*')
+          .eq('homework_id', homeworkId.value)
+          .order('number', { ascending: true })
+
+        if (homeworkError) {
+          throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
+        }
+
+        if (!homeworkTasks || homeworkTasks.length === 0) {
+          throw new Error('Задания для этого домашнего задания не найдены')
+        }
+
+        // Загружаем детали заданий из банка задач
+        const taskIds = homeworkTasks.map(task => task.task_id)
+        const { data: taskDetails, error: taskError } = await supabase
+          .from(`${subject.value}_task_bank`)
+          .select('*')
+          .in('id', taskIds)
+
+        if (taskError) {
+          throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
+        }
+
+        // Объединяем данные
+        tasks.value = homeworkTasks.map(homeworkTask => {
+          const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
+          return {
+            ...homeworkTask,
+            ...taskDetail,
+            userAnswerInput: '',
+            userAnswer: null,
+            isCorrect: false,
+            isPartiallyCorrect: false,
+            awardedPoints: 0,
+            saving: false
+          }
         })
-        .eq('homework_id', homeworkId)
-        .eq('user_id', user_id.value)
 
-      if (updateError) {
-        console.error('Ошибка обновления записи:', updateError)
-        throw new Error('Не удалось обновить результат: ' + updateError.message)
-      }
-    } else {
-      // Создаем новую запись
-      const { error: insertError } = await supabase
-        .from(`${subject}_homework_completed`)
-        .insert({
-          homework_id: homeworkId,
-          user_id: user_id.value,
-          is_completed: true,
-          score: totalScore.value,
-        })
+        // Загружаем прогресс выполнения
+        await loadTasksProgress()
 
-      if (insertError) {
-        console.error('Ошибка создания записи:', insertError)
-        throw new Error('Не удалось сохранить результат: ' + insertError.message)
+        // Проверяем статус выполнения домашнего задания
+        await checkHomeworkCompletion()
+
+      } catch (err) {
+        error.value = err.message
+        console.error('Ошибка загрузки заданий:', err)
+      } finally {
+        loading.value = false
       }
     }
 
-    isCompleted.value = true
-    alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value)
+    // Загрузка прогресса выполнения заданий
+    const loadTasksProgress = async () => {
+      if (!user_id.value) return
 
-  } catch (err) {
-    error.value = err.message
-    console.error('Ошибка завершения домашнего задания:', err)
-    alert('Ошибка: ' + err.message)
-  }
-}
+      try {
+        const taskIds = tasks.value.map(task => task.task_id)
+        const progressTable = `${subject.value}_progress`;
+        
+        const { data: progressData, error: progressError } = await supabase
+          .from(progressTable)
+          .select('*')
+          .eq('user_id', user_id.value)
+          .in('task_id', taskIds)
+
+        if (progressError) {
+          console.error('Ошибка загрузки прогресса:', progressError)
+          return
+        }
+
+        // Проверяем статус завершения домашнего задания
+        const { data: completionData } = await supabase
+          .from(`${subject.value}_homework_completed`)
+          .select('is_completed')
+          .eq('homework_id', homeworkId.value)
+          .eq('user_id', user_id.value)
+          .maybeSingle()
+
+        showAnswers.value = completionData?.is_completed || false;
+
+        // Обновляем задачи
+        tasks.value = tasks.value.map(task => {
+          const progress = progressData?.find(p => p.task_id === task.task_id)
+          if (progress) {
+            return {
+              ...task,
+              userAnswer: progress.user_answer,
+              isCorrect: showAnswers.value ? progress.score === task.points : false,
+              isPartiallyCorrect: showAnswers.value ? (progress.score > 0 && progress.score < task.points) : false,
+              awardedPoints: showAnswers.value ? progress.score : 0
+            }
+          }
+          return task
+        })
+
+      } catch (err) {
+        console.error('Ошибка загрузки прогресса:', err)
+      }
+    }
 
     // Проверка статуса выполнения домашнего задания
     const checkHomeworkCompletion = async () => {
@@ -521,23 +583,21 @@ const completeHomework = async () => {
 
       try {
         const { data: completionData, error: completionError } = await supabase
-          .from(`${subject}_homework_completed`)
+          .from(`${subject.value}_homework_completed`)
           .select('*')
-          .eq('homework_id', homeworkId)
+          .eq('homework_id', homeworkId.value)
           .eq('user_id', user_id.value)
-          .maybeSingle() // Используем maybeSingle вместо single
+          .maybeSingle()
 
-        if (completionError) {
-          // Игнорируем ошибку "не найдено", но логируем другие ошибки
-          if (completionError.code !== 'PGRST116') {
-            console.error('Ошибка проверки статуса выполнения:', completionError)
-          }
+        if (completionError && completionError.code !== 'PGRST116') {
+          console.error('Ошибка проверки статуса выполнения:', completionError)
           return
         }
 
         if (completionData) {
           isCompleted.value = completionData.is_completed
           totalScore.value = completionData.score || 0
+          showAnswers.value = completionData.is_completed
         }
 
       } catch (err) {
@@ -577,27 +637,25 @@ const completeHomework = async () => {
     }
 
     // Статус дедлайна
-// Статус дедлайна
-const deadlineStatus = computed(() => {
-  const deadline = homeworkData.value.deadline
-  if (!deadline) return 'no-deadline'
-  
-  try {
-    const deadlineDate = new Date(deadline)
-    const today = new Date()
-    
-    // Сбрасываем время для сравнения только дат
-    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const deadlineDateOnly = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate())
-    
-    if (deadlineDateOnly < todayDate) return 'overdue'
-    if (deadlineDateOnly.getTime() === todayDate.getTime()) return 'today'
-    return 'future'
-  } catch (err) {
-    console.error('Ошибка формата даты дедлайна:', err)
-    return 'no-deadline'
-  }
-})
+    const deadlineStatus = computed(() => {
+      const deadline = homeworkData.value.deadline
+      if (!deadline) return 'no-deadline'
+      
+      try {
+        const deadlineDate = new Date(deadline)
+        const today = new Date()
+        
+        const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+        const deadlineDateOnly = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate())
+        
+        if (deadlineDateOnly < todayDate) return 'overdue'
+        if (deadlineDateOnly.getTime() === todayDate.getTime()) return 'today'
+        return 'future'
+      } catch (err) {
+        return 'no-deadline'
+      }
+    })
+
     // Отсортированные задания по номеру
     const sortedTasks = computed(() => {
       return [...tasks.value].sort((a, b) => a.number - b.number)
@@ -616,6 +674,7 @@ const deadlineStatus = computed(() => {
     // Статус задания
     const getTaskStatusClass = (task) => {
       if (!task.userAnswer) return 'status-not-completed'
+      if (!showAnswers.value) return 'status-saved'
       if (task.isCorrect) return 'status-correct'
       if (task.isPartiallyCorrect) return 'status-partial'
       return 'status-incorrect'
@@ -623,6 +682,7 @@ const deadlineStatus = computed(() => {
 
     const getTaskStatusText = (task) => {
       if (!task.userAnswer) return 'Не решено'
+      if (!showAnswers.value) return 'Ответ сохранен'
       if (task.isCorrect) return `✓ Верно (${task.awardedPoints}/${task.points} балла)`
       if (task.isPartiallyCorrect) return `± Частично (${task.awardedPoints}/${task.points} балла)`
       return `✗ Неверно (0/${task.points} балла)`
@@ -636,14 +696,12 @@ const deadlineStatus = computed(() => {
     }
 
     const getFeedbackText = (task) => {
-      if (task.isCorrect) return `Верно! Ответ: ${task.answer} (${task.awardedPoints}/${task.points} балла)`
-      if (task.isPartiallyCorrect) return `Частично верно! Ответ: ${task.answer} (${task.awardedPoints}/${task.points} балла)`
-      return `Неверно. Ответ: ${task.answer} (0/${task.points} балла)`
+      return ''; // Текст отображается напрямую в шаблоне
     }
 
     // Следим за изменениями баллов
     onMounted(() => {
-      if (subject && homeworkId) {
+      if (subject.value && homeworkId.value) {
         fetchHomeworkTasks()
       } else {
         error.value = 'Не указаны параметры домашнего задания'
@@ -658,9 +716,6 @@ const deadlineStatus = computed(() => {
 
     return {
       homeworkName: homeworkData.value.homework_name,
-      lessonNumber: homeworkData.value.lesson_number,
-      lessonName: homeworkData.value.lesson_name,
-      deadline: homeworkData.value.deadline,
       homeworkData,
       sortedTasks,
       loading,
@@ -670,10 +725,11 @@ const deadlineStatus = computed(() => {
       maxScore,
       showImageModal,
       selectedImage,
+      showAnswers,
       sanitizeHtml,
       getImageUrl,
       getTaskTextWithoutTables,
-      checkAnswer,
+      saveAnswer,
       completeHomework,
       formatDate,
       deadlineStatus,
@@ -683,14 +739,14 @@ const deadlineStatus = computed(() => {
       getFeedbackText,
       openImageModal,
       closeImageModal,
-      updateTotalScore,
-      hasAnswers
+      hasAnswers,
+      redirectToMenu, 
+      isViewMode
     }
-  },
-
-
+  }
 }
 </script>
+
 
 
 <style scoped>
@@ -863,7 +919,81 @@ const deadlineStatus = computed(() => {
 .task-text :deep(li) {
   margin-bottom: 0.4rem;
 }
+/* Добавьте эти стили в секцию scoped */
+.answer-feedback {
+  padding: 0.75rem;
+  border-radius: 0.4rem;
+  font-weight: 500;
+  margin-top: 0.9rem;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
 
+.correct-feedback {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border-left: 4px solid #2e7d32;
+}
+
+.partial-feedback {
+  background-color: #fff3e0;
+  color: #ff8f00;
+  border-left: 4px solid #ff8f00;
+}
+
+.incorrect-feedback {
+  background-color: #ffebee;
+  color: #c62828;
+  border-left: 4px solid #c62828;
+}
+
+.feedback-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.correct-icon, .partial-icon, .incorrect-icon {
+  font-size: 1.2rem;
+}
+
+.correct-icon {
+  color: #2e7d32;
+}
+
+.partial-icon {
+  color: #ff8f00;
+}
+
+.incorrect-icon {
+  color: #c62828;
+}
+
+/* Анимации */
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+/* Стили для выделения текста ответов */
+.feedback-content strong {
+  font-weight: 600;
+}
+
+.correct-feedback .feedback-content strong {
+  color: #1b5e20;
+}
+
+.partial-feedback .feedback-content strong {
+  color: #e65100;
+}
+
+.incorrect-feedback .feedback-content strong {
+  color: #b71c1c;
+}
 .task-table-container {
   margin: 1.2rem 0;
   overflow-x: auto;
@@ -1267,13 +1397,14 @@ a {
   font-size: clamp(0.9rem, 1.8vw, 1.1rem);
 }
 
-.courses, .go_back {
+.redirect_menu, .go_back {
   padding: 0.5rem 1rem;
   border-radius: 0.4rem;
   transition: background-color 0.2s;
+  cursor: pointer;
 }
 
-.courses:hover, .go_back:hover {
+.redirect_menu:hover, .go_back:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -1336,4 +1467,5 @@ a {
     grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   }
 }
+
 </style>
