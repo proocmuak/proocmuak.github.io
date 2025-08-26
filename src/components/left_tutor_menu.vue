@@ -128,6 +128,9 @@ onUnmounted(() => {
 </template>
 
 <style>.leftpartpage{
+      height: 80vh;
+    position: sticky;
+    top: 0;
     display: grid;
     place-content: center;
     grid-template-rows: 40% 55%;

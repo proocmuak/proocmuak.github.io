@@ -440,93 +440,94 @@ export default {
     }
 
     // Загрузка заданий домашнего задания
-    const fetchHomeworkTasks = async () => {
-      try {
-        loading.value = true
-        error.value = null
-        user_id.value = await getCurrentUserId()
+const fetchHomeworkTasks = async () => {
+  try {
+    loading.value = true
+    error.value = null
+    user_id.value = await getCurrentUserId()
 
-        if (!user_id.value) {
-          throw new Error('Пользователь не авторизован')
-        }
+    if (!user_id.value) {
+      throw new Error('Пользователь не авторизован')
+    }
 
-        if (!subject.value || !homeworkId.value) {
-          throw new Error('Не указаны параметры домашнего задания')
-        }
+    if (!subject.value || !homeworkId.value) {
+      throw new Error('Не указаны параметры домашнего задания')
+    }
 
-        // Загрузка информации о домашнем задании
-        const { data: homeworkInfo, error: homeworkInfoError } = await supabase
-          .from(`${subject.value}_homework_list`)
-          .select('deadline, homework_name, lesson_number, lesson_name')
-          .eq('homework_id', homeworkId.value)
-          .single()
+    // Загрузка информации о домашнем задании
+    const { data: homeworkInfo, error: homeworkInfoError } = await supabase
+      .from(`${subject.value}_homework_list`)
+      .select('deadline, homework_name, lesson_number, lesson_name')
+      .eq('homework_id', homeworkId.value)
+      .single()
 
-        if (homeworkInfoError) {
-          console.error('Ошибка загрузки информации о домашнем задании:', homeworkInfoError)
-        } else if (homeworkInfo) {
-          homeworkData.value = {
-            ...homeworkData.value,
-            deadline: homeworkInfo.deadline,
-            homework_name: homeworkInfo.homework_name || homeworkData.value.homework_name,
-            lesson_number: homeworkInfo.lesson_number || homeworkData.value.lesson_number,
-            lesson_name: homeworkInfo.lesson_name || homeworkData.value.lesson_name
-          }
-        }
-
-        // Загружаем задания домашнего задания
-        const { data: homeworkTasks, error: homeworkError } = await supabase
-          .from(`${subject.value}_homework_tasks`)
-          .select('*')
-          .eq('homework_id', homeworkId.value)
-          .order('number', { ascending: true })
-
-        if (homeworkError) {
-          throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
-        }
-
-        if (!homeworkTasks || homeworkTasks.length === 0) {
-          throw new Error('Задания для этого домашнего задания не найдены')
-        }
-
-        // Загружаем детали заданий из банка задач
-        const taskIds = homeworkTasks.map(task => task.task_id)
-        const { data: taskDetails, error: taskError } = await supabase
-          .from(`${subject.value}_task_bank`)
-          .select('*')
-          .in('id', taskIds)
-
-        if (taskError) {
-          throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
-        }
-
-        // Объединяем данные
-        tasks.value = homeworkTasks.map(homeworkTask => {
-          const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
-          return {
-            ...homeworkTask,
-            ...taskDetail,
-            userAnswerInput: '',
-            userAnswer: null,
-            isCorrect: false,
-            isPartiallyCorrect: false,
-            awardedPoints: 0,
-            saving: false
-          }
-        })
-
-        // Загружаем прогресс выполнения
-        await loadTasksProgress()
-
-        // Проверяем статус выполнения домашнего задания
-        await checkHomeworkCompletion()
-
-      } catch (err) {
-        error.value = err.message
-        console.error('Ошибка загрузки заданий:', err)
-      } finally {
-        loading.value = false
+    if (homeworkInfoError) {
+      console.error('Ошибка загрузки информации о домашнем задании:', homeworkInfoError)
+    } else if (homeworkInfo) {
+      homeworkData.value = {
+        ...homeworkData.value,
+        deadline: homeworkInfo.deadline,
+        homework_name: homeworkInfo.homework_name || homeworkData.value.homework_name,
+        lesson_number: homeworkInfo.lesson_number || homeworkData.value.lesson_number,
+        lesson_name: homeworkInfo.lesson_name || homeworkData.value.lesson_name
       }
     }
+
+    // Загружаем задания домашнего задания с правильным номером
+    const { data: homeworkTasks, error: homeworkError } = await supabase
+      .from(`${subject.value}_homework_tasks`)
+      .select('*')
+      .eq('homework_id', homeworkId.value)
+      .order('number', { ascending: true }) // Сортируем по номеру
+
+    if (homeworkError) {
+      throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
+    }
+
+    if (!homeworkTasks || homeworkTasks.length === 0) {
+      throw new Error('Задания для этого домашнего задания не найдены')
+    }
+
+    // Загружаем детали заданий из банка задач
+    const taskIds = homeworkTasks.map(task => task.task_id)
+    const { data: taskDetails, error: taskError } = await supabase
+      .from(`${subject.value}_task_bank`)
+      .select('*')
+      .in('id', taskIds)
+
+    if (taskError) {
+      throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
+    }
+
+    // Объединяем данные, сохраняя номер из homework_tasks
+    tasks.value = homeworkTasks.map(homeworkTask => {
+      const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
+      return {
+        ...homeworkTask, // Это важно - homeworkTask должен быть первым
+        ...taskDetail,
+        number: homeworkTask.number, // Сохраняем номер из homework_tasks
+        userAnswerInput: '',
+        userAnswer: null,
+        isCorrect: false,
+        isPartiallyCorrect: false,
+        awardedPoints: 0,
+        saving: false
+      }
+    })
+
+    // Загружаем прогресс выполнения
+    await loadTasksProgress()
+
+    // Проверяем статус выполнения домашнего задания
+    await checkHomeworkCompletion()
+
+  } catch (err) {
+    error.value = err.message
+    console.error('Ошибка загрузки заданий:', err)
+  } finally {
+    loading.value = false
+  }
+}
 
     // Загрузка прогресса выполнения заданий
     const loadTasksProgress = async () => {

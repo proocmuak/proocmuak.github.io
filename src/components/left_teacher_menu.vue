@@ -128,11 +128,15 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style>.leftpartpage{
+<style scoped>
+.leftpartpage{
     display: grid;
     place-content: center;
     grid-template-rows: 40% 55%;
     gap: 5%;
+    height: 80vh;
+    position: sticky;
+    top: 0;
 }
 .error-message {
   color: #ff0000;

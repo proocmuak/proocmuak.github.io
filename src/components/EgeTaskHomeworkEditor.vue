@@ -1,7 +1,7 @@
 <template>
   <div class="task-homework-editor">
     <div class="editor-header">
-      <h2>Редактор заданий для домашней работы {{ homework_name }}</h2>
+      <h2>Редактор заданий для домашней работы {{ homeworkName }}</h2>
       <button @click="$emit('close')" class="close-button">Закрыть</button>
     </div>
 

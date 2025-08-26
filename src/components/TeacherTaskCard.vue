@@ -60,25 +60,97 @@ export default {
       
       return publicUrl;
     },
-    async addToHomework() {
-      try {
-        const { error } = await supabase
-          .from(this.homeworkTableName)
-          .insert({
-            task_id: this.task.id,
-            homework_id: this.homeworkId,
-            homework_name: this.homeworkName
-          });
-        
-        if (error) throw error;
-        
+async checkIfAlreadyAdded() {
+  try {
+    // ИСПРАВЛЕНО: Запрашиваем любое поле вместо несуществующего 'id'
+    const { data, error } = await supabase
+      .from(this.homeworkTableName)
+      .select('task_id') // ← используем существующее поле
+      .eq('homework_id', this.homeworkId)
+      .eq('task_id', this.task.id)
+      .maybeSingle();
+    
+    if (data) {
+      this.isAdded = true;
+    }
+  } catch (error) {
+    console.error('Ошибка проверки:', error);
+  }
+},
+
+async addToHomework() {
+  try {
+    // Сначала проверяем
+    const { data: existingTask, error: checkError } = await supabase
+      .from(this.homeworkTableName)
+      .select('task_id') // ← используем существующее поле
+      .eq('homework_id', this.homeworkId)
+      .eq('task_id', this.task.id)
+      .maybeSingle();
+    
+    if (checkError) {
+      console.error('Ошибка проверки:', checkError);
+    }
+    
+    if (existingTask) {
+      this.isAdded = true;
+      alert('Это задание уже добавлено в домашнюю работу');
+      return;
+    }
+    
+    // Пробуем добавить (БЕЗ homework_name - его нет в таблице)
+    const { error } = await supabase
+      .from(this.homeworkTableName)
+      .insert({
+        task_id: this.task.id,
+        homework_id: this.homeworkId
+        // homework_name убрано - его нет в таблице
+      });
+    
+    if (error) {
+      if (error.code === '23505' || error.code === '409') {
         this.isAdded = true;
-        this.$emit('task-added', this.task.id);
-      } catch (error) {
-        console.error('Ошибка при добавлении задания:', error);
-        alert('Не удалось добавить задание в домашнюю работу');
+        alert('Это задание уже есть в домашней работе');
+      } else {
+        throw error;
       }
-    },
+    } else {
+      this.isAdded = true;
+      this.$emit('task-added', this.task.id);
+      alert('Задание добавлено!');
+    }
+    
+  } catch (error) {
+    console.error('Ошибка добавления:', error);
+    
+    if (error.code === '23505' || error.code === '409') {
+      this.isAdded = true;
+      alert('Это задание уже есть в домашней работе');
+    } else {
+      alert('Ошибка при добавлении задания');
+    }
+  }
+},
+async created() {
+  // Проверяем, добавлено ли уже это задание
+  await this.checkIfAlreadyAdded();
+},
+ async checkIfAlreadyAdded() {
+    try {
+      const { data, error } = await supabase
+        .from(this.homeworkTableName)
+        .select('id')
+        .eq('homework_id', this.homeworkId)
+        .eq('task_id', this.task.id)
+        .maybeSingle();
+      
+      if (data) {
+        this.isAdded = true;
+      }
+    } catch (error) {
+      console.error('Ошибка проверки:', error);
+    }
+  },
     openImageModal(imageUrl) {
       this.selectedImage = imageUrl;
       this.showImageModal = true;
@@ -99,13 +171,13 @@ export default {
         <span class="task-topic">Тема: {{ task.topic }}</span>
         <span class="task-id">#{{ task.id }}</span>
       </div>
-      <button 
-        @click="addToHomework" 
-        class="add-button"
-        :disabled="isAdded"
-      >
-        {{ isAdded ? 'Добавлено' : 'Выбрать задание' }}
-      </button>
+<button 
+  @click="addToHomework" 
+  class="add-button"
+  :disabled="isAdded"
+>
+  {{ isAdded ? '✓ Уже в домашке' : '➕ Добавить' }}
+</button>
     </div>
     
     <div class="task-content">

@@ -140,6 +140,7 @@ export default {
           'Клеточный цикл': 'cell cycle',
           'Размножение и развитие': 'reproduction and development',
           'Разнообразие организмов': 'diversity of organisms',
+          'Биология как наука': 'biology as a science',
           'Генетика': 'genetics',
           'Задачи на закон Харди-Вайнберга': 'problems with the Hardy-Weinberg law',
           'Селекция и биотехнология': 'breeding and biotechnology',
