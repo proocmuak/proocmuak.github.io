@@ -22,39 +22,64 @@ const toggleForm = () => {
 // Обработка входа
 const handleLogin = async () => {
   try {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email: email.value,
       password: password.value
     })
     
-    if (error) throw error
+    if (authError) throw authError
     localStorage.setItem('userEmail', email.value)
+    
+    // Получаем данные пользователя из таблицы personalities
     const { data, error: roleError } = await supabase
-    .from('personalities')
-    .select('role')
-    .eq('email', email.value) // или .eq('user_id', userId), если используете auth.uid
-    .single(); // если email уникальный, иначе используем .maybeSingle()
+      .from('personalities')
+      .select('role')
+      .eq('email', email.value)
+    
     if (roleError) {
-        console.error('Ошибка при получении роли:', roleError);
-        throw roleError;
+      console.error('Ошибка при получении роли:', roleError);
+      throw roleError;
     }
 
-      if (!data) {
-        throw new Error('Пользователь не найден в таблице personalities');
+    // Если запись не найдена, создаем ее
+    if (!data || data.length === 0) {
+      console.log('Создаем новую запись в personalities для пользователя:', email.value)
+      
+      const { error: insertError } = await supabase
+        .from('personalities')
+        .insert([
+          {
+            email: email.value,
+            role: 'student', // Роль по умолчанию
+            user_id: authData.user.id
+          }
+        ])
+      
+      if (insertError) {
+        console.error('Ошибка при создании профиля:', insertError)
+        throw insertError
       }
+      
+      // Перенаправляем как студента
+      window.location.href = '/student_menu.html';
+      return
+    }
 
-      // Перенаправляем в зависимости от роли
-      switch (data.role) {
-        case 'tutor':
-          window.location.href = '/tutor_menu.html';
-          break;
-        case 'teacher':
-          window.location.href = '/teacher_menu.html';
-          break;
-        default:
-          window.location.href = '/student_menu.html';
-          break;
-      }
+    // Берем первую запись
+    const userData = data[0];
+
+    // Перенаправляем в зависимости от роли
+    switch (userData.role) {
+      case 'tutor':
+        window.location.href = '/tutor_menu.html';
+        break;
+      case 'teacher':
+        window.location.href = '/teacher_menu.html';
+        break;
+      default:
+        window.location.href = '/student_menu.html';
+        break;
+    }
 
   } catch (error) {
     errorMessage.value = error.message
@@ -62,14 +87,34 @@ const handleLogin = async () => {
 }
 
 // Обработка регистрации
+// Обработка регистрации
 const handleSignUp = async () => {
   try {
-    const { error } = await supabase.auth.signUp({
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email.value,
       password: password.value
     })
     
-    if (error) throw error
+    if (authError) throw authError
+    
+    // Добавляем пользователя в таблицу personalities
+    if (authData.user) {
+      const { error: profileError } = await supabase
+        .from('personalities')
+        .insert([
+          {
+            email: email.value,
+            role: 'student', // Устанавливаем роль по умолчанию
+            user_id: authData.user.id // Сохраняем ID пользователя из auth
+          }
+        ])
+      
+      if (profileError) {
+        console.error('Ошибка при создании профиля:', profileError)
+        throw profileError
+      }
+    }
+    
     successMessage.value = 'Проверьте вашу почту для подтверждения!'
     email.value = ''
     password.value = ''
