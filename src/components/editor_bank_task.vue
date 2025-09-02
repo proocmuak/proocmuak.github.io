@@ -58,7 +58,7 @@
         <div class="form-item">
           <label>Баллы за задание:</label>
           <select v-model="newTask.points" class="points-select">
-            <option v-for="n in 4" :value="n" :key="n">{{ n }}</option>
+            <option v-for="n in 5" :value="n" :key="n">{{ n }}</option>
           </select>
         </div>
 

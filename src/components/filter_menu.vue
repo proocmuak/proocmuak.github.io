@@ -181,29 +181,30 @@ export default {
 filteredTaskNumbers() {
   if (!this.selectedSubject) return [];
   
-  const isChemistry = this.selectedSubject === 'Химия ЕГЭ';
-  const maxTasks = isChemistry ? 34 : 28; // Химия: 34, Биология: 28
+  // Конфигурация для разных предметов
+  const config = {
+    'Химия ЕГЭ': { 
+      maxTasks: 34, 
+      firstPart: Array.from({length: 28}, (_, i) => i + 1),
+      secondPart: Array.from({length: 6}, (_, i) => i + 29)
+    },
+    'Биология ЕГЭ': { 
+      maxTasks: 28,
+      firstPart: Array.from({length: 21}, (_, i) => i + 1),
+      secondPart: Array.from({length: 7}, (_, i) => i + 22)
+    }
+  };
+  
+  const subjectConfig = config[this.selectedSubject];
+  if (!subjectConfig) return [];
   
   // Если часть не выбрана - возвращаем все номера
   if (!this.selectedPart) {
-    return Array.from({length: maxTasks}, (_, i) => i + 1);
+    return Array.from({length: subjectConfig.maxTasks}, (_, i) => i + 1);
   }
   
   const isFirstPart = this.selectedPart === 'Первая часть';
-  
-  if (isChemistry) {
-    if (isFirstPart) {
-      return Array.from({length: 28}, (_, i) => i + 1);
-    } else {
-      return Array.from({length: 6}, (_, i) => i + 29);
-    }
-  } else { // Биология ЕГЭ
-    if (isFirstPart) {
-      return Array.from({length: 21}, (_, i) => i + 1);
-    } else {
-      return Array.from({length: 7}, (_, i) => i + 22);
-    }
-  }
+  return isFirstPart ? subjectConfig.firstPart : subjectConfig.secondPart;
 }
   },
   watch: {

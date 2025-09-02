@@ -10,7 +10,8 @@ export default {
   props: {
     filters: {
       type: Object,
-      required: true
+      required: true,
+      default: () => ({})
     }
   },
   data() {
@@ -26,6 +27,14 @@ export default {
   computed: {
     filteredTasks() {
       if (!this.filters.subject) return [];
+      
+      // Конфигурация для разных предметов
+      const partConfig = {
+        'Химия ЕГЭ': { firstPartMax: 28 },
+        'Биология ЕГЭ': { firstPartMax: 21 }
+      };
+      
+      const config = partConfig[this.filters.subject];
       
       let tasks = this.allTasks.filter(task => {
         // Фильтрация по предмету
@@ -47,10 +56,10 @@ export default {
           return false;
         }
         
-        // Фильтрация по части
-        if (this.filters.part) {
+        // Фильтрация по части (универсальная)
+        if (this.filters.part && config) {
           const isFirstPart = this.filters.part === 'Первая часть';
-          const taskPart = task.number <= (task.subject === 'Химия ЕГЭ' ? 28 : 21) 
+          const taskPart = task.number <= config.firstPartMax 
             ? 'Первая часть' 
             : 'Вторая часть';
           
@@ -58,9 +67,12 @@ export default {
         }
         
         // Фильтрация по номеру задания
-        if (this.filters.taskNumber && this.filters.taskNumber.length > 0 && 
-            !this.filters.taskNumber.includes(task.number)) {
-          return false;
+        if (this.filters.taskNumber && this.filters.taskNumber.length > 0) {
+          // Преобразуем номера в числа для сравнения
+          const taskNumbers = this.filters.taskNumber.map(Number);
+          if (!taskNumbers.includes(task.number)) {
+            return false;
+          }
         }
         
         return true;
@@ -83,9 +95,11 @@ export default {
 
       return tasks;
     },
+    
     visibleTasks() {
       return this.filteredTasks.slice(0, this.visibleCount);
     },
+    
     hasMoreTasks() {
       return this.visibleCount < this.filteredTasks.length;
     }
@@ -108,121 +122,135 @@ export default {
     }
   },
   methods: {
+    getTableConfig(subject) {
+      const configs = {
+        'Химия ЕГЭ': {
+          taskTable: 'chemistry_ege_task_bank',
+          progressTable: 'chemistry_ege_progress',
+          firstPartMax: 28
+        },
+        'Биология ЕГЭ': {
+          taskTable: 'biology_ege_task_bank',
+          progressTable: 'biology_ege_progress',
+          firstPartMax: 21
+        }
+      };
+      
+      return configs[subject];
+    },
+    
     resetPagination() {
       this.visibleCount = 50;
     },
-async fetchTasksWithProgress() {
-  this.loading = true;
-  this.error = null;
-  
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    this.user = user;
     
-    const tableName = this.filters.subject === 'Химия ЕГЭ' 
-      ? 'chemistry_ege_task_bank' 
-      : 'biology_ege_task_bank';
-    
-    const progressTable = this.filters.subject === 'Химия ЕГЭ'
-      ? 'chemistry_ege_progress'
-      : 'biology_ege_progress';
-    
-    // Загружаем все задания с пагинацией
-    let allTasks = [];
-    let from = 0;
-    let to = 999;
-    const batchSize = 1000;
+    async fetchTasksWithProgress() {
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        this.user = user;
+        
+        // Определяем названия таблиц на основе предмета
+        const tableConfig = this.getTableConfig(this.filters.subject);
+        
+        if (!tableConfig) {
+          throw new Error('Неизвестный предмет');
+        }
 
-    while (true) {
-      const { data: tasksBatch, error: tasksError } = await supabase
-        .from(tableName)
-        .select('*')
-        .range(from, to);
-      
-      if (tasksError) throw tasksError;
-      
-      if (tasksBatch && tasksBatch.length > 0) {
-        allTasks = [...allTasks, ...tasksBatch];
-      }
-      
-      if (!tasksBatch || tasksBatch.length < batchSize) {
-        break;
-      }
-      
-      from += batchSize;
-      to += batchSize;
-      
-      // Небольшая задержка между запросами
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    // Загружаем прогресс
-    let progress = {};
-    if (user) {
-      // Также используем пагинацию для прогресса
-      let allProgress = [];
-      let progressFrom = 0;
-      let progressTo = 999;
-      
-      while (true) {
-        const { data: progressBatch, error: progressError } = await supabase
-          .from(progressTable)
-          .select('task_id, is_completed, score')
-          .eq('user_id', user.id)
-          .range(progressFrom, progressTo);
-        
-        if (progressError) throw progressError;
-        
-        if (progressBatch && progressBatch.length > 0) {
-          allProgress = [...allProgress, ...progressBatch];
+        // Загружаем все задания с пагинацией
+        let allTasks = [];
+        let from = 0;
+        let to = 999;
+        const batchSize = 1000;
+
+        while (true) {
+          const { data: tasksBatch, error: tasksError } = await supabase
+            .from(tableConfig.taskTable)
+            .select('*')
+            .range(from, to);
+          
+          if (tasksError) throw tasksError;
+          
+          if (tasksBatch && tasksBatch.length > 0) {
+            allTasks = [...allTasks, ...tasksBatch];
+          }
+          
+          if (!tasksBatch || tasksBatch.length < batchSize) {
+            break;
+          }
+          
+          from += batchSize;
+          to += batchSize;
+          
+          // Небольшая задержка между запросами
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
-        if (!progressBatch || progressBatch.length < batchSize) {
-          break;
+        // Загружаем прогресс
+        let progress = {};
+        if (user) {
+          let allProgress = [];
+          let progressFrom = 0;
+          let progressTo = 999;
+          
+          while (true) {
+            const { data: progressBatch, error: progressError } = await supabase
+              .from(tableConfig.progressTable)
+              .select('task_id, is_completed, score')
+              .eq('user_id', user.id)
+              .range(progressFrom, progressTo);
+            
+            if (progressError) throw progressError;
+            
+            if (progressBatch && progressBatch.length > 0) {
+              allProgress = [...allProgress, ...progressBatch];
+            }
+            
+            if (!progressBatch || progressBatch.length < batchSize) {
+              break;
+            }
+            
+            progressFrom += batchSize;
+            progressTo += batchSize;
+            
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+          allProgress.forEach(item => {
+            progress[item.task_id] = {
+              isCompleted: item.is_completed,
+              score: item.score
+            };
+          });
         }
         
-        progressFrom += batchSize;
-        progressTo += batchSize;
+        // Формируем итоговый массив заданий
+        this.allTasks = allTasks.map(task => ({
+          ...task,
+          subject: this.filters.subject,
+          progress: progress[task.id] || {
+            isCompleted: false,
+            score: 0
+          },
+          difficulty: task.difficulty || 2
+        }));
         
-        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (err) {
+        console.error('Ошибка загрузки заданий:', err);
+        this.error = err.message;
+      } finally {
+        this.loading = false;
       }
-      
-      allProgress.forEach(item => {
-        progress[item.task_id] = {
-          isCompleted: item.is_completed,
-          score: item.score
-        };
-      });
-    }
+    },
     
-    // Формируем итоговый массив заданий
-    this.allTasks = allTasks.map(task => ({
-      ...task,
-      subject: this.filters.subject,
-      progress: progress[task.id] || {
-        isCompleted: false,
-        score: 0
-      },
-      difficulty: task.difficulty || 2
-    }));
-    
-    console.log('Загружено заданий:', this.allTasks.length);
-    console.log('ID первого задания:', this.allTasks[0]?.id);
-    console.log('ID последнего задания:', this.allTasks[this.allTasks.length - 1]?.id);
-    
-  } catch (err) {
-    console.error('Ошибка загрузки заданий:', err);
-    this.error = err.message;
-  } finally {
-    this.loading = false;
-  }
-},
     loadMoreTasks() {
       if (this.hasMoreTasks) {
         this.visibleCount += 50;
         console.log('Загружено заданий:', this.visibleCount, 'из', this.filteredTasks.length);
       }
     },
+    
     handleScroll() {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       const windowHeight = window.innerHeight;
@@ -232,9 +260,11 @@ async fetchTasksWithProgress() {
         this.loadMoreTasks();
       }
     },
+    
     selectTask(task) {
       this.$emit('task-selected', task);
     },
+    
     handleAnswerChecked(result) {
       const taskIndex = this.allTasks.findIndex(t => t.id === result.taskId);
       if (taskIndex !== -1) {

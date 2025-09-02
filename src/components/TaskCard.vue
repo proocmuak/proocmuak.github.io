@@ -169,9 +169,14 @@ async saveTaskProgress() {
   try {
     const taskId = Number(this.task.id);
     
+    // Определяем таблицу прогресса на основе предмета
+    const progressTable = this.task.subject.includes('Химия') 
+      ? 'chemistry_ege_progress' 
+      : 'biology_ege_progress';
+
     // 1. Проверяем существующую запись
     const { data: existingRecord, error: checkError } = await supabase
-      .from('biology_ege_progress')
+      .from(progressTable)
       .select('id, score, counted_in_rating')
       .eq('user_id', this.user.id)
       .eq('task_id', taskId)
@@ -180,12 +185,11 @@ async saveTaskProgress() {
     if (checkError) throw checkError;
 
     // 2. Определяем, нужно ли учитывать в рейтинге
-    // counted_in_rating = true означает, что баллы УЖЕ были учтены
     const shouldCountInRating = !existingRecord?.counted_in_rating;
     
     // 3. Сохраняем прогресс
     const { error: upsertError } = await supabase
-      .from('biology_ege_progress')
+      .from(progressTable)
       .upsert({
         user_id: this.user.id,
         task_id: taskId,
@@ -193,7 +197,6 @@ async saveTaskProgress() {
         score: this.awardedPoints,
         user_answer: this.userAnswer,
         last_updated: new Date().toISOString(),
-        // ОБНОВЛЯЕМ counted_in_rating ТОЛЬКО если это первое успешное решение
         counted_in_rating: existingRecord?.counted_in_rating || 
                           (this.isFullyCorrect && shouldCountInRating)
       }, {
@@ -213,7 +216,6 @@ async saveTaskProgress() {
         userAnswer: this.userAnswer
       });
     } else {
-      // Задание перерешивается - баллы не идут в рейтинг
       console.log('Перерешивание задания. Баллы не добавлены в рейтинг.');
       this.$emit('answer-retried', {
         taskId: this.task.id,
@@ -226,6 +228,43 @@ async saveTaskProgress() {
   } catch (error) {
     console.error('Ошибка сохранения прогресса:', error);
     throw error;
+  }
+},
+
+async loadTaskProgress() {
+  if (!this.user?.id) return;
+  
+  try {
+    const taskId = Number(this.task.id);
+    
+    // Определяем таблицу прогресса на основе предмета
+    const progressTable = this.task.subject.includes('Химия') 
+      ? 'chemistry_ege_progress' 
+      : 'biology_ege_progress';
+
+    const { data, error } = await supabase
+      .from(progressTable)
+      .select('score, is_completed, user_answer')
+      .eq('user_id', this.user.id)
+      .eq('task_id', taskId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (data) {
+      this.userAnswer = data.user_answer || '';
+      this.awardedPoints = data.score || 0;
+      this.answerChecked = true;
+      this.updateStatusFlags();
+    } else {
+      this.answerChecked = false;
+      this.awardedPoints = 0;
+      this.userAnswer = '';
+      this.isFullyCorrect = false;
+      this.isPartiallyCorrect = false;
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки прогресса:', error);
   }
 },
     async loadTaskProgress() {
