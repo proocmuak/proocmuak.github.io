@@ -42,7 +42,7 @@ const handleLogin = async () => {
     // Проверяем существование записи перед вставкой
     const { data: existingData, error: checkError } = await supabase
       .from('personalities')
-      .select('id, role')
+      .select('user_id, role')
       .eq('email', email.value)
       .maybeSingle()
     
@@ -120,7 +120,7 @@ const handleSignUp = async () => {
       // Сначала проверяем, существует ли уже запись
       const { data: existingData, error: checkError } = await supabase
         .from('personalities')
-        .select('id')
+        .select('user_id')
         .eq('email', email.value)
         .maybeSingle()
       
