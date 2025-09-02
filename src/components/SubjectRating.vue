@@ -10,7 +10,7 @@ export default {
   data() {
     return {
       selectedSubject: 'Химия ЕГЭ',
-      topStudents: [],
+      allStudents: [],
       loading: false,
       error: null,
       subjects: [
@@ -21,38 +21,64 @@ export default {
   },
   computed: {
     ratingTitle() {
-      return `Топ-10 учеников (${this.selectedSubject})`;
+      return `Рейтинг всех учеников (${this.selectedSubject})`;
     },
     ratingTable() {
       return this.selectedSubject === 'Химия ЕГЭ' 
         ? 'chemistry_rating' 
         : 'biology_rating';
+    },
+    // Фильтруем студентов, оставляем только role=student
+    filteredStudents() {
+      return this.allStudents.filter(student => student.role === 'student');
     }
   },
   methods: {
-    async fetchTopStudents() {
+    async fetchAllStudents() {
       this.loading = true;
       this.error = null;
       
       try {
-        const { data, error } = await supabase
+        // Сначала получаем данные из рейтинговой таблицы
+        const { data: ratingData, error: ratingError } = await supabase
           .from(this.ratingTable)
-          .select(`
-            total_score,
-            personalities:user_id(email, first_name, last_name)
-          `)
-          .order('total_score', { ascending: false })
-          .limit(10);
+          .select('user_id, total_score')
+          .order('total_score', { ascending: false });
         
-        if (error) throw error;
+        if (ratingError) throw ratingError;
         
-        this.topStudents = data.map(item => ({
-          ...item.personalities,
-          total_score: item.total_score
-        }));
+        if (!ratingData || ratingData.length === 0) {
+          this.allStudents = [];
+          return;
+        }
+        
+        // Получаем ID пользователей для запроса к таблице personalities
+        const userIds = ratingData.map(item => item.user_id);
+        
+        // Получаем данные пользователей
+        const { data: usersData, error: usersError } = await supabase
+          .from('personalities')
+          .select('user_id, email, first_name, last_name, role')
+          .in('user_id', userIds);
+        
+        if (usersError) throw usersError;
+        
+        // Объединяем данные и фильтруем только студентов
+        this.allStudents = ratingData.map(ratingItem => {
+          const userData = usersData.find(user => user.id === ratingItem.user_id);
+          return {
+            user_id: ratingItem.user_id,
+            email: userData?.email,
+            first_name: userData?.first_name,
+            last_name: userData?.last_name,
+            role: userData?.role,
+            total_score: ratingItem.total_score || 0
+          };
+        }).filter(student => student.role === 'student');
+          
       } catch (err) {
         console.error('Ошибка загрузки рейтинга:', err);
-        this.error = err.message;
+        this.error = err.message || 'Ошибка при загрузке данных';
       } finally {
         this.loading = false;
       }
@@ -65,11 +91,11 @@ export default {
     },
     handleSubjectChange(subject) {
       this.selectedSubject = subject;
-      this.fetchTopStudents();
+      this.fetchAllStudents();
     }
   },
   mounted() {
-    this.fetchTopStudents();
+    this.fetchAllStudents();
   }
 };
 </script>
@@ -87,37 +113,42 @@ export default {
     
     <div class="rating-container">
       <h3 class="rating-title">{{ ratingTitle }}</h3>
+      <p class="students-count">Всего учеников: {{ filteredStudents.length }}</p>
       
       <div v-if="loading" class="loading-indicator">Загрузка рейтинга...</div>
       <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
       
-      <table v-else class="rating-table">
-        <thead>
-          <tr>
-            <th>Место</th>
-            <th>ФИО</th>
-            <th>Баллы</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(student, index) in topStudents" :key="student.user_id || index">
-            <td>{{ index + 1 }}</td>
-            <td>{{ formatFullName(student) }}</td>
-            <td>{{ student.total_score }}</td>
-          </tr>
-          
-          <tr v-if="topStudents.length === 0">
-            <td colspan="3" class="no-data">Нет данных для отображения</td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-else class="table-wrapper">
+        <table class="rating-table">
+          <thead>
+            <tr>
+              <th>Место</th>
+              <th>ФИО</th>
+              <th>Email</th>
+              <th>Баллы</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(student, index) in filteredStudents" :key="student.user_id || index">
+              <td>{{ index + 1 }}</td>
+              <td>{{ formatFullName(student) }}</td>
+              <td>{{ student.email || 'Не указан' }}</td>
+              <td>{{ student.total_score }}</td>
+            </tr>
+            
+            <tr v-if="filteredStudents.length === 0">
+              <td colspan="4" class="no-data">Нет данных для отображения</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .subject-rating-page {
-  max-width: 800px;
+  max-width: 1000px;
   margin: 0 auto;
   padding: 20px;
 }
@@ -136,9 +167,22 @@ export default {
 
 .rating-title {
   color: #b241d1;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   text-align: center;
   font-size: 1.25rem;
+}
+
+.students-count {
+  text-align: center;
+  color: #666;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  max-height: 600px;
+  overflow-y: auto;
 }
 
 .rating-table {
@@ -158,6 +202,9 @@ export default {
   background-color: #f8f9fa;
   font-weight: 600;
   color: #555;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .rating-table tr:nth-child(even) {
@@ -194,6 +241,10 @@ export default {
   .rating-table td {
     padding: 0.5rem;
     font-size: 0.85rem;
+  }
+  
+  .rating-table {
+    min-width: 500px;
   }
 }
 </style>

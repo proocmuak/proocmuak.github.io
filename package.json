@@ -9,7 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.879.0",
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
     "@supabase/supabase-js": "^2.55.0",
+    "@videojs-player/vue": "^1.0.0",
+    "aws": "^0.0.3-2",
+    "aws4": "^1.13.2",
     "axios": "^1.11.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
@@ -20,6 +26,7 @@
     "mongoose": "^8.17.0",
     "pinia": "^3.0.3",
     "uuid": "^11.1.0",
+    "video.js": "^8.23.4",
     "vue": "^3.5.17",
     "vue-multiselect": "^3.3.1",
     "vue-router": "^4.5.1"
@@ -27,6 +34,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.0",
     "@vue/tsconfig": "^0.7.0",
+    "supabase": "^2.39.2",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vue-tsc": "^2.2.12"

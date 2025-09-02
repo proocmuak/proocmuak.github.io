@@ -296,23 +296,23 @@ export default {
 
 <style scoped>
 .students-container {
-  padding: 20px;
-  max-width: 1200px;
+  padding: clamp(1rem, 2vw, 1.25rem);
+  max-width: 75rem;
   margin: 0 auto;
 }
 
 .back-header {
-  margin-bottom: 20px;
+  margin-bottom: clamp(1rem, 2vw, 1.25rem);
 }
 
 .back-btn {
   background-color: #b241d1;
   color: white;
   border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   transition: background-color 0.3s ease;
 }
 
@@ -324,35 +324,35 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: clamp(1rem, 2vw, 1.25rem);
   flex-wrap: wrap;
-  gap: 15px;
+  gap: 0.9375rem;
 }
 
 .header h2 {
   margin: 0;
   color: #333;
-  font-size: 24px;
+  font-size: clamp(1.25rem, 3vw, 1.5rem);
 }
 
 .filters {
   display: flex;
-  gap: 15px;
+  gap: 0.9375rem;
   flex-wrap: wrap;
 }
 
 .subject-filter {
-  min-width: 200px;
+  min-width: min(200px, 100%);
 }
 
 .subject-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding: 15px;
+  margin-bottom: clamp(1rem, 2vw, 1.25rem);
+  padding: 0.9375rem;
   background: linear-gradient(135deg, #f9f3fc 0%, #f0e6f7 100%);
-  border-radius: 12px;
+  border-radius: 0.75rem;
   border: 1px solid #e8d4f2;
 }
 
@@ -360,44 +360,49 @@ export default {
   margin: 0;
   color: #7e3f9d;
   font-weight: 600;
+  font-size: clamp(1.125rem, 2.5vw, 1.25rem);
 }
 
 .stats {
   font-weight: 500;
   color: #b241d1;
   background-color: white;
-  padding: 5px 12px;
-  border-radius: 20px;
+  padding: 0.3125rem 0.75rem;
+  border-radius: 1.25rem;
+  font-size: clamp(0.875rem, 2vw, 1rem);
 }
 
 .table-container {
   overflow-x: auto;
-  border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(178, 65, 209, 0.1);
-  margin-top: 20px;
+  border-radius: 0.75rem;
+  box-shadow: 0 0.25rem 0.9375rem rgba(178, 65, 209, 0.1);
+  margin-top: clamp(1rem, 2vw, 1.25rem);
 }
 
 .students-table {
   width: 100%;
   border-collapse: collapse;
   background-color: white;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   overflow: hidden;
+  min-width: 600px;
 }
 
 .students-table th {
   background: linear-gradient(135deg, #b241d1 0%, #9a30b8 100%);
-  padding: 16px 20px;
+  padding: clamp(0.75rem, 2vw, 1rem) clamp(1rem, 3vw, 1.25rem);
   text-align: left;
   font-weight: 600;
   color: white;
   border: none;
+  font-size: clamp(0.875rem, 2vw, 1rem);
 }
 
 .students-table td {
-  padding: 14px 20px;
+  padding: clamp(0.75rem, 2vw, 0.875rem) clamp(1rem, 3vw, 1.25rem);
   border-bottom: 1px solid #f0e6f7;
   color: #333;
+  font-size: clamp(0.875rem, 2vw, 1rem);
 }
 
 .student-row {
@@ -422,20 +427,20 @@ export default {
 
 .loading {
   text-align: center;
-  padding: 40px;
+  padding: clamp(1.5rem, 5vw, 2.5rem);
   color: #b241d1;
-  font-size: 16px;
+  font-size: clamp(1rem, 3vw, 1.125rem);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 15px;
+  gap: 0.9375rem;
 }
 
 .spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #f0e6f7;
-  border-top: 4px solid #b241d1;
+  width: clamp(2rem, 8vw, 2.5rem);
+  height: clamp(2rem, 8vw, 2.5rem);
+  border: 0.25rem solid #f0e6f7;
+  border-top: 0.25rem solid #b241d1;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -448,27 +453,28 @@ export default {
 .error {
   background-color: #fef2f2;
   color: #dc2626;
-  padding: 16px;
-  border-radius: 8px;
+  padding: 1rem;
+  border-radius: 0.5rem;
   border: 1px solid #fecaca;
-  margin: 20px 0;
+  margin: clamp(1rem, 2vw, 1.25rem) 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .retry-btn {
   background-color: #b241d1;
   color: white;
   border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
   cursor: pointer;
   font-weight: 500;
   transition: background-color 0.3s ease;
   white-space: nowrap;
+  font-size: clamp(0.875rem, 2vw, 1rem);
 }
 
 .retry-btn:hover {
@@ -477,19 +483,27 @@ export default {
 
 .no-data {
   text-align: center;
-  padding: 60px 20px;
+  padding: clamp(2rem, 8vw, 3.75rem) clamp(1rem, 4vw, 1.25rem);
   color: #b241d1;
-  font-size: 18px;
+  font-size: clamp(1rem, 3vw, 1.125rem);
   background: linear-gradient(135deg, #f9f3fc 0%, #f0e6f7 100%);
-  border-radius: 12px;
+  border-radius: 0.75rem;
   border: 2px dashed #d8b4e7;
-  margin-top: 20px;
+  margin-top: clamp(1rem, 2vw, 1.25rem);
 }
 
-@media (max-width: 768px) {
+/* Медиа-запросы для различных разрешений */
+@media (max-width: 1200px) {
+  .students-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 992px) {
   .header {
     flex-direction: column;
     align-items: stretch;
+    text-align: center;
   }
   
   .filters {
@@ -498,22 +512,99 @@ export default {
   
   .subject-header {
     flex-direction: column;
-    gap: 10px;
+    gap: 0.625rem;
     text-align: center;
   }
-  
+}
+
+@media (max-width: 768px) {
   .students-table {
-    font-size: 14px;
+    min-width: 500px;
+    font-size: 0.875rem;
   }
   
   .students-table th,
   .students-table td {
-    padding: 12px 15px;
+    padding: 0.75rem 0.875rem;
   }
   
   .error {
     flex-direction: column;
     text-align: center;
+    padding: 0.875rem;
+  }
+  
+  .filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .subject-filter {
+    width: 100%;
   }
 }
-</style>    
+
+@media (max-width: 576px) {
+  .students-table {
+    min-width: 400px;
+    font-size: 0.8125rem;
+  }
+  
+  .students-table th,
+  .students-table td {
+    padding: 0.625rem 0.75rem;
+  }
+  
+  .back-btn {
+    width: 100%;
+    padding: 0.75rem;
+  }
+  
+  .header h2 {
+    text-align: center;
+  }
+  
+  .subject-header h3 {
+    font-size: 1rem;
+  }
+  
+  .stats {
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .students-table {
+    min-width: 350px;
+  }
+  
+  .students-table th,
+  .students-table td {
+    padding: 0.5rem 0.625rem;
+  }
+  
+  .loading {
+    padding: 1.5rem 1rem;
+  }
+  
+  .no-data {
+    padding: 2rem 1rem;
+  }
+}
+
+/* Для очень маленьких экранов */
+@media (max-width: 360px) {
+  .students-table {
+    min-width: 320px;
+    font-size: 0.75rem;
+  }
+  
+  .header {
+    gap: 0.5rem;
+  }
+  
+  .filters {
+    gap: 0.5rem;
+  }
+}
+</style> 

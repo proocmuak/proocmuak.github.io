@@ -2,7 +2,17 @@
   <div class="task-homework-editor">
     <div class="editor-header">
       <h2>Редактор заданий для домашней работы {{ homeworkName }}</h2>
-      <button @click="$emit('close')" class="close-button">Закрыть</button>
+      <div class="header-actions">
+        <!-- Новая кнопка для просмотра домашней работы -->
+        <button 
+          @click="viewHomework"
+          class="view-homework-btn"
+          title="Посмотреть домашнюю работу в новой вкладке"
+        >
+          Посмотреть домашку
+        </button>
+        <button @click="$emit('close')" class="close-button">Закрыть</button>
+      </div>
     </div>
 
     <div class="mode-selector">
@@ -72,6 +82,11 @@ export default {
     },
     closeEditor() {
       this.$emit('close')
+    },
+    viewHomework() {
+      // Генерируем URL для просмотра домашней работы
+      const url = `/Homework.html?subject=${this.subject}_ege&homework_id=${this.homeworkId}&view_mode=tutor`;
+      window.open(url, '_blank');
     }
   }
 }
@@ -100,6 +115,28 @@ export default {
   margin-bottom: 20px;
   padding-bottom: 15px;
   border-bottom: 1px solid #eee;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.view-homework-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.view-homework-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
 }
 
 .close-button {
@@ -133,5 +170,25 @@ export default {
 
 .editor-content {
   margin-top: 20px;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .editor-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+  }
+  
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .view-homework-btn,
+  .close-button {
+    flex: 1;
+    text-align: center;
+  }
 }
 </style>

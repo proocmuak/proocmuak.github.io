@@ -13,12 +13,15 @@
       Перейти
     </a>
   </div>
+
 </template>
 
 <script>
 import { supabase } from '../supabase'
 
 export default {
+  emits: ['has-data', 'no-data'],
+  
   data() {
     return {
       subject1: null,
@@ -29,6 +32,7 @@ export default {
       user_id: null
     }
   },
+  
   async mounted() {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -38,72 +42,100 @@ export default {
 
       this.user_id = user.id
       await this.fetchStudentData()
-      await this.fetchChemistryRating()
-      await this.calculateGlobalRating()
+      
+      if (this.subject1) {
+        await this.fetchChemistryRating()
+        await this.calculateGlobalRating()
+        this.$emit('has-data') // Данные есть
+      } else {
+        this.$emit('no-data') // Данных нет
+      }
+      
     } catch (err) {
       this.error = err.message || 'Ошибка при загрузке данных'
+      this.$emit('no-data') // При ошибке тоже считаем, что данных нет
       console.error(err)
     } finally {
       this.loading = false
     }
   },
+  
   methods: {
     async fetchStudentData() {
-      const { data, error } = await supabase
-        .from('students')
-        .select('subject1')
-        .eq('user_id', this.user_id)
-        .single()
+      try {
+        const { data, error } = await supabase
+          .from('students')
+          .select('subject1')
+          .eq('user_id', this.user_id)
+          .single()
 
-      if (error) throw error
-      
-      if (data) {
-        this.subject1 = data.subject1
+        if (error) {
+          // Если записи нет в students
+          if (error.code === 'PGRST116') {
+            this.subject1 = null
+            return
+          }
+          throw error
+        }
+        
+        this.subject1 = data?.subject1 || null
+        
+      } catch (err) {
+        console.error('Ошибка при загрузке данных студента:', err)
+        this.subject1 = null
       }
     },
 
     async fetchChemistryRating() {
-      const { data, error } = await supabase
-        .from('chemistry_rating')
-        .select('total_score')
-        .eq('user_id', this.user_id)
-        .single()
+      try {
+        const { data, error } = await supabase
+          .from('chemistry_rating')
+          .select('total_score')
+          .eq('user_id', this.user_id)
+          .single()
 
-      if (error) {
-        // Если записи нет, создаем новую с нулевым счетом
-        if (error.code === 'PGRST116') {
-          const { error: insertError } = await supabase
-            .from('chemistry_rating')
-            .insert([{ 
-              user_id: this.user_id, 
-              total_score: 0 
-            }])
+        if (error) {
+          // Если записи нет, создаем новую с нулевым счетом
+          if (error.code === 'PGRST116') {
+            const { error: insertError } = await supabase
+              .from('chemistry_rating')
+              .insert([{ 
+                user_id: this.user_id, 
+                total_score: 0 
+              }])
 
-          if (insertError) throw insertError
-          this.total_score = 0
-        } else {
-          throw error
+            if (insertError) throw insertError
+            this.total_score = 0
+          } else {
+            throw error
+          }
+        } else if (data) {
+          this.total_score = data.total_score || 0
         }
-      } else if (data) {
-        this.total_score = data.total_score || 0
+      } catch (err) {
+        console.error('Ошибка при загрузке рейтинга:', err)
+        this.total_score = 0
       }
     },
 
     async calculateGlobalRating() {
-      // Получаем всех пользователей с их баллами, отсортированными по убыванию
-      const { data: allRatings, error } = await supabase
-        .from('chemistry_rating')
-        .select('user_id, total_score')
-        .order('total_score', { ascending: false })
+      try {
+        // Получаем всех пользователей с их баллами, отсортированными по убыванию
+        const { data: allRatings, error } = await supabase
+          .from('chemistry_rating')
+          .select('user_id, total_score')
+          .order('total_score', { ascending: false })
 
-      if (error) throw error
+        if (error) throw error
 
-      if (allRatings) {
-        // Находим позицию текущего пользователя в рейтинге
-        const userIndex = allRatings.findIndex(rating => rating.user_id === this.user_id)
-        if (userIndex !== -1) {
-          this.global_rating = userIndex + 1 // +1 потому что индекс начинается с 0
+        if (allRatings) {
+          // Находим позицию текущего пользователя в рейтинге
+          const userIndex = allRatings.findIndex(rating => rating.user_id === this.user_id)
+          this.global_rating = userIndex !== -1 ? userIndex + 1 : 0
         }
+      } catch (err) {
+        console.error('Ошибка при расчете рейтинга:', err)
+        this.global_rating = 0
       }
     }
   }
@@ -142,8 +174,15 @@ export default {
   padding: 20px;
   text-align: center;
   font-size: 1.2rem;
+  background-color: #f8f9fa;
+  border-radius: 10px;
+  color: #666;
 }
 .error {
   color: #ff4444;
+  background-color: #fff5f5;
 }
-</style>  
+.loading {
+  color: #b241d1;
+}
+</style>

@@ -3,6 +3,7 @@
     <UniversalLesson
       v-if="selectedLesson"
       table-name="biology_ege"
+      :subject="subject"
       :lesson-number="selectedLesson"
       @back-to-calendar="selectedLesson = null"
     />
@@ -39,6 +40,7 @@ const lessons = ref([])
 const selectedLesson = ref(null)
 const loading = ref(false)
 const error = ref(null)
+const subject = ref('biology') 
 
 const selectLesson = (number) => {
   console.log('Выбран урок:', number)

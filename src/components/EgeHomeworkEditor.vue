@@ -48,6 +48,16 @@
           />
         </div>
 
+        <!-- Поле для дедлайна с типом date -->
+        <div class="form-group">
+          <label for="deadline">Дедлайн:</label>
+          <input
+            id="deadline"
+            v-model="currentHomework.deadline"
+            type="date"
+          />
+        </div>
+
         <div class="action-buttons">
           <button @click="saveHomework" class="save-button">
             {{ isEditing ? 'Обновить' : 'Создать' }}
@@ -87,7 +97,6 @@ import { supabase } from '../supabase'
 import CustomDropdown from './CustomDropdown.vue'
 import EgeTaskHomeworkEditor from './EgeTaskHomeworkEditor.vue'
 
-
 export default {
   name: 'EgeHomeworkEditor',
   components: {
@@ -108,7 +117,8 @@ export default {
         homework_id: null,
         homework_name: '',
         lesson_number: '',
-        lesson_name: ''
+        lesson_name: '',
+        deadline: null // Изменено на null для типа date
       },
       isLoading: false,
       nextHomeworkId: 1,
@@ -125,7 +135,7 @@ export default {
     dropdownOptions() {
       const options = this.homeworks.map(hw => ({
         value: hw.homework_id,
-        label: `${hw.homework_name} (Урок ${hw.lesson_number}. ${hw.lesson_name})`
+        label: `${hw.homework_name} (Урок ${hw.lesson_number}. ${hw.lesson_name})${hw.deadline ? ` [До: ${this.formatDate(hw.deadline)}]` : ''}`
       }))
       return [{ value: 'new', label: '+ Создать новую домашнюю работу' }, ...options]
     },
@@ -178,9 +188,23 @@ export default {
       } else {
         const selected = this.homeworks.find(hw => hw.homework_id === value)
         if (selected) {
-          this.currentHomework = { ...selected }
+          this.currentHomework = { 
+            ...selected,
+            // Преобразуем дату в формат YYYY-MM-DD для input type="date"
+            deadline: selected.deadline ? this.formatDateForInput(selected.deadline) : null
+          }
         }
       }
+    },
+    formatDate(dateString) {
+      if (!dateString) return ''
+      const date = new Date(dateString)
+      return date.toLocaleDateString('ru-RU')
+    },
+    formatDateForInput(dateString) {
+      if (!dateString) return ''
+      const date = new Date(dateString)
+      return date.toISOString().split('T')[0]
     },
     async saveHomework() {
       if (!this.currentHomework.homework_name?.trim()) {
@@ -202,7 +226,8 @@ export default {
         const homeworkData = {
           homework_name: this.currentHomework.homework_name.trim(),
           lesson_number: this.currentHomework.lesson_number.trim(),
-          lesson_name: this.currentHomework.lesson_name.trim()
+          lesson_name: this.currentHomework.lesson_name.trim(),
+          deadline: this.currentHomework.deadline || null // Сохраняем дату или null
         }
 
         if (this.isEditing) {
@@ -259,20 +284,20 @@ export default {
         homework_id: null,
         homework_name: '',
         lesson_number: '',
-        lesson_name: ''
+        lesson_name: '',
+        deadline: null
       }
       this.selectedHomework = 'new'
     },
     async refreshData() {
       await this.fetchHomeworks()
     },
-openHomework() {
+    openHomework() {
       if (!this.currentHomework.homework_id) {
         alert('Не удалось определить ID домашней работы')
         return
       }
       
-      // Отправляем данные о выбранной домашней работе родителю
       this.$emit('homework-selected', {
         subject: this.subject,
         homeworkId: this.currentHomework.homework_id,
@@ -353,6 +378,10 @@ openHomework() {
 .form-group input:focus {
   border-color: #b241d1;
   outline: none;
+}
+
+.form-group input[type="date"] {
+  font-family: 'Evolventa', sans-serif;
 }
 
 .action-buttons {

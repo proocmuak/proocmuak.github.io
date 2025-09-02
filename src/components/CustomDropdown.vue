@@ -1,67 +1,4 @@
-<template>
-  <div class="custom-dropdown" :class="{ 'is-open': isOpen, 'is-disabled': disabled }">
-    <div 
-      class="dropdown-header"
-      @click="toggleDropdown"
-      :class="{ 'has-selection': hasSelection }"
-    >
-      <span class="selected-value">
-        {{ displayValue || placeholder }}
-      </span>
-      <span class="dropdown-arrow">▼</span>
-    </div>
-    
-    <transition name="dropdown">
-      <div 
-        class="dropdown-options-container"
-        v-show="isOpen && !disabled"
-        @click.stop
-      >
-        <!-- Поле поиска -->
-        <div class="dropdown-search" v-if="searchable">
-          <input
-            type="text"
-            v-model="searchQuery"
-            @click.stop
-            placeholder="Поиск..."
-            class="search-input"
-          />
-        </div>
 
-        <!-- Опции -->
-        <div class="dropdown-options">
-          <div
-            v-for="option in filteredOptions"
-            :key="option.value || option"
-            class="dropdown-option"
-            @click="selectOption(option)"
-            :class="{ 
-              'is-selected': isSelected(option),
-              'is-multi-selected': multiple && isSelected(option)
-            }"
-          >
-            <span class="checkbox" v-if="multiple">
-              <span class="checkbox-inner" v-if="isSelected(option)">✓</span>
-            </span>
-            {{ option.label || option }}
-          </div>
-
-          <div class="no-results" v-if="filteredOptions.length === 0">
-            Ничего не найдено
-          </div>
-        </div>
-
-        <!-- Выбранные элементы (для множественного выбора) -->
-        <div class="selected-tags" v-if="multiple && selectedOptions.length > 0">
-          <div class="selected-tag" v-for="option in selectedOptions" :key="option.value || option">
-            {{ option.label || option }}
-            <span class="remove-tag" @click.stop="removeOption(option)">×</span>
-          </div>
-        </div>
-      </div>
-    </transition>
-  </div>
-</template>
 
 <script>
 export default {
@@ -223,122 +160,153 @@ export default {
 };
 </script>
 
+<template>
+  <div class="custom-dropdown" :class="{ 'is-open': isOpen, 'is-disabled': disabled }">
+    <div 
+      class="dropdown-header"
+      @click="toggleDropdown"
+      :class="{ 'has-selection': hasSelection }"
+    >
+      <span class="selected-value">
+        {{ displayValue || placeholder }}
+      </span>
+      <span class="dropdown-arrow">▼</span>
+    </div>
+    
+    <transition name="dropdown">
+      <div 
+        class="dropdown-options-container"
+        v-show="isOpen && !disabled"
+        @click.stop
+      >
+        <!-- Поле поиска -->
+        <div class="dropdown-search" v-if="searchable">
+          <input
+            type="text"
+            v-model="searchQuery"
+            @click.stop
+            placeholder="Поиск..."
+            class="search-input"
+          />
+        </div>
+
+        <!-- Опции -->
+        <div class="dropdown-options">
+          <div
+            v-for="option in filteredOptions"
+            :key="option.value || option"
+            class="dropdown-option"
+            @click="selectOption(option)"
+            :class="{ 
+              'is-selected': isSelected(option),
+              'is-multi-selected': multiple && isSelected(option)
+            }"
+          >
+            <span class="checkbox" v-if="multiple">
+              <span class="checkbox-inner" v-if="isSelected(option)">✓</span>
+            </span>
+            <span class="option-text">{{ option.label || option }}</span>
+          </div>
+
+          <div class="no-results" v-if="filteredOptions.length === 0">
+            Ничего не найдено
+          </div>
+        </div>
+      </div>
+    </transition>
+  </div>
+</template>
+
 <style scoped>
+/* Обновленные стили для компактности */
 .custom-dropdown {
   position: relative;
   width: 100%;
   user-select: none;
   font-family: Evolventa;
+  font-size: 13px; /* Уменьшаем размер шрифта */
 }
 
 .dropdown-header {
-  padding: 10px 15px;
+  padding: 6px 10px; /* Уменьшаем отступы */
   border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  border-radius: 4px;
   background-color: white;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
   transition: all 0.25s ease;
-  min-height: 40px;
+  min-height: 32px; /* Уменьшаем высоту */
 }
 
 .dropdown-header:hover {
   border-color: #b241d1;
 }
 
-.dropdown-header.has-selection {
-  font-weight: 500;
-  color: #333;
+.selected-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 20px);
+  font-size: 13px;
 }
 
 .dropdown-arrow {
-  font-size: 12px;
+  font-size: 10px;
   transition: transform 0.25s ease;
   color: #666;
-}
-
-.custom-dropdown.is-open .dropdown-arrow {
-  transform: rotate(180deg);
+  flex-shrink: 0;
 }
 
 .dropdown-options-container {
   position: absolute;
-  top: calc(100% + 5px);
+  top: calc(100% + 2px);
   left: 0;
   right: 0;
-  max-height: 300px;
+  max-height: 200px;
   overflow-y: auto;
   border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  border-radius: 4px;
   background-color: white;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   z-index: 1000;
-  margin-top: 5px;
-  display: flex;
-  flex-direction: column;
 }
 
 .dropdown-search {
-  padding: 8px;
+  padding: 6px;
   border-bottom: 1px solid #eee;
 }
 
 .search-input {
   width: 100%;
-  padding: 8px;
+  padding: 6px;
   border: 1px solid #e0e0e0;
-  border-radius: 4px;
+  border-radius: 3px;
   outline: none;
-}
-
-.search-input:focus {
-  border-color: #b241d1;
+  font-size: 13px;
 }
 
 .dropdown-options {
-  flex: 1;
+  max-height: 150px;
   overflow-y: auto;
 }
 
-
 .dropdown-option {
   display: flex;
-  align-items: flex-start; /* Выравнивание по верху для многострочного текста */
-  padding: 0.75rem 1rem;
-  min-height: 3rem; /* Минимальная высота элемента */
-}
-
-.checkbox {
-  flex: 0 0 1.25rem; /* Фиксированная ширина без растягивания */
-  width: 1.25rem;
-  height: 1.25rem;
-  margin: 0.125rem 0.75rem 0 0; /* Отступ сверху для выравнивания с текстом */
-  border: 2px solid #b241d1;
-  border-radius: 4px;
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  background-color: white;
-  transition: all 0.2s ease;
+  padding: 6px 10px;
+  min-height: 28px;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
-.checkbox-inner {
-  color: #b241d1;
-  font-size: 0.9rem;
-  font-weight: bold;
-  line-height: 1;
-  margin-top: -1px; /* Визуальное выравнивание галочки */
+.option-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
 }
-
-.dropdown-option-text {
-  flex: 1;
-  text-align: left;
-  word-break: break-word; /* Перенос длинных слов */
-  padding-top: 0.125rem; /* Визуальное выравнивание текста */
-}
-
 
 .dropdown-option:hover {
   background-color: #f0e6ff;
@@ -350,55 +318,31 @@ export default {
   font-weight: 500;
 }
 
-.dropdown-option.is-multi-selected {
-  background-color: transparent;
-  color: inherit;
+.checkbox {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  border: 2px solid #b241d1;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: white;
+  flex-shrink: 0;
+}
+
+.checkbox-inner {
+  color: #b241d1;
+  font-size: 12px;
+  font-weight: bold;
 }
 
 .no-results {
-  padding: 10px 15px;
+  padding: 8px 12px;
   color: #999;
   font-style: italic;
   text-align: center;
-}
-
-.selected-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px;
-  border-top: 1px solid #eee;
-  background-color: #f9f9f9;
-}
-
-.selected-tag {
-  background-color: #b241d1;
-  color: white;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-}
-
-.remove-tag {
-  margin-left: 4px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.remove-tag:hover {
-  color: #d32f2f;
-}
-
-.custom-dropdown.is-disabled .dropdown-header {
-  background-color: #f9f9f9;
-  cursor: not-allowed;
-  color: #999;
-}
-
-.custom-dropdown.is-disabled .dropdown-arrow {
-  color: #ccc;
+  font-size: 13px;
 }
 
 /* Анимации */
@@ -412,6 +356,6 @@ export default {
 .dropdown-enter-from,
 .dropdown-leave-to {
   opacity: 0;
-  transform: translateY(-10px);
+  transform: translateY(-5px);
 }
 </style>

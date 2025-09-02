@@ -25,7 +25,7 @@ export default {
       selectedImage: '',
       loadingProgress: false,
       showAnswerOnly: false,
-      showExplanation: false // Оставляем для управления видимостью
+      showExplanation: false // Добавляем состояние для показа пояснения
     };
   },
   computed: {
@@ -59,16 +59,16 @@ export default {
         'status-incorrect': this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect
       };
     },
+    // Добавляем вычисляемые свойства для изображений ответа и пояснения
     hasAnswerImages() {
       return this.task.image_answer && this.task.image_answer.length > 0;
     },
     hasExplanationImages() {
       return this.task.image_explanation && this.task.image_explanation.length > 0;
     },
-    // Добавляем вычисляемое свойство для проверки, можно ли показывать пояснение
-    canShowExplanation() {
-      return this.answerChecked && (this.task.explanation || this.hasExplanationImages);
-    }
+     canShowExplanation() {
+    return this.answerChecked && (this.task.explanation || this.hasExplanationImages);
+  }
   },
   methods: {
     sanitizeHtml(html) {
@@ -89,29 +89,23 @@ export default {
     },
     showAnswer() {
       this.showAnswerOnly = true;
-      // Автоматически показываем пояснение при показе ответа для заданий с 3+ баллами
-      if (this.task.points >= 3 && this.canShowExplanation) {
-        this.showExplanation = true;
-      }
+      this.answerChecked = true; // ← ДОБАВЬТЕ ЭТУ СТРОЧКУ!
+      // Не сохраняем в БД для заданий с 3+ баллами
     },
+    // Добавляем метод для показа пояснения
     toggleExplanation() {
-      if (this.canShowExplanation) {
-        this.showExplanation = !this.showExplanation;
-      }
+      this.showExplanation = !this.showExplanation;
     },
-    async checkAnswer() {
-      if (!this.userAnswer.trim()) {
-        alert('Пожалуйста, введите ответ');
-        return;
-      }
-      if (this.task.points >= 3) {
-        this.showAnswerOnly = true;
-        // Автоматически показываем пояснение для заданий с 3+ баллами
-        if (this.canShowExplanation) {
-          this.showExplanation = true;
-        }
-        return;
-      }
+  async checkAnswer() {
+    if (!this.userAnswer.trim()) {
+      alert('Пожалуйста, введите ответ');
+      return;
+    }
+    if (this.task.points >= 3) {
+      this.showAnswerOnly = true;
+      this.answerChecked = true; // ← ДОБАВЬТЕ ЭТУ СТРОЧКУ!
+      return;
+    }
 
       const userAnswer = this.userAnswer.trim();
       const correctAnswer = this.task.answer.toString().trim();
@@ -119,12 +113,14 @@ export default {
       this.answerChecked = true;
       this.isFullyCorrect = userAnswer === correctAnswer;
       
+      // Для 2-балльных заданий проверяем частичное совпадение
       if (this.task.points === 2 && !this.isFullyCorrect) {
         this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer);
       } else {
         this.isPartiallyCorrect = false;
       }
 
+      // Определяем начисляемые баллы
       this.awardedPoints = this.isFullyCorrect ? this.task.points 
                         : this.isPartiallyCorrect ? 1 
                         : 0;
@@ -138,11 +134,6 @@ export default {
         awardedPoints: this.awardedPoints,
         userAnswer: userAnswer
       });
-      
-      // Автоматически показываем пояснение после проверки ответа
-      if (this.canShowExplanation) {
-        this.showExplanation = true;
-      }
     },
     calculatePoints() {
       if (this.isFullyCorrect) return this.task.points;
@@ -152,6 +143,7 @@ export default {
     checkPartialMatch(userAnswer, correctAnswer) {
       if (userAnswer === correctAnswer) return false;
       
+      // Для числовых ответов проверяем частичное совпадение
       if (/^\d+$/.test(userAnswer)) {
         if (userAnswer.length !== correctAnswer.length) return false;
         
@@ -165,36 +157,77 @@ export default {
         return diffCount === 1;
       }
       
+      // Для текстовых ответов
       const correctParts = correctAnswer.split(/[,;]/).map(part => part.trim());
       const userParts = userAnswer.split(/[,;]/).map(part => part.trim());
       
       return userParts.some(part => correctParts.includes(part));
     },
-    async saveTaskProgress() {
-      if (!this.user?.id) return;
+async saveTaskProgress() {
+  if (!this.user?.id) return;
 
-      try {
-        const taskId = Number(this.task.id);
-        const { error } = await supabase
-          .from('biology_ege_progress')
-          .upsert({
-            user_id: this.user.id,
-            task_id: taskId,
-            is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
-            score: this.awardedPoints,
-            user_answer: this.userAnswer,
-            last_updated: new Date().toISOString()
-          }, {
-            onConflict: 'user_id,task_id',
-            returning: 'minimal'
-          });
+  try {
+    const taskId = Number(this.task.id);
+    
+    // 1. Проверяем существующую запись
+    const { data: existingRecord, error: checkError } = await supabase
+      .from('biology_ege_progress')
+      .select('id, score, counted_in_rating')
+      .eq('user_id', this.user.id)
+      .eq('task_id', taskId)
+      .maybeSingle();
 
-        if (error) throw error;
-      } catch (error) {
-        console.error('Ошибка сохранения прогресса:', error);
-        throw error;
-      }
-    },
+    if (checkError) throw checkError;
+
+    // 2. Определяем, нужно ли учитывать в рейтинге
+    // counted_in_rating = true означает, что баллы УЖЕ были учтены
+    const shouldCountInRating = !existingRecord?.counted_in_rating;
+    
+    // 3. Сохраняем прогресс
+    const { error: upsertError } = await supabase
+      .from('biology_ege_progress')
+      .upsert({
+        user_id: this.user.id,
+        task_id: taskId,
+        is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
+        score: this.awardedPoints,
+        user_answer: this.userAnswer,
+        last_updated: new Date().toISOString(),
+        // ОБНОВЛЯЕМ counted_in_rating ТОЛЬКО если это первое успешное решение
+        counted_in_rating: existingRecord?.counted_in_rating || 
+                          (this.isFullyCorrect && shouldCountInRating)
+      }, {
+        onConflict: 'user_id,task_id',
+        returning: 'minimal'
+      });
+
+    if (upsertError) throw upsertError;
+
+    // 4. Отправляем событие ТОЛЬКО если баллы нужно учесть в рейтинге
+    if (shouldCountInRating) {
+      this.$emit('answer-checked', {
+        taskId: this.task.id,
+        isCorrect: this.isFullyCorrect,
+        isPartiallyCorrect: this.isPartiallyCorrect,
+        awardedPoints: this.awardedPoints,
+        userAnswer: this.userAnswer
+      });
+    } else {
+      // Задание перерешивается - баллы не идут в рейтинг
+      console.log('Перерешивание задания. Баллы не добавлены в рейтинг.');
+      this.$emit('answer-retried', {
+        taskId: this.task.id,
+        awardedPoints: this.awardedPoints,
+        userAnswer: this.userAnswer,
+        isCounted: false
+      });
+    }
+
+  } catch (error) {
+    console.error('Ошибка сохранения прогресса:', error);
+    throw error;
+  }
+},
     async loadTaskProgress() {
       if (!this.user?.id) return;
       
@@ -212,20 +245,15 @@ export default {
         if (data) {
           this.userAnswer = data.user_answer || '';
           this.awardedPoints = data.score || 0;
-          this.answerChecked = true;
+          this.answerChecked = true; // Всегда true, если запись существует
           this.updateStatusFlags();
-          
-          // При загрузке прогресса автоматически показываем пояснение
-          if (this.canShowExplanation) {
-            this.showExplanation = true;
-          }
         } else {
+          // Если записи нет, сбрасываем статус
           this.answerChecked = false;
           this.awardedPoints = 0;
           this.userAnswer = '';
           this.isFullyCorrect = false;
           this.isPartiallyCorrect = false;
-          this.showExplanation = false;
         }
       } catch (error) {
         console.error('Ошибка загрузки прогресса:', error);
@@ -240,8 +268,9 @@ export default {
       this.isFullyCorrect = this.awardedPoints === this.task.points;
       this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
       
+      // Явно определяем статус "Неверно"
       if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
-        this.awardedPoints = 0;
+        this.awardedPoints = 0; // Гарантируем 0 баллов за неверный ответ
       }
     },
     openImageModal(imageUrl) {
@@ -269,7 +298,13 @@ export default {
       handler() {
         if (this.user) this.loadTaskProgress();
       }
+    },
+    canShowExplanation(newVal) {
+    if (newVal) {
+      // Автоматически раскрываем пояснение когда оно становится доступным
+      this.showExplanation = true;
     }
+  }
   }
 }
 </script>
@@ -335,36 +370,37 @@ export default {
           <button @click="showAnswer" class="show-answer-button">Показать ответ</button>
         </div>
         
-        <div v-if="answerChecked" class="answer-feedback" :class="{
-          'correct-feedback': isFullyCorrect,
-          'partial-feedback': isPartiallyCorrect,
-          'incorrect-feedback': !isFullyCorrect && !isPartiallyCorrect
-        }">
-          <transition name="fade" mode="out-in">
-            <div v-if="isFullyCorrect" key="correct" class="feedback-content">
-              <span class="correct-icon">✓</span> 
-              <strong>Ваш ответ:</strong> {{ userAnswer }} - верно! 
-              <strong>Правильный ответ:</strong> {{ task.answer }} 
-              ({{ awardedPoints }}/{{ task.points }} балла)
-            </div>
-            <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
-              <span class="partial-icon">±</span> 
-              <strong>Ваш ответ:</strong> {{ userAnswer }} - частично верно! 
-              <strong>Правильный ответ:</strong> {{ task.answer }} 
-              ({{ awardedPoints }}/{{ task.points }} балла)
-            </div>
-            <div v-else key="incorrect" class="feedback-content">
-              <span class="incorrect-icon">✗</span> 
-              <strong>Ваш ответ:</strong> {{ userAnswer }} - неверно. 
-              <strong>Правильный ответ:</strong> {{ task.answer }} 
-              (0/{{ task.points }} балла)
-            </div>
-          </transition>
-        </div>
+<div v-if="answerChecked && task.points <= 2" class="answer-feedback" :class="{
+  'correct-feedback': isFullyCorrect,
+  'partial-feedback': isPartiallyCorrect,
+  'incorrect-feedback': !isFullyCorrect && !this.isPartiallyCorrect
+}">
+  <transition name="fade" mode="out-in">
+    <div v-if="isFullyCorrect" key="correct" class="feedback-content">
+      <span class="correct-icon">✓</span> 
+      <strong>Ваш ответ:</strong> {{ userAnswer }} - верно! 
+      <strong>Правильный ответ:</strong> {{ task.answer }} 
+      ({{ awardedPoints }}/{{ task.points }} балла)
+    </div>
+    <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
+      <span class="partial-icon">±</span> 
+      <strong>Ваш ответ:</strong> {{ userAnswer }} - частично верно! 
+      <strong>Правильный ответ:</strong> {{ task.answer }} 
+      ({{ awardedPoints }}/{{ task.points }} балла)
+    </div>
+    <div v-else key="incorrect" class="feedback-content">
+      <span class="incorrect-icon">✗</span> 
+      <strong>Ваш ответ:</strong> {{ userAnswer }} - неверно. 
+      <strong>Правильный ответ:</strong> {{ task.answer }} 
+      (0/{{ task.points }} балла)
+    </div>
+  </transition>
+</div>
         
         <div v-if="showAnswerOnly" class="correct-answer">
           <strong>Правильный ответ:</strong> {{ task.answer }}
           
+          <!-- Изображения ответа -->
           <div v-if="hasAnswerImages" class="answer-images">
             <div class="image-grid">
               <div 
@@ -386,41 +422,44 @@ export default {
       </div>
     </div>
 
-    <!-- Блок пояснения показывается только после решения -->
-    <div v-if="canShowExplanation" class="explanation-section">
-      <div class="explanation-header" @click="toggleExplanation" style="cursor: pointer;">
-        <div class="explanation-title">
-          Пояснение: 
-          <span class="explanation-toggle">
-            {{ showExplanation ? '▲' : '▼' }}
-          </span>
-        </div>
-      </div>
+    <!-- Блок пояснения с изображениями -->
+<!-- Блок пояснения с изображениями -->
+<div v-if="canShowExplanation" class="explanation-section">
+  <div class="explanation-header" @click="toggleExplanation" style="cursor: pointer;">
+    <div class="explanation-title">
+      Пояснение: 
+      <span class="explanation-toggle">
+        {{ showExplanation ? '▲' : '▼' }}
+      </span>
+    </div>
+  </div>
+  
+  <transition name="slide">
+    <div v-if="showExplanation" class="explanation-content-container">
+      <!-- УБИРАЕМ повторный показ правильного ответа -->
+      <div v-if="task.explanation" class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
       
-      <transition name="slide">
-        <div v-if="showExplanation" class="explanation-content-container">
-          <div v-if="task.explanation" class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
-          
-          <div v-if="hasExplanationImages" class="explanation-images">
-            <div class="image-grid">
-              <div 
-                class="image-container" 
-                v-for="(image, index) in task.image_explanation" 
-                :key="'explanation-'+index"
-              >
-                <img 
-                  :src="getImageUrl(image)" 
-                  :alt="'Изображение пояснения ' + task.id" 
-                  class="task-image"
-                  @click="openImageModal(getImageUrl(image))"
-                  loading="lazy"
-                >
-              </div>
-            </div>
+      <!-- Изображения пояснения -->
+      <div v-if="hasExplanationImages" class="explanation-images">
+        <div class="image-grid">
+          <div 
+            class="image-container" 
+            v-for="(image, index) in task.image_explanation" 
+            :key="'explanation-'+index"
+          >
+            <img 
+              :src="getImageUrl(image)" 
+              :alt="'Изображение пояснения ' + task.id" 
+              class="task-image"
+              @click="openImageModal(getImageUrl(image))"
+              loading="lazy"
+            >
           </div>
         </div>
-      </transition>
+      </div>
     </div>
+  </transition>
+</div>
 
     <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
       <div class="modal-content">

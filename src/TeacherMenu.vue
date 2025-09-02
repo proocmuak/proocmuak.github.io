@@ -1,5 +1,38 @@
+<template>
+  <div v-if="loading" class="loading">Проверка доступа...</div>
+  <div v-else-if="!isTeacher" class="access-denied">
+    <h2>Доступ запрещён</h2>
+    <p>Эта страница доступна только преподавателям.</p>
+    <a class="isntTeacher" href="../index.html">Вернуться к регистрации</a>
+  </div>
+  <div v-else>
+    <div class="allpage">
+      <div class="topmenu">
+        <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
+        <div class="rightparttopmenu">
+          <div class="courses">На главную</div>
+          <div class="go_back"><a href="../index.html">Выйти</a></div>
+        </div>
+      </div> 
+      <div class="centerpartpage">
+        <left_teacher_menu @component-change="handleComponentChange"/>
+        <div class="mainpart">
+          <!-- Основной компонент -->
+          <component :is="currentComponent" />
+          
+          <!-- Модальное окно студентов -->
+          <editor_students 
+            v-if="showStudentsModal" 
+            @close="showStudentsModal = false" 
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script>
-import { markRaw } from 'vue' // Добавляем markRaw
+import { markRaw } from 'vue'
 import left_teacher_menu from './components/left_teacher_menu.vue';
 import settings from './components/settings.vue';
 import main_teacher_page from './components/change_courses.vue';
@@ -9,11 +42,9 @@ import editor_homework from './components/editor_homework.vue'
 
 import { supabase } from './supabase.js'
 
-// Создаем объект с компонентами, помечая их как нереактивные
 const components = {
   main_teacher_page: markRaw(main_teacher_page),
   settings: markRaw(settings),
-  editor_students: markRaw(editor_students),
   editor_bank_task: markRaw(editor_bank_task),
   editor_homework: markRaw(editor_homework)
 }
@@ -29,11 +60,12 @@ export default {
   },
   data() {
     return {
-      currentComponent: components.main, // Используем помеченный компонент
+      currentComponent: components.main_teacher_page,
       loading: true,
       isTeacher: false,
       error: null,
-      componentMap: components // Добавляем карту компонентов
+      componentMap: components,
+      showStudentsModal: false
     }
   },
   async mounted() {
@@ -69,43 +101,21 @@ export default {
     }
   },
   methods: {
-    setCurrentComponent(componentName) {
-      // Используем карту компонентов вместо прямого доступа
-      const component = this.componentMap[componentName] || components.main
-      this.currentComponent = component
+    handleComponentChange(componentName) {
+      if (componentName === 'editor_students') {
+        // Показываем модальное окно для редактора студентов
+        this.showStudentsModal = true;
+        this.currentComponent = components.main_teacher_page; // Оставляем основной компонент
+      } else {
+        // Для других компонентов используем обычный рендеринг
+        const component = this.componentMap[componentName] || components.main_teacher_page;
+        this.currentComponent = component;
+        this.showStudentsModal = false; // Скрываем модальное окно
+      }
     }
   }
 }
 </script>
-
-<!-- Остальная часть компонента остается без изменений -->  
-
-<template>
-    <div v-if="loading" class="loading">Проверка доступа...</div>
-  <div v-else-if="!isTeacher" class="access-denied">
-    <h2>Доступ запрещён</h2>
-    <p>Эта страница доступна только преподавателям.</p>
-    <a class="isntTeacher" href="../index.html">Вернуться к регистрации</a>
-  </div>
-  <div v-else>
-    <div class="allpage">
-         <div class="topmenu">
-            <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
-            <div class="rightparttopmenu">
-                <div class="courses">На главную</div>
-                <div class="go_back"><a href="../index.html">Выйти</a></div>
-            </div>
-        </div> 
-        <div class="centerpartpage">
-            <left_teacher_menu @component-change="setCurrentComponent"/>
-            <div class="mainpart">
-        <component :is="currentComponent" />
-    </div>
-        </div>
-  </div>
-
-    </div>
-</template>
 
 <style>
 .loading {
