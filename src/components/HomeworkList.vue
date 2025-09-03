@@ -1,642 +1,373 @@
 <template>
-  <div class="lesson-container">
-    <button @click="handleBack" class="back-button">Вернуться к календарю</button>
-    <div v-if="loading">Загрузка...</div>
-    <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
-    <div v-else-if="!lesson">Урок не найден</div>
-    <div v-else class="lesson_info">
-      <h2>Урок {{ lesson.number }}</h2>
-      <h3>{{ lesson.title }} ({{ formattedDate }})</h3>
+  <div class="homework-container">
+    <!-- Выбор предмета -->
+    <div class="subject-selector">
+      <CustomDropdown
+        :options="subjectOptions"
+        v-model="selectedSubject"
+        placeholder="Выберите предмет"
+        class="subject-dropdown"
+      />
+    </div>
+
+    <!-- Список домашних заданий -->
+    <div v-if="selectedSubject">
+      <div v-if="loading" class="loading-message">Загрузка домашних заданий...</div>
+      <div v-else-if="error" class="error-message">{{ error }}</div>
+      <div v-else-if="homeworks.length === 0" class="no-homeworks">
+        Нет домашних заданий для выбранного предмета
+      </div>
       
-      <div v-if="lesson.video" class="video-section" @contextmenu.prevent="showProtectionMessage">
-        <video
-          :key="videoPlayerKey"
-          ref="videoRef"
-          class="video-js vjs-big-play-centered vjs-custom-skin"
-          controls
-          preload="auto"
-          controlslist="nodownload noremoteplayback"
-          disablepictureinpicture
-          @contextmenu.prevent="handleVideoContextMenu"
+      <div v-else class="homeworks-grid">
+        <div 
+          v-for="homework in homeworks" 
+          :key="homework.homework_id"
+          class="homework-card"
+          :class="{ 'completed': homework.is_completed }"
+          @click="openHomework(homework)"
         >
-          <source :src="lesson.video" type="video/mp4">
-        </video>
-        
-        <!-- Сообщение о защите -->
-        <div v-if="showMessage" class="protection-message">
-          Скачивание видео запрещено
-        </div>
-      </div>
-      
-      <!-- Секция рабочих материалов -->
-      <div v-if="hasMaterials" class="materials-section">
-        <h4>Материалы урока:</h4>
-        
-        <!-- Рабочая тетрадь -->
-        <div v-if="lesson.workbook" class="material-item">
-          <div class="material-icon">📘</div>
-          <div class="material-info">
-            <h5>Рабочая тетрадь</h5>
-            <a :href="lesson.workbook" target="_blank" class="download-button">
-              Скачать рабочую тетрадь
-            </a>
-            <span class="file-size" v-if="fileSizes.workbook">{{ fileSizes.workbook }}</span>
-          </div>
-        </div>
-        
-        <!-- Практика -->
-        <div v-if="lesson.practice" class="material-item">
-          <div class="material-icon">📝</div>
-          <div class="material-info">
-            <h5>Практика на занятие</h5>
-            <a :href="lesson.practice" target="_blank" class="download-button">
-              Скачать практику
-            </a>
-            <span class="file-size" v-if="fileSizes.practice">{{ fileSizes.practice }}</span>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Домашнее задание в стиле HomeworkList -->
-      <div v-if="homeworkData" class="homework-section homework-card-style">
-        <div class="homework-header">
-          <h3>{{ homeworkData.homework_name }}</h3>
-          <div class="completion-status" :class="getStatusClass(homeworkData)">
-            {{ getStatusText(homeworkData) }}
-          </div>
-        </div>
-        
-        <p class="lesson-info">Урок {{ homeworkData.lesson_number }}: {{ homeworkData.lesson_name }}</p>
-        
-        <div class="homework-details">
-          <div class="deadline" :class="deadlineStatus(homeworkData.deadline)">
-            Дедлайн: {{ formatDate(homeworkData.deadline) }}
+          <div class="homework-header">
+            <h3>{{ homework.homework_name }}</h3>
+            <div class="completion-status" :class="getStatusClass(homework)">
+              {{ getStatusText(homework) }}
+            </div>
           </div>
           
-          <div v-if="homeworkData.score !== null" class="score">
-            Оценка: {{ homeworkData.score }}
+          <p class="lesson-info">Урок {{ homework.lesson_number }}: {{ homework.lesson_name }}</p>
+          
+          <div class="homework-details">
+            <div class="deadline" :class="deadlineStatus(homework.deadline)">
+              Дедлайн: {{ formatDate(homework.deadline) }}
+            </div>
+            
+            <div v-if="homework.score !== null" class="score">
+              Оценка: {{ homework.score }}
+            </div>
           </div>
         </div>
-        
-        <a 
-          :href="getHomeworkViewUrl(homeworkData)" 
-          target="_blank" 
-          class="download-button homework-button"
-        >
-          Посмотреть домашнее задание
-        </a>
       </div>
-      
-      <div v-else-if="lesson.homework" class="homework-section homework-card-style">
-        <div class="homework-header">
-          <h3>Домашнее задание</h3>
-          <div class="completion-status not-completed">
-            Не выполнено
-          </div>
-        </div>
-        
-        <div class="homework-content">
-          <p class="homework-text">{{ lesson.homework }}</p>
-        </div>
-      </div>
+    </div>
+
+    <div v-else class="select-subject-prompt">
+      <p>Пожалуйста, выберите предмет для просмотра домашних заданий</p>
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted, watch, computed, onUnmounted, nextTick } from 'vue'
+<script>
+import { ref, watch, onMounted } from 'vue'
 import { supabase } from '../supabase.js'
-import videojs from 'video.js'
-import 'video.js/dist/video-js.css'
+import CustomDropdown from './CustomDropdown.vue'
 
-const props = defineProps({
-  subject: {
-    type: String,
-    required: true,
-    validator: value => value && typeof value === 'string'
+export default {
+  name: 'HomeworkList',
+  components: {
+    CustomDropdown
   },
-  lessonNumber: {
-    type: Number,
-    required: true,
-    validator: value => Number.isInteger(value) && value > 0
-  }
-})
+  setup() {
+    const homeworks = ref([])
+    const selectedSubject = ref(null)
+    const subjectOptions = ref([])
+    const loading = ref(false)
+    const error = ref(null)
+    const user_id = ref(null)
 
-const emit = defineEmits(['back-to-calendar'])
-
-const lesson = ref(null)
-const homeworkData = ref(null)
-const loading = ref(false)
-const error = ref(null)
-const videoRef = ref(null)
-const videoPlayerKey = ref(0)
-const showMessage = ref(false)
-const fileSizes = ref({
-  workbook: null,
-  practice: null
-})
-const user_id = ref(null)
-let player = null
-let messageTimer = null
-
-// Настройки video.js
-const playerOptions = {
-  autoplay: false,
-  controls: true,
-  responsive: true,
-  fluid: true,
-  playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
-  html5: {
-    vhs: {
-      overrideNative: true
-    },
-    nativeAudioTracks: false,
-    nativeVideoTracks: false
-  },
-  userActions: {
-    hotkeys: function(event) {
-      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-        event.preventDefault()
-        showProtectionMessage()
-        return false
+    // Преобразование названия предмета в имя таблицы
+    const getSubjectTableName = (subjectName) => {
+      const subjectMap = {
+        'Химия ЕГЭ': 'chemistry_ege',
+        'Химия ОГЭ': 'chemistry_oge',
+        'Биология ЕГЭ': 'biology_ege',
+        'Биология ОГЭ': 'biology_oge'
       }
-      return true
+      return subjectMap[subjectName] || subjectName.toLowerCase().replace(/\s+/g, '_')
     }
-  }
-}
 
-const handleBack = () => emit('back-to-calendar')
-
-const getHomeworkViewUrl = (homework) => {
-  if (!homework) return '#'
-  return `/Homework.html?subject=${props.subject}_ege&homework_id=${homework.homework_id}&view_mode=tutor`
-}
-
-// Проверка наличия материалов
-const hasMaterials = computed(() => {
-  return lesson.value?.workbook || lesson.value?.practice
-})
-
-// Форматирование дедлайна
-const formatDate = (dateString) => {
-  if (!dateString) return 'Не указан'
-  return new Date(dateString).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  })
-}
-
-const deadlineStatus = (dateString) => {
-  if (!dateString) return 'no-deadline'
-  const deadline = new Date(dateString)
-  const today = new Date()
-  
-  today.setHours(0, 0, 0, 0)
-  deadline.setHours(0, 0, 0, 0)
-  
-  if (deadline < today) return 'overdue'
-  if (deadline.getTime() === today.getTime()) return 'today'
-  return 'future'
-}
-
-const getStatusClass = (homework) => {
-  if (homework.is_completed) {
-    return homework.score !== null ? 'scored' : 'completed'
-  }
-  return 'not-completed'
-}
-
-const getStatusText = (homework) => {
-  if (homework.is_completed) {
-    return homework.score !== null ? `Выполнено (${homework.score} баллов)` : 'Выполнено'
-  }
-  return 'Не выполнено'
-}
-
-// Получение ID текущего пользователя
-const getCurrentUserId = async () => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser()
-    return user?.id || null
-  } catch (err) {
-    console.error('Ошибка получения ID пользователя:', err)
-    return null
-  }
-}
-
-// Получение размера файла
-const getFileSize = async (url) => {
-  if (!url) return null
-  
-  try {
-    const response = await fetch(url, { method: 'HEAD' })
-    if (response.ok) {
-      const size = response.headers.get('content-length')
-      if (size) {
-        return formatFileSize(parseInt(size))
-      }
-    }
-    return null
-  } catch (error) {
-    console.log('Не удалось получить размер файла:', error)
-    return null
-  }
-}
-
-// Форматирование размера файла
-const formatFileSize = (bytes) => {
-  if (!bytes) return ''
-  const sizes = ['Б', 'КБ', 'МБ', 'ГБ']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
-}
-
-// Показ сообщения о защите
-const showProtectionMessage = () => {
-  showMessage.value = true
-  
-  if (messageTimer) {
-    clearTimeout(messageTimer)
-  }
-  
-  messageTimer = setTimeout(() => {
-    showMessage.value = false
-  }, 2000)
-}
-
-// Обработчик контекстного меню для видео
-const handleVideoContextMenu = (e) => {
-  const videoElement = e.target
-  const rect = videoElement.getBoundingClientRect()
-  const isClickOnControlBar = e.clientY > rect.top + (rect.height * 0.8)
-  
-  if (!isClickOnControlBar) {
-    e.preventDefault()
-    showProtectionMessage()
-  }
-}
-
-// Блокировка горячих клавиш и правого клика
-const setupVideoProtection = () => {
-  const videoElement = videoRef.value
-  
-  if (!videoElement) return
-  
-  videoElement.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-      e.preventDefault()
-      showProtectionMessage()
-    }
-  })
-  
-  videoElement.addEventListener('dragstart', (e) => {
-    e.preventDefault()
-  })
-  
-  videoElement.addEventListener('click', (e) => {
-    if (e.ctrlKey || e.metaKey || e.shiftKey) {
-      e.preventDefault()
-    }
-  })
-}
-
-// Инициализация video.js плеера
-const initVideoPlayer = () => {
-  if (videoRef.value && lesson.value?.video) {
-    if (player) {
-      player.dispose()
-      player = null
-    }
-    
-    player = videojs(videoRef.value, playerOptions, function() {
-      console.log('Video.js player is ready')
-      setupVideoProtection()
+    // Функция для открытия домашнего задания с использованием window.location
+    const openHomework = (homework) => {
+      const params = new URLSearchParams({
+        subject: selectedSubject.value,
+        homework_id: homework.homework_id,
+        homework_name: homework.homework_name,
+        lesson_number: homework.lesson_number,
+        lesson_name: homework.lesson_name
+      }).toString()
       
-      this.ready(() => {
-        const videoEl = this.el()
-        videoEl.classList.add('vjs-protected')
-        
-        const playbackRateMenu = this.controlBar.getChild('PlaybackRateMenuButton')
-        if (playbackRateMenu) {
-          playbackRateMenu.removeClass('vjs-hidden')
-          playbackRateMenu.show()
+      window.location.href = `/homework.html?${params}`
+    }
+
+    // Получение ID текущего пользователя
+    const getCurrentUserId = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        return user?.id || null
+      } catch (err) {
+        console.error('Ошибка получения ID пользователя:', err)
+        return null
+      }
+    }
+
+    // Получение предметов пользователя из таблицы students
+    const fetchUserSubjects = async () => {
+      try {
+        user_id.value = await getCurrentUserId()
+        if (!user_id.value) {
+          throw new Error('Пользователь не авторизован')
         }
-      })
-    })
-    
-    player.on('loadstart', () => {
-      setupVideoProtection()
-    })
-  }
-}
 
-// Очищаем плеер при размонтировании компонента
-onUnmounted(() => {
-  if (player) {
-    player.dispose()
-    player = null
-  }
-  
-  if (messageTimer) {
-    clearTimeout(messageTimer)
-  }
-})
-
-async function fetchLesson() {
-  try {
-    loading.value = true
-    error.value = null
-    lesson.value = null
-    fileSizes.value = { workbook: null, practice: null }
-    
-    const tableName = `${props.subject}_ege`
-    console.log(`Загрузка урока ${props.lessonNumber} из таблицы ${tableName}`)
-    
-    const { data, error: supabaseError } = await supabase
-      .from(tableName)
-      .select('number, title, date, video, homework, workbook, practice')
-      .eq('number', props.lessonNumber)
-      .single()
-
-    if (supabaseError) throw supabaseError
-    if (!data) throw new Error('Урок не найден')
-    
-    lesson.value = data
-    console.log('Урок загружен:', data)
-    
-    // Получаем размеры файлов
-    if (data.workbook) {
-      fileSizes.value.workbook = await getFileSize(data.workbook)
-    }
-    if (data.practice) {
-      fileSizes.value.practice = await getFileSize(data.practice)
-    }
-    
-    videoPlayerKey.value++
-    
-    nextTick(() => {
-      initVideoPlayer()
-    })
-    
-    try {
-      await fetchHomework(data.title)
-    } catch (homeworkErr) {
-      console.log('Таблица домашних заданий не доступна:', homeworkErr.message)
-      homeworkData.value = null
-    }
-  } catch (err) {
-    error.value = err.message
-    console.error('Ошибка загрузки урока:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-async function fetchHomework(lessonName) {
-  try {
-    console.log(`Поиск домашнего задания для урока: ${lessonName}`)
-    
-    const homeworkTable = `${props.subject}_ege_homework_list`
-    user_id.value = await getCurrentUserId()
-    
-    // Получаем данные о домашнем задании
-    const { data: homeworkListData, error: homeworkError } = await supabase
-      .from(homeworkTable)
-      .select('homework_id, homework_name, lesson_number, lesson_name, deadline')
-      .eq('lesson_name', lessonName)
-
-    if (homeworkError) {
-      console.log('Ошибка загрузки домашнего задания:', homeworkError.message)
-      homeworkData.value = null
-      return
-    }
-    
-    if (homeworkListData && homeworkListData.length > 0) {
-      const homework = homeworkListData[0]
-      
-      // Получаем данные о выполнении
-      if (user_id.value) {
-        const { data: completionData } = await supabase
-          .from(`${props.subject}_ege_homework_completed`)
-          .select('is_completed, score')
-          .eq('homework_id', homework.homework_id)
+        const { data, error: subjectsError } = await supabase
+          .from('students')
+          .select('subject1, subject2')
           .eq('user_id', user_id.value)
           .single()
 
-        homeworkData.value = {
-          ...homework,
-          is_completed: completionData?.is_completed || false,
-          score: completionData?.score || null
+        if (subjectsError) throw subjectsError
+
+        // Формируем список предметов
+        const options = []
+        if (data.subject1) {
+          options.push({
+            value: getSubjectTableName(data.subject1),
+            label: data.subject1
+          })
         }
-      } else {
-        homeworkData.value = {
-          ...homework,
-          is_completed: false,
-          score: null
+        if (data.subject2) {
+          options.push({
+            value: getSubjectTableName(data.subject2),
+            label: data.subject2
+          })
         }
+
+        subjectOptions.value = options
+
+      } catch (err) {
+        console.error('Ошибка загрузки предметов:', err)
+        error.value = 'Не удалось загрузить список предметов'
       }
-      
-      console.log('Домашнее задание найдено:', homeworkData.value)
-    } else {
-      console.log('Домашнее задание не найдено для урока:', lessonName)
-      homeworkData.value = null
     }
-  } catch (err) {
-    console.error('Ошибка загрузки домашнего задания:', err)
-    homeworkData.value = null
+
+    async function fetchHomeworks() {
+      if (!selectedSubject.value) {
+        homeworks.value = []
+        return
+      }
+
+      try {
+        loading.value = true
+        error.value = null
+        
+        user_id.value = await getCurrentUserId()
+        if (!user_id.value) {
+          throw new Error('Пользователь не авторизован')
+        }
+
+        const { data: homeworkData, error: homeworkError } = await supabase
+          .from(`${selectedSubject.value}_homework_list`)
+          .select('*')
+          .order('created_at', { ascending: false })
+
+        if (homeworkError) throw homeworkError
+        
+        const { data: completionData, error: completionError } = await supabase
+          .from(`${selectedSubject.value}_homework_completed`)
+          .select('*')
+          .eq('user_id', user_id.value)
+
+        if (completionError) throw completionError
+
+        homeworks.value = homeworkData.map(homework => {
+          const completion = completionData?.find(c => c.homework_id === homework.homework_id)
+          return {
+            ...homework,
+            is_completed: completion?.is_completed || false,
+            score: completion?.score || null
+          }
+        })
+
+      } catch (err) {
+        error.value = err.message
+        console.error('Ошибка загрузки домашних заданий:', err)
+      } finally {
+        loading.value = false
+      }
+    }
+
+    const formatDate = (dateString) => {
+      if (!dateString) return 'Не указан'
+      return new Date(dateString).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
+    }
+
+    const deadlineStatus = (dateString) => {
+      if (!dateString) return 'no-deadline'
+      const deadline = new Date(dateString)
+      const today = new Date()
+      
+      today.setHours(0, 0, 0, 0)
+      deadline.setHours(0, 0, 0, 0)
+      
+      if (deadline < today) return 'overdue'
+      if (deadline.getTime() === today.getTime()) return 'today'
+      return 'future'
+    }
+
+    const getStatusClass = (homework) => {
+      if (homework.is_completed) {
+        return homework.score !== null ? 'scored' : 'completed'
+      }
+      return 'not-completed'
+    }
+
+    const getStatusText = (homework) => {
+      if (homework.is_completed) {
+        return homework.score !== null ? `Выполнено (${homework.score} баллов)` : 'Выполнено'
+      }
+      return 'Не выполнено'
+    }
+
+    watch(selectedSubject, (newSubject) => {
+      if (newSubject) {
+        fetchHomeworks()
+      }
+    })
+
+    onMounted(async () => {
+      await fetchUserSubjects()
+    })
+
+    return {
+      homeworks,
+      selectedSubject,
+      subjectOptions,
+      loading,
+      error,
+      formatDate,
+      deadlineStatus,
+      getStatusClass,
+      getStatusText,
+      openHomework
+    }
   }
 }
-
-onMounted(fetchLesson)
-
-watch(() => props.lessonNumber, (newLessonNumber) => {
-  if (newLessonNumber) {
-    fetchLesson()
-  }
-})
-
-const formattedDate = computed(() => {
-  if (!lesson.value?.date) return ''
-  const date = new Date(lesson.value.date)
-  return date.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long'
-  })
-})
 </script>
 
 <style scoped>
-.lesson-container {
-  width: 70%;
+.homework-container {
+  max-width: 75rem;
   margin: 0 auto;
-  padding: 20px;
+  padding: 1.25rem;
+  box-sizing: border-box;
 }
 
-.lesson_info {
-  display: grid;
-  grid-template-rows: auto;
-  gap: 20px;
+.subject-selector {
+  margin-bottom: 1.875rem;
+  max-width: 18.75rem;
 }
 
-.video-section {
-  position: relative;
+.subject-dropdown {
   width: 100%;
-  height: 25vw;
-  min-height: 300px;
 }
 
-.protection-message {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background-color: rgba(178, 65, 209, 0.9);
-  color: white;
-  padding: 10px 20px;
-  border-radius: 8px;
-  z-index: 20;
-  font-weight: bold;
-  pointer-events: none;
+.homeworks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21.875rem), 1fr));
+  gap: 1.25rem;
+  margin-top: 1.25rem;
 }
 
-/* Стили для секции материалов */
-.materials-section {
-  background-color: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
-  border-left: 4px solid #4CAF50;
-}
-
-.materials-section h4 {
-  margin: 0 0 15px 0;
-  color: #2c3e50;
-  font-size: 1.2em;
-}
-
-.material-item {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 15px;
-  padding: 15px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.material-item:last-child {
-  margin-bottom: 0;
-}
-
-.material-icon {
-  font-size: 24px;
-  margin-right: 15px;
-  flex-shrink: 0;
-}
-
-.material-info {
-  flex-grow: 1;
-}
-
-.material-info h5 {
-  margin: 0 0 8px 0;
-  color: #34495e;
-  font-size: 1.1em;
-}
-
-.file-size {
-  display: block;
-  margin-top: 5px;
-  font-size: 0.9em;
-  color: #7f8c8d;
-}
-
-/* Стили для домашнего задания в стиле HomeworkList */
-.homework-card-style {
+.homework-card {
   background-color: #b241d1;
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
   color: white;
-  box-shadow: 0 4px 12px rgba(178, 65, 209, 0.2);
+  transition: all 0.3s ease;
+  box-shadow: 0 0.25rem 0.75rem rgba(178, 65, 209, 0.2);
+  cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  min-height: auto;
+  min-height: 9.375rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
-.homework-card-style:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(178, 65, 209, 0.3);
+.homework-card:hover {
+  transform: translateY(-0.125rem);
+  box-shadow: 0 0.375rem 1rem rgba(178, 65, 209, 0.3);
 }
 
-.homework-card-style.completed {
+.homework-card.completed {
   background-color: #f9f8ff;
   color: #000000;
-  box-shadow: 0 4px 12px rgba(249, 248, 255, 0.3);
+  box-shadow: 0 0.25rem 0.75rem rgba(249, 248, 255, 0.3);
 }
 
-.homework-card-style.completed:hover {
-  box-shadow: 0 6px 16px rgba(249, 248, 255, 0.4);
+.homework-card.completed:hover {
+  box-shadow: 0 0.375rem 1rem rgba(249, 248, 255, 0.4);
 }
 
 .homework-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 12px;
-  gap: 10px;
+  margin-bottom: 0.75rem;
+  gap: 0.625rem;
 }
 
 .homework-header h3 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: clamp(1.1rem, 2.5vw, 1.3rem);
   font-weight: 600;
   flex: 1;
   line-height: 1.4;
   word-wrap: break-word;
 }
 
-.homework-card-style:not(.completed) .homework-header h3 {
+.homework-card:not(.completed) .homework-header h3 {
   color: #ffffff;
 }
 
-.homework-card-style.completed .homework-header h3 {
+.homework-card.completed .homework-header h3 {
   color: #000000;
 }
 
 .completion-status {
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.75rem;
+  font-size: clamp(0.75rem, 2vw, 0.8rem);
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-.homework-card-style:not(.completed) .completion-status {
+.homework-card:not(.completed) .completion-status {
   background-color: rgba(255, 255, 255, 0.2);
   color: #ffffff;
 }
 
-.homework-card-style.completed .completion-status {
+.homework-card.completed .completion-status {
   background-color: rgba(178, 65, 209, 0.1);
   color: #000000;
 }
 
-.homework-card-style.completed .completion-status.scored {
+.homework-card.completed .completion-status.scored {
   background-color: rgba(178, 65, 209, 0.2);
 }
 
 .lesson-info {
-  margin: 0 0 12px 0;
-  font-size: 0.95rem;
+  margin: 0 0 0.75rem 0;
+  font-size: clamp(0.85rem, 2vw, 0.95rem);
   line-height: 1.4;
   opacity: 0.9;
 }
 
-.homework-card-style:not(.completed) .lesson-info {
+.homework-card:not(.completed) .lesson-info {
   color: rgba(255, 255, 255, 0.9);
 }
 
-.homework-card-style.completed .lesson-info {
+.homework-card.completed .lesson-info {
   color: rgba(0, 0, 0, 0.8);
 }
 
@@ -644,232 +375,196 @@ const formattedDate = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
   flex-wrap: wrap;
-  margin-bottom: 15px;
 }
 
 .deadline {
   font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 0.9rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: clamp(0.8rem, 2vw, 0.9rem);
 }
 
-.homework-card-style:not(.completed) .deadline {
+.homework-card:not(.completed) .deadline {
   background-color: rgba(255, 255, 255, 0.15);
   color: #ffffff;
 }
 
-.homework-card-style.completed .deadline {
+.homework-card.completed .deadline {
   background-color: rgba(178, 65, 209, 0.1);
   color: #000000;
 }
 
-.homework-card-style:not(.completed) .deadline.overdue {
+.homework-card:not(.completed) .deadline.overdue {
   background-color: rgba(255, 255, 255, 0.25);
 }
 
-.homework-card-style.completed .deadline.overdue {
+.homework-card.completed .deadline.overdue {
   background-color: rgba(178, 65, 209, 0.2);
 }
 
-.homework-card-style:not(.completed) .deadline.today {
+.homework-card:not(.completed) .deadline.today {
   background-color: rgba(255, 255, 255, 0.2);
 }
 
-.homework-card-style.completed .deadline.today {
+.homework-card.completed .deadline.today {
   background-color: rgba(178, 65, 209, 0.15);
 }
 
-.homework-card-style:not(.completed) .deadline.future {
+.homework-card:not(.completed) .deadline.future {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.homework-card-style.completed .deadline.future {
+.homework-card.completed .deadline.future {
   background-color: rgba(178, 65, 209, 0.05);
 }
 
-.homework-card-style:not(.completed) .deadline.no-deadline {
+.homework-card:not(.completed) .deadline.no-deadline {
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-.homework-card-style.completed .deadline.no-deadline {
+.homework-card.completed .deadline.no-deadline {
   background-color: rgba(178, 65, 209, 0.02);
 }
 
 .score {
   font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 0.9rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: clamp(0.8rem, 2vw, 0.9rem);
 }
 
-.homework-card-style:not(.completed) .score {
+.homework-card:not(.completed) .score {
   background-color: rgba(255, 255, 255, 0.2);
   color: #ffffff;
 }
 
-.homework-card-style.completed .score {
+.homework-card.completed .score {
   background-color: rgba(178, 65, 209, 0.2);
   color: #000000;
 }
 
-.homework-content {
-  background: white;
-  padding: 15px;
-  border-radius: 6px;
-  margin-bottom: 15px;
-}
-
-.homework-text {
-  margin: 0;
-  color: #34495e;
-  line-height: 1.5;
-}
-
-.homework-button {
-  display: inline-block;
-  padding: 10px 20px;
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-  border-radius: 6px;
-  text-decoration: none;
-  font-weight: 500;
-  transition: background-color 0.3s ease;
-}
-
-.homework-card-style:not(.completed) .homework-button:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-}
-
-.homework-card-style.completed .homework-button {
-  background-color: rgba(178, 65, 209, 0.2);
-  color: #000000;
-}
-
-.homework-card-style.completed .homework-button:hover {
-  background-color: rgba(178, 65, 209, 0.3);
-}
-
-/* Кастомные стили для video.js */
-.vjs-custom-skin {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.vjs-protected .video-js) {
-  user-select: none !important;
-  -webkit-user-select: none !important;
-  -moz-user-select: none !important;
-  -ms-user-select: none !important;
-  -webkit-user-drag: none !important;
-  -khtml-user-drag: none !important;
-  -moz-user-drag: none !important;
-  -o-user-drag: none !important;
-}
-
-:deep(.vjs-protected video) {
-  pointer-events: none !important;
-}
-
-:deep(.vjs-protected .vjs-control-bar),
-:deep(.vjs-protected .vjs-big-play-button) {
-  pointer-events: auto !important;
-}
-
-:deep(.video-js) {
-  width: 100%;
-  height: 100%;
-}
-
-:deep(.vjs-big-play-button) {
-  background-color: rgba(178, 65, 209, 0.8);
-  border: none;
-  border-radius: 50%;
-}
-
-:deep(.vjs-big-play-button:hover) {
-  background-color: rgba(178, 65, 209, 1);
-}
-
-.download-button {
-  display: inline-block;
-  padding: 10px 20px;
-  background-color: #b241d1;
-  color: white;
-  border-radius: 6px;
-  text-decoration: none;
-  margin-top: 8px;
-  font-size: 0.9em;
-  transition: background-color 0.3s ease;
-}
-
-.download-button:hover {
-  background-color: #9a36b3;
-  color: white;
-}
-
-.back-button {
-  padding: 10px 20px;
-  background-color: #b241d1;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  margin-bottom: 20px;
-  color: #fff;
-  transition: all 0.3s ease;
-  font-family: Evolventa;
-}
-
-.back-button:hover {
-  background-color: #9a36b3;
+.loading-message,
+.error-message,
+.no-homeworks,
+.select-subject-prompt {
+  padding: 2.5rem;
+  text-align: center;
+  font-size: clamp(1.1rem, 3vw, 1.2rem);
+  color: #6c757d;
 }
 
 .error-message {
-  color: #ff4757;
-  padding: 20px;
-  text-align: center;
-  background-color: #ffe6e6;
-  border-radius: 8px;
-  border: 1px solid #ff4757;
+  color: #b241d1;
 }
 
-/* Адаптивность */
+.select-subject-prompt {
+  background-color: rgba(178, 65, 209, 0.1);
+  border-radius: 0.75rem;
+  margin-top: 3.125rem;
+  color: #b241d1;
+  padding: 1.5rem;
+}
+
+/* Медиа-запросы для адаптивности */
+@media (max-width: 1200px) {
+  .homework-container {
+    padding: 1rem;
+    max-width: 90%;
+  }
+  
+  .homeworks-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: 1rem;
+  }
+}
+
 @media (max-width: 768px) {
-  .lesson-container {
-    width: 90%;
-    padding: 15px;
+  .homework-container {
+    padding: 0.875rem;
+    max-width: 95%;
+  }
+  
+  .homeworks-grid {
+    grid-template-columns: 1fr;
+    gap: 0.875rem;
+  }
+  
+  .subject-selector {
+    max-width: 100%;
+    margin-bottom: 1.5rem;
   }
   
   .homework-header {
     flex-direction: column;
-    gap: 8px;
+    gap: 0.5rem;
+    margin-bottom: 0.625rem;
   }
   
   .homework-details {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 0.5rem;
   }
   
-  .homework-card-style {
-    padding: 15px;
+  .homework-card {
+    padding: 1rem;
+    min-height: auto;
+  }
+  
+  .completion-status {
+    align-self: flex-start;
   }
 }
 
 @media (max-width: 480px) {
-  .lesson-container {
-    width: 95%;
-    padding: 10px;
+  .homework-container {
+    padding: 0.625rem;
   }
   
-  .homework-card-style {
-    padding: 12px;
+  .homework-card {
+    padding: 0.875rem;
+    border-radius: 0.5rem;
   }
   
   .homework-header h3 {
-    font-size: 1.1rem;
+    font-size: 1rem;
+  }
+  
+  .lesson-info {
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .deadline,
+  .score {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+  
+  .loading-message,
+  .error-message,
+  .no-homeworks,
+  .select-subject-prompt {
+    padding: 1.5rem;
+    font-size: 1rem;
+  }
+  
+  .select-subject-prompt {
+    margin-top: 2rem;
+    padding: 1rem;
   }
 }
+
+@media (max-width: 320px) {
+  .homework-container {
+    padding: 0.5rem;
+  }
+  
+  .homework-card {
+    padding: 0.75rem;
+  }
+}
+  
 </style>
