@@ -304,6 +304,7 @@ export default {
           'Размножение и развитие': 'reproduction and development',
           'Разнообразие организмов': 'diversity of organisms',
           'Генетика': 'genetics',
+          'Биология как наука': 'biology as a science',
           'Задачи на закон Харди-Вайнберга': 'problems with the Hardy-Weinberg law',
           'Селекция и биотехнология': 'breeding and biotechnology',
           'Анатомия и физиология': 'human anatomy',
