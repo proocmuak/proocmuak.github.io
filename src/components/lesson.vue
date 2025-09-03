@@ -221,7 +221,7 @@ const openHomeworkSimple = (homework) => {
     })
     
     // Просто переходим на homework.html с параметрами
-    window.location.href = `Homework.html?${params.toString()}`
+    window.location.href = `/homework.html`
     
   } catch (error) {
     console.error('Ошибка открытия домашнего задания:', error)
