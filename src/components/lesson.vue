@@ -69,7 +69,7 @@
           <h4>Домашнее задание:</h4>
           <div class="homework-content">
             <p class="homework-title">{{ homeworkData.homework_name }}</p>
-            <button @click="openHomework(homeworkData)" class="download-button homework-button">
+            <button @click="openHomeworkSimple(homeworkData)" class="download-button homework-button">
               Посмотреть домашнее задание
             </button>
             <div v-if="homeworkData.deadline" class="deadline">
@@ -192,24 +192,42 @@ const getAccessToken = async () => {
 }
 
 // Открытие домашнего задания с проверкой авторизации
-const openHomework = async (homework) => {
+// const openHomework = async (homework) => {
+//   try {
+//     const token = await getAccessToken()
+//     const params = new URLSearchParams({
+//       subject: `${props.subject}_ege`,
+//       homework_id: homework.homework_id,
+//       view_mode: 'student',
+//       access_token: token
+//     })
+    
+//     const url = `/Homework.html?${params.toString()}`
+//     window.open(url, '_blank')
+//   } catch (error) {
+//     console.error('Ошибка открытия домашнего задания:', error)
+//     alert('Не удалось открыть домашнее задание. Пожалуйста, войдите в систему.')
+//   }
+// }
+const openHomeworkSimple = (homework) => {
   try {
-    const token = await getAccessToken()
+    // Формируем URL с параметрами
     const params = new URLSearchParams({
       subject: `${props.subject}_ege`,
       homework_id: homework.homework_id,
       view_mode: 'student',
-      access_token: token
+      // Добавляем случайное число чтобы избежать кэширования
+      r: Math.random().toString(36).substring(7)
     })
     
-    const url = `/Homework.html?${params.toString()}`
-    window.open(url, '_blank')
+    // Просто переходим на homework.html с параметрами
+    window.location.href = `Homework.html?${params.toString()}`
+    
   } catch (error) {
     console.error('Ошибка открытия домашнего задания:', error)
-    alert('Не удалось открыть домашнее задание. Пожалуйста, войдите в систему.')
+    alert('Не удалось открыть домашнее задание.')
   }
 }
-
 // Проверка наличия материалов
 const hasMaterials = computed(() => {
   return lesson.value?.workbook || lesson.value?.practice
