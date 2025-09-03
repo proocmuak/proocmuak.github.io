@@ -272,14 +272,13 @@ export default {
     }
 
     // Санитизация HTML
-    const sanitizeHtml = (html) => {
-      if (!html) return ''
-      return DOMPurify.sanitize(html, {
-        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
-        ALLOWED_ATTR: ['style', 'class']
-      })
-    }
-
+const sanitizeHtml = (html) => {
+  if (!html) return ''
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
+    ALLOWED_ATTR: ['style', 'class']
+  })
+}
     // Получение URL изображения
     const getImageUrl = (imagePath) => {
       if (!imagePath) return ''
@@ -298,11 +297,29 @@ export default {
     }
 
     // Удаление таблиц из текста задания
-    const getTaskTextWithoutTables = (task) => {
-      if (!task.text) return '';
-      return task.has_table ? task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : task.text;
-    }
+// Функция для обработки текста с абзацами
+const formatTextWithParagraphs = (text) => {
+  if (!text) return ''
+  
+  // Заменяем двойные переносы на параграфы
+  let formattedText = text
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+  
+  // Оборачиваем в параграф, если нужно
+  if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
+    formattedText = `<p>${formattedText}</p>`
+  }
+  
+  return formattedText
+}
 
+// Обновите функцию получения текста задания
+const getTaskTextWithoutTables = (task) => {
+  if (!task.text) return '';
+  const textWithoutTables = task.has_table ? task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : task.text;
+  return formatTextWithParagraphs(textWithoutTables);
+}
     // Проверка частичного совпадения
     const checkPartialMatch = (userAnswer, correctAnswer) => {
       if (userAnswer === correctAnswer) return false
@@ -909,6 +926,12 @@ const fetchHomeworkTasks = async () => {
 
 .task-text :deep(p) {
   margin-bottom: 0.8rem;
+}
+
+.task-text :deep(br) {
+  content: "";
+  display: block;
+  margin-bottom: 0.4rem;
 }
 
 .task-text :deep(ul),

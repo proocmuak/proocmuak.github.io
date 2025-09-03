@@ -1,80 +1,88 @@
 <template>
   <div class="lesson-container">
     <button @click="handleBack" class="back-button">Вернуться к календарю</button>
-    <div v-if="loading">Загрузка...</div>
-    <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
-    <div v-else-if="!lesson">Урок не найден</div>
-    <div v-else class="lesson_info">
-      <h2>Урок {{ lesson.number }}</h2>
-      <h3>{{ lesson.title }} ({{ formattedDate }})</h3>
-      
-      <div v-if="lesson.video" class="video-section" @contextmenu.prevent="showProtectionMessage">
-        <video
-          :key="videoPlayerKey"
-          ref="videoRef"
-          class="video-js vjs-big-play-centered vjs-custom-skin"
-          controls
-          preload="auto"
-          controlslist="nodownload noremoteplayback"
-          disablepictureinpicture
-          @contextmenu.prevent="handleVideoContextMenu"
-        >
-          <source :src="lesson.video" type="video/mp4">
-        </video>
+    
+    <div v-if="!isAuthenticated" class="auth-message">
+      <p>Пожалуйста, войдите в систему для просмотра уроков</p>
+      <button @click="redirectToLogin" class="login-button">Войти</button>
+    </div>
+    
+    <div v-else>
+      <div v-if="loading">Загрузка...</div>
+      <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
+      <div v-else-if="!lesson">Урок не найден</div>
+      <div v-else class="lesson_info">
+        <h2>Урок {{ lesson.number }}</h2>
+        <h3>{{ lesson.title }} ({{ formattedDate }})</h3>
         
-        <!-- Сообщение о защите -->
-        <div v-if="showMessage" class="protection-message">
-          Скачивание видео запрещено
-        </div>
-      </div>
-      
-      <!-- Секция рабочих материалов -->
-      <div v-if="hasMaterials" class="materials-section">
-        <h4>Материалы урока:</h4>
-        
-        <!-- Рабочая тетрадь -->
-        <div v-if="lesson.workbook" class="material-item">
-          <div class="material-icon">📘</div>
-          <div class="material-info">
-            <h5>Рабочая тетрадь</h5>
-            <a :href="lesson.workbook" target="_blank" class="download-button">
-              Скачать рабочую тетрадь
-            </a>
-            <span class="file-size" v-if="fileSizes.workbook">{{ fileSizes.workbook }}</span>
+        <div v-if="lesson.video" class="video-section" @contextmenu.prevent="showProtectionMessage">
+          <video
+            :key="videoPlayerKey"
+            ref="videoRef"
+            class="video-js vjs-big-play-centered vjs-custom-skin"
+            controls
+            preload="auto"
+            controlslist="nodownload noremoteplayback"
+            disablepictureinpicture
+            @contextmenu.prevent="handleVideoContextMenu"
+          >
+            <source :src="lesson.video" type="video/mp4">
+          </video>
+          
+          <!-- Сообщение о защите -->
+          <div v-if="showMessage" class="protection-message">
+            Скачивание видео запрещено
           </div>
         </div>
         
-        <!-- Практика -->
-        <div v-if="lesson.practice" class="material-item">
-          <div class="material-icon">📝</div>
-          <div class="material-info">
-            <h5>Практика к занятию</h5>
-            <a :href="lesson.practice" target="_blank" class="download-button">
-              Скачать практику
-            </a>
-            <span class="file-size" v-if="fileSizes.practice">{{ fileSizes.practice }}</span>
+        <!-- Секция рабочих материалов -->
+        <div v-if="hasMaterials" class="materials-section">
+          <h4>Материалы урока:</h4>
+          
+          <!-- Рабочая тетрадь -->
+          <div v-if="lesson.workbook" class="material-item">
+            <div class="material-icon">📘</div>
+            <div class="material-info">
+              <h5>Рабочая тетрадь</h5>
+              <a :href="lesson.workbook" target="_blank" class="download-button">
+                Скачать рабочую тетрадь
+              </a>
+              <span class="file-size" v-if="fileSizes.workbook">{{ fileSizes.workbook }}</span>
+            </div>
+          </div>
+          
+          <!-- Практика -->
+          <div v-if="lesson.practice" class="material-item">
+            <div class="material-icon">📝</div>
+            <div class="material-info">
+              <h5>Практика к занятию</h5>
+              <a :href="lesson.practice" target="_blank" class="download-button">
+                Скачать практику
+              </a>
+              <span class="file-size" v-if="fileSizes.practice">{{ fileSizes.practice }}</span>
+            </div>
           </div>
         </div>
-      </div>
-      
-      <!-- Домашнее задание -->
-      <div v-if="homeworkData" class="homework-section">
-        <h4>Домашнее задание:</h4>
-        <div class="homework-content">
-          <p class="homework-title">{{ homeworkData.homework_name }}</p>
-          <a :href="getHomeworkViewUrl(homeworkData)" target="_blank" class="download-button homework-button">
-            Посмотреть домашнее задание
-          </a>
-          <div v-if="homeworkData.deadline" class="deadline">
-            Срок сдачи: {{ formatDeadline(homeworkData.deadline) }}
+        
+        <!-- Домашнее задание -->
+        <div v-if="homeworkData" class="homework-section">
+          <h4>Домашнее задание:</h4>
+          <div class="homework-content">
+            <p class="homework-title">{{ homeworkData.homework_name }}</p>
+            <button @click="openHomework(homeworkData)" class="download-button homework-button">
+              Посмотреть домашнее задание
+            </button>
+            <div v-if="homeworkData.deadline" class="deadline">
+              Срок сдачи: {{ formatDeadline(homeworkData.deadline) }}
+            </div>
           </div>
         </div>
-      </div>
-      
-      <div v-else-if="lesson.homework" class="homework-section">
-        <h4>Домашнее задание:</h4>
-        <div class="homework-content">
-          <p class="homework-text">{{ lesson.homework }}</p>
+        
+        <div v-else-if="lesson.homework" class="homework-section">
+          <h4>Домашнее задание:</h4>
+          <div class="homework-content">
+            <p class="homework-text">{{ lesson.homework }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -113,6 +121,9 @@ const fileSizes = ref({
   workbook: null,
   practice: null
 })
+const user = ref(null)
+const isAuthenticated = ref(false)
+
 let player = null
 let messageTimer = null
 
@@ -143,11 +154,60 @@ const playerOptions = {
   }
 }
 
+// Проверка аутентификации пользователя
+const checkAuth = async () => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      user.value = session.user
+      isAuthenticated.value = true
+      return true
+    } else {
+      // Не перенаправляем автоматически, показываем сообщение
+      isAuthenticated.value = false
+      return false
+    }
+  } catch (err) {
+    console.error('Ошибка проверки аутентификации:', err)
+    isAuthenticated.value = false
+    return false
+  }
+}
+
+const redirectToLogin = () => {
+  window.location.href = '/login.html'
+}
+
 const handleBack = () => emit('back-to-calendar')
 
-const getHomeworkViewUrl = (homework) => {
-  if (!homework) return '#'
-  return `/Homework.html?subject=${props.subject}_ege&homework_id=${homework.homework_id}&view_mode=tutor`
+// Функция для получения access token
+const getAccessToken = async () => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token || ''
+  } catch (error) {
+    console.error('Ошибка получения токена:', error)
+    return ''
+  }
+}
+
+// Открытие домашнего задания с проверкой авторизации
+const openHomework = async (homework) => {
+  try {
+    const token = await getAccessToken()
+    const params = new URLSearchParams({
+      subject: `${props.subject}_ege`,
+      homework_id: homework.homework_id,
+      view_mode: 'student',
+      access_token: token
+    })
+    
+    const url = `/Homework.html?${params.toString()}`
+    window.open(url, '_blank')
+  } catch (error) {
+    console.error('Ошибка открытия домашнего задания:', error)
+    alert('Не удалось открыть домашнее задание. Пожалуйста, войдите в систему.')
+  }
 }
 
 // Проверка наличия материалов
@@ -290,6 +350,13 @@ onUnmounted(() => {
 
 async function fetchLesson() {
   try {
+    // Проверяем аутентификацию перед загрузкой данных
+    const authCheck = await checkAuth()
+    if (!authCheck) {
+      loading.value = false
+      return
+    }
+    
     loading.value = true
     error.value = null
     lesson.value = null
@@ -304,7 +371,14 @@ async function fetchLesson() {
       .eq('number', props.lessonNumber)
       .single()
 
-    if (supabaseError) throw supabaseError
+    if (supabaseError) {
+      // Если ошибка доступа, проверяем аутентификацию
+      if (supabaseError.code === 'PGRST301' || supabaseError.message.includes('auth')) {
+        await checkAuth()
+      }
+      throw supabaseError
+    }
+    
     if (!data) throw new Error('Урок не найден')
     
     lesson.value = data
@@ -333,6 +407,11 @@ async function fetchLesson() {
   } catch (err) {
     error.value = err.message
     console.error('Ошибка загрузки урока:', err)
+    
+    // Если ошибка аутентификации, показываем сообщение
+    if (err.message.includes('auth') || err.message.includes('401')) {
+      isAuthenticated.value = false
+    }
   } finally {
     loading.value = false
   }
@@ -368,10 +447,30 @@ async function fetchHomework(lessonName) {
   }
 }
 
-onMounted(fetchLesson)
+// Слушатель изменения состояния аутентификации
+onMounted(() => {
+  supabase.auth.onAuthStateChange((event, session) => {
+    console.log('Auth state changed:', event)
+    if (event === 'SIGNED_OUT') {
+      user.value = null
+      isAuthenticated.value = false
+    } else if (event === 'SIGNED_IN' && session) {
+      user.value = session.user
+      isAuthenticated.value = true
+      fetchLesson()
+    }
+  })
+  
+  // Первоначальная проверка аутентификации
+  checkAuth().then(authenticated => {
+    if (authenticated) {
+      fetchLesson()
+    }
+  })
+})
 
 watch(() => props.lessonNumber, (newLessonNumber) => {
-  if (newLessonNumber) {
+  if (newLessonNumber && isAuthenticated.value) {
     fetchLesson()
   }
 })
@@ -505,6 +604,8 @@ const formattedDate = computed(() => {
 
 .homework-button {
   margin-top: 10px;
+  cursor: pointer;
+  border: none;
 }
 
 .deadline {
@@ -568,6 +669,9 @@ const formattedDate = computed(() => {
   margin-top: 8px;
   font-size: 0.9em;
   transition: background-color 0.3s ease;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
 }
 
 .download-button:hover {
@@ -598,5 +702,28 @@ const formattedDate = computed(() => {
   background-color: #ffe6e6;
   border-radius: 8px;
   border: 1px solid #ff4757;
+}
+
+.auth-message {
+  text-align: center;
+  padding: 40px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.login-button {
+  padding: 10px 20px;
+  background-color: #b241d1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 15px;
+  font-family: Evolventa;
+}
+
+.login-button:hover {
+  background-color: #9a36b3;
 }
 </style>

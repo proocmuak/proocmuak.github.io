@@ -25,7 +25,9 @@ export default {
       selectedImage: '',
       loadingProgress: false,
       showAnswerOnly: false,
-      showExplanation: false // Добавляем состояние для показа пояснения
+      showExplanation: false,
+      // Добавляем вычисляемое свойство для проверки части задания
+      isFirstPart: false
     };
   },
   computed: {
@@ -36,7 +38,10 @@ export default {
     },
     taskTextWithoutTables() {
       if (!this.task.text) return '';
-      return this.hasTableData ? this.task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : this.task.text;
+      const textWithoutTables = this.hasTableData ? 
+        this.task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : 
+        this.task.text;
+      return this.formatTextWithParagraphs(textWithoutTables);
     },
     taskStatus() {
       if (!this.answerChecked) return 'Не решено';
@@ -59,24 +64,66 @@ export default {
         'status-incorrect': this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect
       };
     },
-    // Добавляем вычисляемые свойства для изображений ответа и пояснения
+    formattedAnswer() {
+      if (!this.task.answer) return '';
+      const answer = this.task.answer.toString();
+      
+      if (/^\d+$/.test(answer.trim())) {
+        return answer;
+      }
+      
+      return this.formatTextWithParagraphs(answer);
+    },
+ formattedExplanation() {
+if (!this.task.explanation) return '';
+      const explanation = this.task.explanation.toString();
+      
+      if (/^\d+$/.test(explanation.trim())) {
+        return explanation;
+      }
+      
+      return this.formatTextWithParagraphs(explanation);
+  },
     hasAnswerImages() {
       return this.task.image_answer && this.task.image_answer.length > 0;
     },
     hasExplanationImages() {
       return this.task.image_explanation && this.task.image_explanation.length > 0;
     },
-     canShowExplanation() {
-    return this.answerChecked && (this.task.explanation || this.hasExplanationImages);
-  }
+    canShowExplanation() {
+      return this.answerChecked && (this.task.explanation || this.hasExplanationImages);
+    }
   },
   methods: {
     sanitizeHtml(html) {
       return DOMPurify.sanitize(html, {
         ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
         ALLOWED_ATTR: ['style', 'class']
-      });
+      })
     },
+formatTextWithParagraphs(text) {
+  if (!text) return '';
+  
+  // Если текст уже содержит HTML-теги, возвращаем как есть
+  if (text.includes('<') && text.includes('>')) {
+    return text;
+  }
+  
+  // Заменяем множественные переносы строк на абзацы
+  let formattedText = text
+    .trim()
+    .replace(/\r\n/g, '\n')  // Нормализуем переносы строк
+    .replace(/\n{3,}/g, '\n\n')  // Заменяем 3+ переносов на 2
+    .replace(/\n\n/g, '</p><p>')  // Двойные переносы -> новые абзацы
+    .replace(/\n/g, '<br>');  // Одиночные переносы -> теги <br>
+  
+  // Оборачиваем в тег <p>, если нет открывающего/закрывающего тега
+  if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
+    formattedText = `<p>${formattedText}</p>`;
+  }
+  
+  return formattedText;
+},
     getImageUrl(imagePath) {
       if (imagePath.startsWith('http')) return imagePath;
       
@@ -89,23 +136,23 @@ export default {
     },
     showAnswer() {
       this.showAnswerOnly = true;
-      this.answerChecked = true; // ← ДОБАВЬТЕ ЭТУ СТРОЧКУ!
-      // Не сохраняем в БД для заданий с 3+ баллами
+      this.answerChecked = true;
     },
-    // Добавляем метод для показа пояснения
     toggleExplanation() {
       this.showExplanation = !this.showExplanation;
     },
-  async checkAnswer() {
-    if (!this.userAnswer.trim()) {
-      alert('Пожалуйста, введите ответ');
-      return;
-    }
-    if (this.task.points >= 3) {
-      this.showAnswerOnly = true;
-      this.answerChecked = true; // ← ДОБАВЬТЕ ЭТУ СТРОЧКУ!
-      return;
-    }
+    async checkAnswer() {
+      if (!this.userAnswer.trim()) {
+        alert('Пожалуйста, введите ответ');
+        return;
+      }
+      
+      // ИЗМЕНЕНИЕ: Проверяем часть задания вместо количества баллов
+      if (!this.isFirstPart) {
+        this.showAnswerOnly = true;
+        this.answerChecked = true;
+        return;
+      }
 
       const userAnswer = this.userAnswer.trim();
       const correctAnswer = this.task.answer.toString().trim();
@@ -113,14 +160,13 @@ export default {
       this.answerChecked = true;
       this.isFullyCorrect = userAnswer === correctAnswer;
       
-      // Для 2-балльных заданий проверяем частичное совпадение
-      if (this.task.points === 2 && !this.isFullyCorrect) {
+      // Для заданий первой части проверяем частичное совпадение
+      if (this.isFirstPart && !this.isFullyCorrect) {
         this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer);
       } else {
         this.isPartiallyCorrect = false;
       }
 
-      // Определяем начисляемые баллы
       this.awardedPoints = this.isFullyCorrect ? this.task.points 
                         : this.isPartiallyCorrect ? 1 
                         : 0;
@@ -143,7 +189,6 @@ export default {
     checkPartialMatch(userAnswer, correctAnswer) {
       if (userAnswer === correctAnswer) return false;
       
-      // Для числовых ответов проверяем частичное совпадение
       if (/^\d+$/.test(userAnswer)) {
         if (userAnswer.length !== correctAnswer.length) return false;
         
@@ -157,123 +202,85 @@ export default {
         return diffCount === 1;
       }
       
-      // Для текстовых ответов
       const correctParts = correctAnswer.split(/[,;]/).map(part => part.trim());
       const userParts = userAnswer.split(/[,;]/).map(part => part.trim());
       
       return userParts.some(part => correctParts.includes(part));
     },
-async saveTaskProgress() {
-  if (!this.user?.id) return;
+    async saveTaskProgress() {
+      if (!this.user?.id) return;
 
-  try {
-    const taskId = Number(this.task.id);
-    
-    // Определяем таблицу прогресса на основе предмета
-    const progressTable = this.task.subject.includes('Химия') 
-      ? 'chemistry_ege_progress' 
-      : 'biology_ege_progress';
+      try {
+        const taskId = Number(this.task.id);
+        
+        const progressTable = this.task.subject.includes('Химия') 
+          ? 'chemistry_ege_progress' 
+          : 'biology_ege_progress';
 
-    // 1. Проверяем существующую запись
-    const { data: existingRecord, error: checkError } = await supabase
-      .from(progressTable)
-      .select('id, score, counted_in_rating')
-      .eq('user_id', this.user.id)
-      .eq('task_id', taskId)
-      .maybeSingle();
+        const { data: existingRecord, error: checkError } = await supabase
+          .from(progressTable)
+          .select('id, score, counted_in_rating')
+          .eq('user_id', this.user.id)
+          .eq('task_id', taskId)
+          .maybeSingle();
 
-    if (checkError) throw checkError;
+        if (checkError) throw checkError;
 
-    // 2. Определяем, нужно ли учитывать в рейтинге
-    const shouldCountInRating = !existingRecord?.counted_in_rating;
-    
-    // 3. Сохраняем прогресс
-    const { error: upsertError } = await supabase
-      .from(progressTable)
-      .upsert({
-        user_id: this.user.id,
-        task_id: taskId,
-        is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
-        score: this.awardedPoints,
-        user_answer: this.userAnswer,
-        last_updated: new Date().toISOString(),
-        counted_in_rating: existingRecord?.counted_in_rating || 
-                          (this.isFullyCorrect && shouldCountInRating)
-      }, {
-        onConflict: 'user_id,task_id',
-        returning: 'minimal'
-      });
+        const shouldCountInRating = !existingRecord?.counted_in_rating;
+        
+        const { error: upsertError } = await supabase
+          .from(progressTable)
+          .upsert({
+            user_id: this.user.id,
+            task_id: taskId,
+            is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
+            score: this.awardedPoints,
+            user_answer: this.userAnswer,
+            last_updated: new Date().toISOString(),
+            counted_in_rating: existingRecord?.counted_in_rating || 
+                              (this.isFullyCorrect && shouldCountInRating)
+          }, {
+            onConflict: 'user_id,task_id',
+            returning: 'minimal'
+          });
 
-    if (upsertError) throw upsertError;
+        if (upsertError) throw upsertError;
 
-    // 4. Отправляем событие ТОЛЬКО если баллы нужно учесть в рейтинге
-    if (shouldCountInRating) {
-      this.$emit('answer-checked', {
-        taskId: this.task.id,
-        isCorrect: this.isFullyCorrect,
-        isPartiallyCorrect: this.isPartiallyCorrect,
-        awardedPoints: this.awardedPoints,
-        userAnswer: this.userAnswer
-      });
-    } else {
-      console.log('Перерешивание задания. Баллы не добавлены в рейтинг.');
-      this.$emit('answer-retried', {
-        taskId: this.task.id,
-        awardedPoints: this.awardedPoints,
-        userAnswer: this.userAnswer,
-        isCounted: false
-      });
-    }
+        if (shouldCountInRating) {
+          this.$emit('answer-checked', {
+            taskId: this.task.id,
+            isCorrect: this.isFullyCorrect,
+            isPartiallyCorrect: this.isPartiallyCorrect,
+            awardedPoints: this.awardedPoints,
+            userAnswer: this.userAnswer
+          });
+        } else {
+          console.log('Перерешивание задания. Баллы не добавлены в рейтинг.');
+          this.$emit('answer-retried', {
+            taskId: this.task.id,
+            awardedPoints: this.awardedPoints,
+            userAnswer: this.userAnswer,
+            isCounted: false
+          });
+        }
 
-  } catch (error) {
-    console.error('Ошибка сохранения прогресса:', error);
-    throw error;
-  }
-},
-
-async loadTaskProgress() {
-  if (!this.user?.id) return;
-  
-  try {
-    const taskId = Number(this.task.id);
-    
-    // Определяем таблицу прогресса на основе предмета
-    const progressTable = this.task.subject.includes('Химия') 
-      ? 'chemistry_ege_progress' 
-      : 'biology_ege_progress';
-
-    const { data, error } = await supabase
-      .from(progressTable)
-      .select('score, is_completed, user_answer')
-      .eq('user_id', this.user.id)
-      .eq('task_id', taskId)
-      .maybeSingle();
-
-    if (error) throw error;
-
-    if (data) {
-      this.userAnswer = data.user_answer || '';
-      this.awardedPoints = data.score || 0;
-      this.answerChecked = true;
-      this.updateStatusFlags();
-    } else {
-      this.answerChecked = false;
-      this.awardedPoints = 0;
-      this.userAnswer = '';
-      this.isFullyCorrect = false;
-      this.isPartiallyCorrect = false;
-    }
-  } catch (error) {
-    console.error('Ошибка загрузки прогресса:', error);
-  }
-},
+      } catch (error) {
+        console.error('Ошибка сохранения прогресса:', error);
+        throw error;
+      }
+    },
     async loadTaskProgress() {
       if (!this.user?.id) return;
       
       try {
         const taskId = Number(this.task.id);
+        
+        const progressTable = this.task.subject.includes('Химия') 
+          ? 'chemistry_ege_progress' 
+          : 'biology_ege_progress';
+
         const { data, error } = await supabase
-          .from('biology_ege_progress')
+          .from(progressTable)
           .select('score, is_completed, user_answer')
           .eq('user_id', this.user.id)
           .eq('task_id', taskId)
@@ -284,10 +291,9 @@ async loadTaskProgress() {
         if (data) {
           this.userAnswer = data.user_answer || '';
           this.awardedPoints = data.score || 0;
-          this.answerChecked = true; // Всегда true, если запись существует
+          this.answerChecked = true;
           this.updateStatusFlags();
         } else {
-          // Если записи нет, сбрасываем статус
           this.answerChecked = false;
           this.awardedPoints = 0;
           this.userAnswer = '';
@@ -307,9 +313,8 @@ async loadTaskProgress() {
       this.isFullyCorrect = this.awardedPoints === this.task.points;
       this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
       
-      // Явно определяем статус "Неверно"
       if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
-        this.awardedPoints = 0; // Гарантируем 0 баллов за неверный ответ
+        this.awardedPoints = 0;
       }
     },
     openImageModal(imageUrl) {
@@ -323,6 +328,8 @@ async loadTaskProgress() {
     }
   },
   mounted() {
+    // ИЗМЕНЕНИЕ: Определяем часть задания при монтировании
+    this.isFirstPart = this.task.part === 'Первая часть';
     this.loadTaskProgress();
   },
   watch: {
@@ -334,16 +341,17 @@ async loadTaskProgress() {
     },
     task: {
       immediate: true,
-      handler() {
+      handler(newTask) {
+        // ИЗМЕНЕНИЕ: Обновляем часть задания при изменении задачи
+        this.isFirstPart = newTask.part === 'Первая часть';
         if (this.user) this.loadTaskProgress();
       }
     },
     canShowExplanation(newVal) {
-    if (newVal) {
-      // Автоматически раскрываем пояснение когда оно становится доступным
-      this.showExplanation = true;
+      if (newVal) {
+        this.showExplanation = true;
+      }
     }
-  }
   }
 }
 </script>
@@ -392,7 +400,7 @@ async loadTaskProgress() {
       </div>
 
       <div class="answer-section">
-        <div v-if="task.points <= 2" class="answer-input-container">
+        <div v-if="isFirstPart" class="answer-input-container"  @copy.prevent>
           <input 
             v-model="userAnswer" 
             type="text" 
@@ -405,11 +413,11 @@ async loadTaskProgress() {
           <button @click="checkAnswer" class="submit-button">Проверить</button>
         </div>
         
-        <div v-else class="show-answer-container">
+        <div v-if="!isFirstPart" class="show-answer-container">
           <button @click="showAnswer" class="show-answer-button">Показать ответ</button>
         </div>
         
-<div v-if="answerChecked && task.points <= 2" class="answer-feedback" :class="{
+<div v-if="answerChecked && isFirstPart" class="answer-feedback" :class="{
   'correct-feedback': isFullyCorrect,
   'partial-feedback': isPartiallyCorrect,
   'incorrect-feedback': !isFullyCorrect && !this.isPartiallyCorrect
@@ -437,7 +445,8 @@ async loadTaskProgress() {
 </div>
         
         <div v-if="showAnswerOnly" class="correct-answer">
-          <strong>Правильный ответ:</strong> {{ task.answer }}
+            <strong>Правильный ответ:</strong> 
+  <span v-html="sanitizeHtml(formattedAnswer)"></span>
           
           <!-- Изображения ответа -->
           <div v-if="hasAnswerImages" class="answer-images">
@@ -476,8 +485,9 @@ async loadTaskProgress() {
   <transition name="slide">
     <div v-if="showExplanation" class="explanation-content-container">
       <!-- УБИРАЕМ повторный показ правильного ответа -->
-      <div v-if="task.explanation" class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
-      
+ <div v-if="task.explanation" class="explanation-content">
+  <span v-html="sanitizeHtml(formattedExplanation)"></span>
+ </div>      
       <!-- Изображения пояснения -->
       <div v-if="hasExplanationImages" class="explanation-images">
         <div class="image-grid">
@@ -694,13 +704,30 @@ async loadTaskProgress() {
   line-height: 1.6;
   color: #333;
   margin-bottom: 1.25rem;
-  white-space: pre-line;
-  user-select: none;
-  -webkit-user-select: none;
   font-size: 1rem;
   word-break: break-word;
   overflow-wrap: anywhere;
   hyphens: auto;
+}
+
+.task-text :deep(p) {
+  margin-bottom: 0.8rem;
+}
+
+.task-text :deep(br) {
+  content: "";
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.task-text :deep(ul),
+.task-text :deep(ol) {
+  margin: 0.8rem 0;
+  padding-left: 1.5rem;
+}
+
+.task-text :deep(li) {
+  margin-bottom: 0.4rem;
 }
 
 .task-table-container {
@@ -773,7 +800,75 @@ async loadTaskProgress() {
 .task-image:hover {
   transform: scale(1.03);
 }
+/* Стили для форматированных ответов и пояснений */
+.feedback-content span[v-html],
+.correct-answer span[v-html],
+.explanation-content {
+  display: block;
+  margin-top: 0.5rem;
+  line-height: 1.5;
+}
 
+.feedback-content :deep(p),
+.correct-answer :deep(p),
+.explanation-content :deep(p) {
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+.feedback-content :deep(p:last-child),
+.correct-answer :deep(p:last-child),
+.explanation-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.feedback-content :deep(br),
+.correct-answer :deep(br),
+.explanation-content :deep(br) {
+  content: "";
+  display: block;
+  margin-bottom: 0.3rem;
+}
+.explanation-content :deep(p) {
+  margin-bottom: 0.8rem;
+  line-height: 1.5;
+}
+
+.explanation-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.explanation-content :deep(br) {
+  content: "";
+  display: block;
+  margin-bottom: 0.4rem;
+}
+.feedback-content :deep(ul),
+.feedback-content :deep(ol),
+.correct-answer :deep(ul),
+.correct-answer :deep(ol),
+.explanation-content :deep(ul),
+.explanation-content :deep(ol) {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.feedback-content :deep(li),
+.correct-answer :deep(li),
+.explanation-content :deep(li) {
+  margin-bottom: 0.3rem;
+}
+
+/* Улучшенное отображение для ответов */
+.correct-answer :deep(p) {
+  color: #2e7d32;
+  margin: 0.5rem 0;
+}
+
+.feedback-content :deep(p) {
+  margin: 0.3rem 0;
+  display: inline;
+}
 .answer-section {
   margin-top: 1.25rem;
 }
