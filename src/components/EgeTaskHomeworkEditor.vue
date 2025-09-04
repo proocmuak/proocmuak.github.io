@@ -83,23 +83,23 @@ export default {
       this.$emit('close')
     },
     openHomeworkSimple() {
-      try {
-        // Формируем URL с параметрами
-        const params = new URLSearchParams({
-          subject: `${this.subject}_ege`,
-          homework_id: this.homeworkId,
-          view_mode: 'student',
-          // Добавляем случайное число чтобы избежать кэширования
-          r: Math.random().toString(36).substring(7)
-        })
-        
-        // Просто переходим на homework.html с параметрами
-        window.location.href = `/homework.html?${params.toString()}`
-        
-      } catch (error) {
-        console.error('Ошибка открытия домашнего задания:', error)
-        alert('Не удалось открыть домашнее задание.')
-      }
+try {
+    const params = new URLSearchParams({
+      subject: `${props.subject}_ege`,
+      homework_id: homework.homework_id,
+      homework_name: homework.homework_name || 'Домашнее задание',
+      lesson_number: homework.lesson_number || lesson.value?.number || '',
+      lesson_name: homework.lesson_name || lesson.value?.title || '',
+      view_mode: 'student'
+    })
+    
+    // Используем относительный путь
+    window.location.href = `homework.html?${params.toString()}`
+    
+  } catch (error) {
+    console.error('Ошибка открытия домашнего задания:', error)
+    alert('Не удалось открыть домашнее задание.')
+  }
     }
   }
 }
