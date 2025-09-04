@@ -3,9 +3,8 @@
     <div class="editor-header">
       <h2>Редактор заданий для домашней работы {{ homeworkName }}</h2>
       <div class="header-actions">
-        <!-- Новая кнопка для просмотра домашней работы -->
         <button 
-          @click="viewHomework"
+          @click="openHomeworkSimple"
           class="view-homework-btn"
           title="Посмотреть домашнюю работу в новой вкладке"
         >
@@ -83,10 +82,24 @@ export default {
     closeEditor() {
       this.$emit('close')
     },
-    viewHomework() {
-      // Генерируем URL для просмотра домашней работы
-      const url = `/Homework.html?subject=${this.subject}_ege&homework_id=${this.homeworkId}&view_mode=tutor`;
-      window.open(url, '_blank');
+    openHomeworkSimple() {
+      try {
+        // Формируем URL с параметрами
+        const params = new URLSearchParams({
+          subject: `${this.subject}_ege`,
+          homework_id: this.homeworkId,
+          view_mode: 'student',
+          // Добавляем случайное число чтобы избежать кэширования
+          r: Math.random().toString(36).substring(7)
+        })
+        
+        // Просто переходим на homework.html с параметрами
+        window.location.href = `/homework.html?${params.toString()}`
+        
+      } catch (error) {
+        console.error('Ошибка открытия домашнего задания:', error)
+        alert('Не удалось открыть домашнее задание.')
+      }
     }
   }
 }

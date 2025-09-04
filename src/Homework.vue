@@ -75,7 +75,7 @@
                   </div>
 
                   <div class="answer-section">
-                    <div v-if="task.points <= 2 && !task.userAnswer && !isViewMode && !isCompleted">
+                    <div v-if="!task.userAnswer && !isViewMode && !isCompleted">
                       <div class="answer-input-container">
                         <input 
                           v-model="task.userAnswerInput" 
@@ -116,9 +116,6 @@
                       <span class="saved-icon">✓</span> Ответ сохранен
                     </div>
                     
-                    <div v-else-if="task.points >= 3" class="correct-answer">
-                      Правильный ответ: {{ task.answer }}
-                    </div>
                   </div>
                 </div>
 
@@ -1046,21 +1043,22 @@ const fetchHomeworkTasks = async () => {
   font-size: clamp(0.9rem, 2vw, 1rem);
 }
 
+/* Улучшенные стили для изображений (перенесены из TaskCard) */
 .task-images {
-  margin-bottom: 1.2rem;
+  margin-bottom: 1.25rem;
   width: 100%;
 }
 
 .image-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 0.8rem;
   margin-top: 0.8rem;
 }
 
 .image-container {
   position: relative;
-  aspect-ratio: 1;
+  padding-top: 100%; /* Создает квадратный контейнер */
   overflow: hidden;
   border-radius: 0.4rem;
   border: 1px solid #eee;
@@ -1069,10 +1067,87 @@ const fetchHomeworkTasks = async () => {
 }
 
 .task-image {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: cover; /* Заполняет контейнер без искажений */
   transition: transform 0.3s ease;
+}
+
+.task-image:hover {
+  transform: scale(1.03); /* Легкий эффект увеличения при наведении */
+}
+
+/* Стили для модального окна (уже есть, но на всякий случай) */
+.image-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 1rem;
+}
+
+.modal-content {
+  position: relative;
+  max-width: 95%;
+  max-height: 95%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-image {
+  max-width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 0.4rem;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+}
+
+.close-modal {
+  position: absolute;
+  top: -1.5rem;
+  right: -1.5rem;
+  background: #b241d1;
+  color: white;
+  border: none;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  z-index: 10001;
+}
+
+.close-modal:hover {
+  background: #9a36b8;
+}
+
+/* Адаптивность для модального окна */
+@media (max-width: 768px) {
+  .close-modal {
+    top: -1rem;
+    right: -1rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 1.2rem;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
 }
 
 .task-image:hover {

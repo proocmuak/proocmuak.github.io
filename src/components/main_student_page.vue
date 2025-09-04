@@ -29,7 +29,7 @@ export default {
       // Проверяем после небольшой задержки, чтобы оба компонента успели загрузиться
       setTimeout(() => {
         this.showNoCoursesMessage = !this.chemistryHasData && !this.biologyHasData;
-      }, 1000);
+      }, 5000);
     }
   }
 }

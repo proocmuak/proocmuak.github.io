@@ -730,24 +730,44 @@ async saveTask() {
 
     if (error) throw error;
 
-    // Используем полученные пропсы вместо жестких значений
     if (data && data.length > 0) {
-      const taskId = data[0].id; // Обратите внимание: вероятно должно быть id, а не task_id
+      const taskId = data[0].id;
       
       const homeworkTableName = this.subject === 'biology' 
         ? 'biology_ege_homework_tasks' 
         : 'chemistry_ege_homework_tasks';
       
+      // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ В ДОМАШНЕЙ РАБОТЕ
+      const { data: existingTasks, error: fetchError } = await supabase
+        .from(homeworkTableName)
+        .select('number')
+        .eq('homework_id', this.homeworkId);
+      
+      if (fetchError) {
+        console.error('Ошибка получения заданий:', fetchError);
+      }
+      
+      // Определяем следующий номер
+      let nextNumber = 1;
+      if (existingTasks && existingTasks.length > 0) {
+        const maxNumber = Math.max(...existingTasks.map(task => task.number || 0));
+        nextNumber = maxNumber + 1;
+      }
+      
+      // Добавляем задание с вычисленным номером
       const { error: homeworkError } = await supabase
         .from(homeworkTableName)
         .insert([{
           task_id: taskId,
           homework_id: this.homeworkId,
-          homework_name: this.homeworkName
+          homework_name: this.homeworkName,
+          number: nextNumber, // Добавляем вычисленный номер
         }]);
 
       if (homeworkError) {
         console.error('Ошибка при добавлении в homework_tasks:', homeworkError);
+      } else {
+        console.log(`Задание добавлено в домашнюю работу под номером ${nextNumber}`);
       }
     }
 

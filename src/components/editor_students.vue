@@ -163,7 +163,7 @@ const fetchTutors = async () => {
 
   tutors.value = data.map(tutor => ({
     value: tutor.first_name,
-    label: `${tutor.first_name} ${tutor.last_name}`
+    label: `${tutor.first_name}`
   }));
 };
 

@@ -151,70 +151,68 @@ export default {
     },
 
     // Загружаем всех студентов куратора один раз
-    async loadAllStudents() {
-      if (!this.tutorFirstName) return;
+async loadAllStudents() {
+  if (!this.tutorFirstName) return;
 
-      this.loading = true;
-      this.error = null;
-      
-      try {
-        // Получаем всех студентов куратора
-        const { data: students, error: studentsError } = await supabase
-          .from('students')
-          .select('*')
-          .eq('tutor', this.tutorFirstName);
+  this.loading = true;
+  this.error = null;
+  
+  try {
+    // Получаем всех студентов куратора (учитываем оба варианта: с пробелом и без)
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select('*')
+      .or(`tutor.eq.${this.tutorFirstName},tutor.eq.${this.tutorFirstName} `);
 
-        if (studentsError) throw studentsError;
+    if (studentsError) throw studentsError;
 
-        if (!students || students.length === 0) {
-          this.allStudents = [];
-          return;
+    if (!students || students.length === 0) {
+      this.allStudents = [];
+      return;
+    }
+
+    // Остальной код остается без изменений...
+    const studentsWithDetails = await Promise.all(
+      students.map(async (student) => {
+        try {
+          const { data: personality, error: personalityError } = await supabase
+            .from('personalities')
+            .select('first_name, last_name, email, phone')
+            .eq('user_id', student.user_id)
+            .single();
+          
+          if (personalityError) {
+            console.error(`Ошибка загрузки данных пользователя ${student.user_id}:`, personalityError);
+            return null;
+          }
+          
+          return {
+            user_id: student.user_id,
+            first_name: personality?.first_name || '',
+            last_name: personality?.last_name || '',
+            email: personality?.email || '',
+            phone: personality?.phone || '',
+            subject1: student.subject1 || '',
+            subject2: student.subject2 || ''
+          };
+        } catch (error) {
+          console.error(`Ошибка обработки студента ${student.user_id}:`, error);
+          return null;
         }
+      })
+    );
 
-        // Получаем детальную информацию о каждом студенте
-        const studentsWithDetails = await Promise.all(
-          students.map(async (student) => {
-            try {
-              // Получаем данные из таблицы personalities
-              const { data: personality, error: personalityError } = await supabase
-                .from('personalities')
-                .select('first_name, last_name, email, phone')
-                .eq('user_id', student.user_id)
-                .single();
-              
-              if (personalityError) {
-                console.error(`Ошибка загрузки данных пользователя ${student.user_id}:`, personalityError);
-                return null;
-              }
-              
-              return {
-                user_id: student.user_id,
-                first_name: personality?.first_name || '',
-                last_name: personality?.last_name || '',
-                email: personality?.email || '',
-                phone: personality?.phone || '',
-                subject1: student.subject1 || '',
-                subject2: student.subject2 || ''
-              };
-            } catch (error) {
-              console.error(`Ошибка обработки студента ${student.user_id}:`, error);
-              return null;
-            }
-          })
-        );
+    this.allStudents = studentsWithDetails.filter(
+      student => student !== null && (student.first_name || student.last_name)
+    );
 
-        // Фильтруем null значения и студентов без имени
-        this.allStudents = studentsWithDetails.filter(
-          student => student !== null && (student.first_name || student.last_name)
-        );
-
-      } catch (error) {
-        console.error('Ошибка загрузки студентов:', error);
-        this.error = 'Не удалось загрузить список учеников';
-      } finally {
-        this.loading = false;
-      }
-    },
+  } catch (error) {
+    console.error('Ошибка загрузки студентов:', error);
+    this.error = 'Не удалось загрузить список учеников';
+  } finally {
+    this.loading = false;
+  }
+},
 
     // Фильтруем студентов по выбранному предмету и загружаем баллы
     async onSubjectChange() {
