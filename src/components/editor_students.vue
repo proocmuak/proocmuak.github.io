@@ -47,7 +47,7 @@
               <td class="subject-column">
                 <CustomDropdown
                   v-model="student.subject1"
-                  :options="subjectOptions"
+                  :options="ChemistryOption"
                   placeholder="Предмет"
                   @change="updateStudent(student)"
                 />
@@ -73,7 +73,7 @@
               <td class="subject-column">
                 <CustomDropdown
                   v-model="student.subject2"
-                  :options="subjectOptions"
+                  :options="BiologyOption"
                   placeholder="Предмет"
                   @change="updateStudent(student)"
                 />
@@ -141,14 +141,16 @@ const tariffOptions = [
 ];
 
 // Опции для предметов
-const subjectOptions = [
+const ChemistryOption = [
   { value: null, label: 'Нет' },
   { value: 'Химия ЕГЭ', label: 'Химия ЕГЭ' },
   { value: 'Химия ОГЭ', label: 'Химия ОГЭ' },
+];
+const BiologyOption = [
+  { value: null, label: 'Нет'  }, 
   { value: 'Биология ЕГЭ', label: 'Биология ЕГЭ' },
   { value: 'Биология ОГЭ', label: 'Биология ОГЭ' }
-];
-
+]
 // Загрузка наставников
 const fetchTutors = async () => {
   const { data, error } = await supabase
