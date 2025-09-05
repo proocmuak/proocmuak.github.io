@@ -5,13 +5,16 @@ import main_tutor_page from './components/main_tutor.vue';
 import { supabase } from './supabase.js'
 import editor_bank_task from './components/editor_bank_task.vue'
 import MyStudents from './components/MyStudents.vue';
+import TutorTaskBank from './TutorTaskBank.vue';
+
 export default{
     components: {
         left_tutor_menu,
         settings,
         main_tutor_page,
         editor_bank_task,
-        MyStudents
+        MyStudents,
+        TutorTaskBank
     },
      data() {
     return {
