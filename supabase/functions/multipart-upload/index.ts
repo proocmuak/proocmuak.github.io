@@ -1,273 +1,164 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { 
-  S3Client, 
+// supabase/functions/s3-upload/index.ts
+// Deno + npm пакеты. Работает в Edge Functions Supabase.
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import {
+  S3Client,
   CreateMultipartUploadCommand,
-  UploadPartCommand,
   CompleteMultipartUploadCommand,
-  AbortMultipartUploadCommand
-} from "npm:@aws-sdk/client-s3"
-import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner"
+  ListPartsCommand,
+  AbortMultipartUploadCommand,
+  UploadPartCommand,
+} from "npm:@aws-sdk/client-s3";
+import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS, GET, PUT, DELETE",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+const ALLOW_ORIGIN =
+  Deno.env.get("CORS_ALLOW_ORIGIN") ?? "*"; // можно перечислять через запятую
+const DEFAULT_BUCKET = Deno.env.get("S3_BUCKET") ?? "";
+if (!DEFAULT_BUCKET) console.warn("WARNING: S3_BUCKET is not set");
+try {
+  const { S3Client } = await import("npm:@aws-sdk/client-s3");
+  const { getSignedUrl } = await import("npm:@aws-sdk/s3-request-presigner");
+  console.log("✅ Все модули успешно загружены");
+} catch (error) {
+  console.error("❌ Ошибка загрузки модулей:", error.message);
+}
+const s3 = new S3Client({
+  region: Deno.env.get("S3_REGION") ?? "ru-7",
+  endpoint: Deno.env.get("S3_ENDPOINT")!, // напр. https://s3.storage.selcloud.ru  (укажи свой)
+  credentials: {
+    accessKeyId: Deno.env.get("S3_ACCESS_KEY")!,
+    secretAccessKey: Deno.env.get("S3_SECRET_KEY")!,
+  },
+  forcePathStyle: (Deno.env.get("S3_PUBLIC_URL") ?? "true") === "true",
+});
+
+function cors(headers: Record<string, string> = {}) {
+  return {
+    "Access-Control-Allow-Origin": ALLOW_ORIGIN,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Max-Age": "86400",
+    "Content-Type": "application/json; charset=utf-8",
+    ...headers,
+  };
 }
 
-// Initialize S3 client
-const s3 = new S3Client({
-  region: Deno.env.get("S3_REGION") || "ru-7",
-  endpoint: Deno.env.get("S3_ENDPOINT") || "https://s3.ru-7.storage.selcloud.ru",
-  forcePathStyle: true,
-  credentials: {
-    accessKeyId: Deno.env.get("S3_ACCESS_KEY") || "",
-    secretAccessKey: Deno.env.get("S3_SECRET_KEY") || "",
-  },
-})
+function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), { status, headers: cors(headers) });
+}
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { 
-      status: 200,
-      headers: corsHeaders
-    })
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors() });
+
+  const url = new URL(req.url);
+  // path после имени функции (s3-upload/...)
+  const route = url.pathname.split("/").slice(2).join("/");
 
   try {
-    // Проверка переменных окружения
-    const requiredEnvVars = ['S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_ENDPOINT', 'S3_BUCKET']
-    for (const envVar of requiredEnvVars) {
-      if (!Deno.env.get(envVar)) {
-        return new Response(
-          JSON.stringify({ error: `Missing environment variable: ${envVar}` }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        )
-      }
-    }
+    if (req.method === "POST" && route === "start") {
+      const { key, contentType, bucket } = await req.json();
+      const Bucket = (bucket || DEFAULT_BUCKET) as string;
+      if (!Bucket || !key) return json({ error: "Missing bucket/key" }, 400);
 
-    // Parse request body
-    let body;
-    try {
-      body = await req.json()
-    } catch (e) {
-      return new Response(
-        JSON.stringify({ error: "Invalid JSON body" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-
-    const { action, fileName, contentType, uploadId, key, partNumber, parts, chunkData } = body
-    
-    if (!action) {
-      return new Response(
-        JSON.stringify({ error: "Action parameter is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-
-    const bucket = Deno.env.get("S3_BUCKET")!
-
-    // 1. Initialize multipart upload
-    if (action === "init") {
-      if (!fileName) {
-        return new Response(
-          JSON.stringify({ error: "fileName required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        )
-      }
-      if (!contentType) {
-        return new Response(
-          JSON.stringify({ error: "contentType required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        )
-      }
-      if (!contentType.startsWith('video/')) {
-        return new Response(
-          JSON.stringify({ error: "Only video files are allowed" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        )
-      }
-
-      const safeFilename = fileName.replace(/[^a-zA-Z0-9.-]/g, '_')
-      const key = `videos/${crypto.randomUUID()}-${safeFilename}`
-
-      const command = new CreateMultipartUploadCommand({
-        Bucket: bucket,
-        Key: key,
-        ContentType: contentType,
-      })
-
-      const { UploadId, Key } = await s3.send(command)
-      const publicUrl = `${Deno.env.get("S3_PUBLIC_URL")}/${Key}`
-
-      return new Response(
-        JSON.stringify({ 
-          uploadId: UploadId, 
-          key: Key,
-          publicUrl: publicUrl
+      const out = await s3.send(
+        new CreateMultipartUploadCommand({
+          Bucket,
+          Key: key,
+          ContentType: contentType || "application/octet-stream",
         }),
-        { 
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      )
+      );
+
+      return json({
+        uploadId: out.UploadId,
+        bucket: Bucket,
+        key,
+      });
     }
 
-    // 2. Generate presigned URL for a part
-    if (action === "part") {
-      if (!uploadId || !key || !partNumber) {
-        return new Response(
-          JSON.stringify({ error: "uploadId, key, and partNumber are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        )
-      }
+    if (req.method === "GET" && route === "sign-part") {
+      const key = url.searchParams.get("key")!;
+      const uploadId = url.searchParams.get("uploadId")!;
+      const partNumber = Number(url.searchParams.get("partNumber"));
+      const bucket = (url.searchParams.get("bucket") || DEFAULT_BUCKET) as string;
 
-      const command = new UploadPartCommand({
+      if (!bucket || !key || !uploadId || !partNumber)
+        return json({ error: "Missing required params" }, 400);
+
+      const cmd = new UploadPartCommand({
         Bucket: bucket,
         Key: key,
         UploadId: uploadId,
         PartNumber: partNumber,
-      })
+        // Body не требуется для пресайна
+      });
 
-      const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 })
-      
-      return new Response(
-        JSON.stringify({ signedUrl }),
-        { 
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      )
+      // срок жизни ссылки, сек (можно уменьшить/увеличить)
+      const signed = await getSignedUrl(s3, cmd, { expiresIn: 60 * 60 });
+      return json({ url: signed });
     }
 
-    // 3. Upload part through proxy (решение CORS проблемы)
-    if (action === "upload-part") {
-      if (!uploadId || !key || !partNumber || !chunkData) {
-        return new Response(
-          JSON.stringify({ error: "uploadId, key, partNumber, and chunkData are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        )
-      }
+    if (req.method === "POST" && route === "complete") {
+      const { key, uploadId, parts, bucket } = await req.json();
+      const Bucket = (bucket || DEFAULT_BUCKET) as string;
 
-      // Get signed URL
-      const command = new UploadPartCommand({
-        Bucket: bucket,
-        Key: key,
-        UploadId: uploadId,
-        PartNumber: partNumber,
-      })
+      if (!Bucket || !key || !uploadId || !Array.isArray(parts) || parts.length === 0)
+        return json({ error: "Invalid payload" }, 400);
 
-      const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 })
+      // сортируем по номеру части
+      parts.sort((a: any, b: any) => a.PartNumber - b.PartNumber);
 
-      // Convert base64 chunk back to binary
-      const chunkBuffer = Uint8Array.from(atob(chunkData), c => c.charCodeAt(0))
-
-      // Upload through Edge Function (обход CORS)
-      const uploadResponse = await fetch(signedUrl, {
-        method: 'PUT',
-        body: chunkBuffer,
-        headers: { 'Content-Type': 'application/octet-stream' }
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.status}`)
-      }
-
-      const etag = uploadResponse.headers.get('ETag')
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          etag: etag
+      const out = await s3.send(
+        new CompleteMultipartUploadCommand({
+          Bucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: { Parts: parts },
         }),
-        { 
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      )
+      );
+
+      return json({
+        ok: true,
+        location: out.Location,
+        etag: out.ETag,
+        bucket: Bucket,
+        key,
+      });
     }
 
-    // 4. Complete multipart upload
-    if (action === "complete") {
-      if (!uploadId || !key || !parts) {
-        return new Response(
-          JSON.stringify({ error: "uploadId, key, and parts are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        )
-      }
+    if (req.method === "GET" && route === "list-parts") {
+      const key = url.searchParams.get("key")!;
+      const uploadId = url.searchParams.get("uploadId")!;
+      const bucket = (url.searchParams.get("bucket") || DEFAULT_BUCKET) as string;
+      if (!bucket || !key || !uploadId) return json({ error: "Missing params" }, 400);
 
-      const validParts = parts.map((part: any) => ({
-        PartNumber: part.PartNumber,
-        ETag: part.ETag?.replace(/"/g, '') || ''
-      }))
+      const out = await s3.send(
+        new ListPartsCommand({ Bucket: bucket, Key: key, UploadId: uploadId }),
+      );
 
-      const command = new CompleteMultipartUploadCommand({
-        Bucket: bucket,
-        Key: key,
-        UploadId: uploadId,
-        MultipartUpload: { Parts: validParts },
-      })
+      const parts = (out.Parts ?? []).map((p) => ({
+        PartNumber: p.PartNumber!,
+        ETag: p.ETag!,
+        Size: p.Size!,
+      }));
 
-      const result = await s3.send(command)
-      const publicUrl = `${Deno.env.get("S3_PUBLIC_URL")}/${key}`
-
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          location: result.Location,
-          key: key,
-          publicUrl: publicUrl
-        }),
-        { 
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      )
+      return json({ parts });
     }
 
-    // 5. Abort multipart upload
-    if (action === "abort") {
-      if (!uploadId || !key) {
-        return new Response(
-          JSON.stringify({ error: "uploadId and key are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        )
-      }
+    if (req.method === "POST" && route === "abort") {
+      const { key, uploadId, bucket } = await req.json();
+      const Bucket = (bucket || DEFAULT_BUCKET) as string;
+      if (!Bucket || !key || !uploadId) return json({ error: "Missing params" }, 400);
 
-      const command = new AbortMultipartUploadCommand({
-        Bucket: bucket,
-        Key: key,
-        UploadId: uploadId,
-      })
-
-      await s3.send(command)
-
-      return new Response(
-        JSON.stringify({ success: true }),
-        { 
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      )
+      await s3.send(
+        new AbortMultipartUploadCommand({ Bucket, Key: key, UploadId: uploadId }),
+      );
+      return json({ ok: true });
     }
 
-    return new Response(
-      JSON.stringify({ error: "Invalid action. Use: init, part, upload-part, complete, or abort" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
-
-  } catch (err) {
-    console.error("Edge function error:", err)
-    return new Response(
-      JSON.stringify({ 
-        error: err.message,
-        details: err.toString() 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      }
-    )
+    return json({ error: "Not found" }, 404);
+  } catch (e) {
+    console.error(e);
+    return json({ error: String(e?.message ?? e) }, 500);
   }
-})  
+});

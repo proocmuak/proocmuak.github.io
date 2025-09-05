@@ -15,23 +15,29 @@
         <h2>Урок {{ lesson.number }}</h2>
         <h3>{{ lesson.title }} ({{ formattedDate }})</h3>
         
-        <div v-if="lesson.video" class="video-section" @contextmenu.prevent="showProtectionMessage">
-          <video
-            :key="videoPlayerKey"
-            ref="videoRef"
-            class="video-js vjs-big-play-centered vjs-custom-skin"
-            controls
-            preload="auto"
-            controlslist="nodownload noremoteplayback"
-            disablepictureinpicture
-            @contextmenu.prevent="handleVideoContextMenu"
-          >
-            <source :src="lesson.video" type="video/mp4">
-          </video>
-          
-          <!-- Сообщение о защите -->
-          <div v-if="showMessage" class="protection-message">
-            Скачивание видео запрещено
+        <!-- Все видео отображаются последовательно -->
+        <div v-if="allVideos.length > 0" class="videos-container">
+          <div v-for="(video, index) in allVideos" :key="index" class="video-item">
+            <h4 class="video-title">Видео {{ index + 1 }}</h4>
+            <div class="video-wrapper" @contextmenu.prevent="showProtectionMessage">
+              <video
+                :ref="el => { videoRefs[index] = el }"
+                class="video-player"
+                controls
+                preload="auto"
+                controlslist="nodownload noremoteplayback"
+                disablepictureinpicture
+                @contextmenu.prevent="handleVideoContextMenu"
+              >
+                <source :src="video" :type="getVideoType(video)">
+                Ваш браузер не поддерживает видео тег.
+              </video>
+              
+              <!-- Сообщение о защите -->
+              <div v-if="showMessage" class="protection-message">
+                Скачивание видео запрещено
+              </div>
+            </div>
           </div>
         </div>
         
@@ -39,27 +45,41 @@
         <div v-if="hasMaterials" class="materials-section">
           <h4>Материалы урока:</h4>
           
-          <!-- Рабочая тетрадь -->
-          <div v-if="lesson.workbook" class="material-item">
-            <div class="material-icon">📘</div>
-            <div class="material-info">
-              <h5>Рабочая тетрадь</h5>
-              <a :href="lesson.workbook" target="_blank" class="download-button">
-                Скачать рабочую тетрадь
-              </a>
-              <span class="file-size" v-if="fileSizes.workbook">{{ fileSizes.workbook }}</span>
+          <!-- Рабочие тетради -->
+          <div v-if="workbooks.length > 0" class="material-category">
+            <h5 class="category-title">
+              <span class="category-icon">📘</span>
+              Рабочие тетради
+            </h5>
+            <div class="files-list">
+              <div v-for="(file, index) in workbooks" :key="index" class="file-item">
+                <div class="file-info">
+                  <span class="file-name">Тетрадь {{ index + 1 }}</span>
+                  <span class="file-size" v-if="fileSizes.workbooks[index]">{{ fileSizes.workbooks[index] }}</span>
+                </div>
+                <a :href="file" target="_blank" class="download-button">
+                  Скачать
+                </a>
+              </div>
             </div>
           </div>
           
-          <!-- Практика -->
-          <div v-if="lesson.practice" class="material-item">
-            <div class="material-icon">📝</div>
-            <div class="material-info">
-              <h5>Практика к занятию</h5>
-              <a :href="lesson.practice" target="_blank" class="download-button">
-                Скачать практику
-              </a>
-              <span class="file-size" v-if="fileSizes.practice">{{ fileSizes.practice }}</span>
+          <!-- Практические задания -->
+          <div v-if="practices.length > 0" class="material-category">
+            <h5 class="category-title">
+              <span class="category-icon">📝</span>
+              Практические задания
+            </h5>
+            <div class="files-list">
+              <div v-for="(file, index) in practices" :key="index" class="file-item">
+                <div class="file-info">
+                  <span class="file-name">Задание {{ index + 1 }}</span>
+                  <span class="file-size" v-if="fileSizes.practices[index]">{{ fileSizes.practices[index] }}</span>
+                </div>
+                <a :href="file" target="_blank" class="download-button">
+                  Скачать
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -78,10 +98,12 @@
           </div>
         </div>
         
-        <div v-else-if="lesson.homework" class="homework-section">
+        <div v-else-if="hasHomework" class="homework-section">
           <h4>Домашнее задание:</h4>
           <div class="homework-content">
-            <p class="homework-text">{{ lesson.homework }}</p>
+            <div v-for="(hw, index) in homeworkArray" :key="index" class="homework-item">
+              <p class="homework-text">{{ hw }}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -92,8 +114,6 @@
 <script setup>
 import { ref, onMounted, watch, computed, onUnmounted, nextTick } from 'vue'
 import { supabase } from '../supabase.js'
-import videojs from 'video.js'
-import 'video.js/dist/video-js.css'
 
 const props = defineProps({
   subject: {
@@ -114,47 +134,48 @@ const lesson = ref(null)
 const homeworkData = ref(null)
 const loading = ref(false)
 const error = ref(null)
-const videoRef = ref(null)
-const videoPlayerKey = ref(0)
+const videoRefs = ref([]) // Массив ссылок на видео элементы
 const showMessage = ref(false)
 const fileSizes = ref({
-  workbook: null,
-  practice: null
+  workbooks: [],
+  practices: []
 })
 const user = ref(null)
 const isAuthenticated = ref(false)
 
-let player = null
 let messageTimer = null
 
-// Настройки video.js с поддержкой скорости воспроизведения
-const playerOptions = {
-  autoplay: false,
-  controls: true,
-  responsive: true,
-  fluid: true,
-  playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
-  html5: {
-    vhs: {
-      overrideNative: true
-    },
-    nativeAudioTracks: false,
-    nativeVideoTracks: false
-  },
-  userActions: {
-    hotkeys: function(event) {
-      // Блокировка горячих клавиш для скачивания
-      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-        event.preventDefault()
-        showProtectionMessage()
-        return false
-      }
-      return true
-    }
-  }
-}
+// Компьютеды для работы с массивами
+const allVideos = computed(() => {
+  if (!lesson.value?.video || !Array.isArray(lesson.value.video)) return []
+  return lesson.value.video.map(url => fixVideoUrl(url)).filter(url => url)
+})
 
-// Проверка аутентификации пользователя
+const workbooks = computed(() => {
+  if (!lesson.value?.workbook || !Array.isArray(lesson.value.workbook)) return []
+  return lesson.value.workbook
+})
+
+const practices = computed(() => {
+  if (!lesson.value?.practice || !Array.isArray(lesson.value.practice)) return []
+  return lesson.value.practice
+})
+
+const homeworkArray = computed(() => {
+  if (!lesson.value?.homework) return []
+  if (Array.isArray(lesson.value.homework)) return lesson.value.homework
+  return [lesson.value.homework]
+})
+
+const hasHomework = computed(() => {
+  return homeworkArray.value.length > 0
+})
+
+const hasMaterials = computed(() => {
+  return workbooks.value.length > 0 || practices.value.length > 0
+})
+
+// Проверка аутентификации
 const checkAuth = async () => {
   try {
     const { data: { session } } = await supabase.auth.getSession()
@@ -163,7 +184,6 @@ const checkAuth = async () => {
       isAuthenticated.value = true
       return true
     } else {
-      // Не перенаправляем автоматически, показываем сообщение
       isAuthenticated.value = false
       return false
     }
@@ -180,35 +200,6 @@ const redirectToLogin = () => {
 
 const handleBack = () => emit('back-to-calendar')
 
-// Функция для получения access token
-const getAccessToken = async () => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
-  } catch (error) {
-    console.error('Ошибка получения токена:', error)
-    return ''
-  }
-}
-
-// Открытие домашнего задания с проверкой авторизации
-// const openHomework = async (homework) => {
-//   try {
-//     const token = await getAccessToken()
-//     const params = new URLSearchParams({
-//       subject: `${props.subject}_ege`,
-//       homework_id: homework.homework_id,
-//       view_mode: 'student',
-//       access_token: token
-//     })
-    
-//     const url = `/Homework.html?${params.toString()}`
-//     window.open(url, '_blank')
-//   } catch (error) {
-//     console.error('Ошибка открытия домашнего задания:', error)
-//     alert('Не удалось открыть домашнее задание. Пожалуйста, войдите в систему.')
-//   }
-// }
 const openHomeworkSimple = (homework) => {
   try {
     const params = new URLSearchParams({
@@ -220,20 +211,13 @@ const openHomeworkSimple = (homework) => {
       view_mode: 'student'
     })
     
-    // Используем относительный путь
     window.location.href = `homework.html?${params.toString()}`
-    
   } catch (error) {
     console.error('Ошибка открытия домашнего задания:', error)
     alert('Не удалось открыть домашнее задание.')
   }
 }
-// Проверка наличия материалов
-const hasMaterials = computed(() => {
-  return lesson.value?.workbook || lesson.value?.practice
-})
 
-// Форматирование дедлайна
 const formatDeadline = (deadline) => {
   if (!deadline) return ''
   try {
@@ -248,10 +232,57 @@ const formatDeadline = (deadline) => {
   }
 }
 
-// Получение размера файла
-const getFileSize = async (url) => {
+const fixVideoUrl = (url) => {
   if (!url) return null
   
+  // Если URL уже полный (с http/https), возвращаем как есть
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+  
+  // Если это просто ключ из storage, формируем CDN URL
+  if (url.startsWith('uploads/') || !url.includes('/')) {
+    return `https://dff707dc-2d18-472b-b99a-ed9d861c7a4b.selcdn.net/${url}`
+  }
+  
+  // Если URL начинается с double slash, добавляем https:
+  if (url.startsWith('//')) {
+    return `https:${url}`
+  }
+  
+  return url
+}
+
+const getVideoType = (url) => {
+  if (!url) return 'video/mp4'
+  const extension = url.split('.').pop().toLowerCase()
+  switch(extension) {
+    case 'mp4': return 'video/mp4'
+    case 'webm': return 'video/webm'
+    case 'ogg': return 'video/ogg'
+    default: return 'video/mp4'
+  }
+}
+
+// Получение размеров файлов
+const getFileSizes = async () => {
+  fileSizes.value = { workbooks: [], practices: [] }
+  
+  // Размеры рабочих тетрадей
+  for (const file of workbooks.value) {
+    const size = await getFileSize(file)
+    fileSizes.value.workbooks.push(size)
+  }
+  
+  // Размеры практических заданий
+  for (const file of practices.value) {
+    const size = await getFileSize(file)
+    fileSizes.value.practices.push(size)
+  }
+}
+
+const getFileSize = async (url) => {
+  if (!url) return null
   try {
     const response = await fetch(url, { method: 'HEAD' })
     if (response.ok) {
@@ -267,7 +298,6 @@ const getFileSize = async (url) => {
   }
 }
 
-// Форматирование размера файла
 const formatFileSize = (bytes) => {
   if (!bytes) return ''
   const sizes = ['Б', 'КБ', 'МБ', 'ГБ']
@@ -275,20 +305,14 @@ const formatFileSize = (bytes) => {
   return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
 }
 
-// Показ сообщения о защите
 const showProtectionMessage = () => {
   showMessage.value = true
-  
-  if (messageTimer) {
-    clearTimeout(messageTimer)
-  }
-  
+  if (messageTimer) clearTimeout(messageTimer)
   messageTimer = setTimeout(() => {
     showMessage.value = false
   }, 2000)
 }
 
-// Обработчик контекстного меню для видео
 const handleVideoContextMenu = (e) => {
   const videoElement = e.target
   const rect = videoElement.getBoundingClientRect()
@@ -300,75 +324,29 @@ const handleVideoContextMenu = (e) => {
   }
 }
 
-// Блокировка горячих клавиш и правого клика
 const setupVideoProtection = () => {
-  const videoElement = videoRef.value
-  
-  if (!videoElement) return
-  
-  videoElement.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+  videoRefs.value.forEach(videoElement => {
+    if (!videoElement) return
+    
+    videoElement.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        showProtectionMessage()
+      }
+    })
+    
+    videoElement.addEventListener('dragstart', (e) => {
       e.preventDefault()
-      showProtectionMessage()
-    }
-  })
-  
-  videoElement.addEventListener('dragstart', (e) => {
-    e.preventDefault()
-  })
-  
-  videoElement.addEventListener('click', (e) => {
-    if (e.ctrlKey || e.metaKey || e.shiftKey) {
-      e.preventDefault()
-    }
+    })
   })
 }
 
-// Инициализация video.js плеера
-const initVideoPlayer = () => {
-  if (videoRef.value && lesson.value?.video) {
-    if (player) {
-      player.dispose()
-      player = null
-    }
-    
-    player = videojs(videoRef.value, playerOptions, function() {
-      console.log('Video.js player is ready')
-      setupVideoProtection()
-      
-      this.ready(() => {
-        const videoEl = this.el()
-        videoEl.classList.add('vjs-protected')
-        
-        const playbackRateMenu = this.controlBar.getChild('PlaybackRateMenuButton')
-        if (playbackRateMenu) {
-          playbackRateMenu.removeClass('vjs-hidden')
-          playbackRateMenu.show()
-        }
-      })
-    })
-    
-    player.on('loadstart', () => {
-      setupVideoProtection()
-    })
-  }
-}
-
-// Очищаем плеер при размонтировании компонента
 onUnmounted(() => {
-  if (player) {
-    player.dispose()
-    player = null
-  }
-  
-  if (messageTimer) {
-    clearTimeout(messageTimer)
-  }
+  if (messageTimer) clearTimeout(messageTimer)
 })
 
 async function fetchLesson() {
   try {
-    // Проверяем аутентификацию перед загрузкой данных
     const authCheck = await checkAuth()
     if (!authCheck) {
       loading.value = false
@@ -378,10 +356,9 @@ async function fetchLesson() {
     loading.value = true
     error.value = null
     lesson.value = null
-    fileSizes.value = { workbook: null, practice: null }
+    homeworkData.value = null
     
     const tableName = `${props.subject}_ege`
-    console.log(`Загрузка урока ${props.lessonNumber} из таблицы ${tableName}`)
     
     const { data, error: supabaseError } = await supabase
       .from(tableName)
@@ -390,43 +367,43 @@ async function fetchLesson() {
       .single()
 
     if (supabaseError) {
-      // Если ошибка доступа, проверяем аутентификацию
-      if (supabaseError.code === 'PGRST301' || supabaseError.message.includes('auth')) {
+      if (supabaseError.code === 'PGRST116') {
+        console.log('Урок не найден, это нормально')
+        lesson.value = null
+      } else if (supabaseError.code === 'PGRST301' || supabaseError.message.includes('auth')) {
         await checkAuth()
+        throw supabaseError
+      } else {
+        throw supabaseError
       }
-      throw supabaseError
+    } else {
+      lesson.value = {
+        ...data,
+        video: convertToArray(data.video),
+        workbook: convertToArray(data.workbook),
+        practice: convertToArray(data.practice),
+        homework: convertToArray(data.homework)
+      }
+      
+      await getFileSizes()
+      
+      nextTick(() => {
+        setupVideoProtection()
+      })
     }
-    
-    if (!data) throw new Error('Урок не найден')
-    
-    lesson.value = data
-    console.log('Урок загружен:', data)
-    
-    // Получаем размеры файлов
-    if (data.workbook) {
-      fileSizes.value.workbook = await getFileSize(data.workbook)
-    }
-    if (data.practice) {
-      fileSizes.value.practice = await getFileSize(data.practice)
-    }
-    
-    videoPlayerKey.value++
-    
-    nextTick(() => {
-      initVideoPlayer()
-    })
     
     try {
-      await fetchHomework(data.title)
+      await fetchHomework(data?.title)
     } catch (homeworkErr) {
-      console.log('Таблица домашних заданий не доступна:', homeworkErr.message)
+      console.log('Таблица домашних заданий не доступна или пуста:', homeworkErr.message)
       homeworkData.value = null
     }
-  } catch (err) {
-    error.value = err.message
-    console.error('Ошибка загрузки урока:', err)
     
-    // Если ошибка аутентификации, показываем сообщение
+  } catch (err) {
+    if (err.code !== 'PGRST116') {
+      error.value = err.message
+      console.error('Ошибка загрузки урока:', err)
+    }
     if (err.message.includes('auth') || err.message.includes('401')) {
       isAuthenticated.value = false
     }
@@ -435,16 +412,37 @@ async function fetchLesson() {
   }
 }
 
+const convertToArray = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) return value.filter(item => item != null && item !== '')
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) {
+        return parsed.filter(item => item != null && item !== '')
+      }
+      return value.trim() ? [value] : []
+    } catch {
+      return value.trim() ? [value] : []
+    }
+  }
+  return []
+}
+
 async function fetchHomework(lessonName) {
+  if (!lessonName) {
+    homeworkData.value = null
+    return
+  }
+  
   try {
-    console.log(`Поиск домашнего задания для урока: ${lessonName}`)
-    
     const homeworkTable = `${props.subject}_ege_homework_list`
     
     const { data, error: homeworkError } = await supabase
       .from(homeworkTable)
       .select('homework_id, homework_name, lesson_number, lesson_name, deadline')
       .eq('lesson_name', lessonName)
+      .maybeSingle()
 
     if (homeworkError) {
       console.log('Ошибка загрузки домашнего задания:', homeworkError.message)
@@ -452,23 +450,16 @@ async function fetchHomework(lessonName) {
       return
     }
     
-    if (data && data.length > 0) {
-      homeworkData.value = data[0]
-      console.log('Домашнее задание найдено:', data[0])
-    } else {
-      console.log('Домашнее задание не найдено для урока:', lessonName)
-      homeworkData.value = null
-    }
+    homeworkData.value = data || null
+    
   } catch (err) {
-    console.error('Ошибка загрузки домашнего задания:', err)
+    console.log('Не удалось загрузить домашнее задание:', err.message)
     homeworkData.value = null
   }
 }
 
-// Слушатель изменения состояния аутентификации
 onMounted(() => {
   supabase.auth.onAuthStateChange((event, session) => {
-    console.log('Auth state changed:', event)
     if (event === 'SIGNED_OUT') {
       user.value = null
       isAuthenticated.value = false
@@ -479,7 +470,6 @@ onMounted(() => {
     }
   })
   
-  // Первоначальная проверка аутентификации
   checkAuth().then(authenticated => {
     if (authenticated) {
       fetchLesson()
@@ -516,11 +506,45 @@ const formattedDate = computed(() => {
   gap: 20px;
 }
 
-.video-section {
+/* Контейнер для всех видео */
+.videos-container {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  margin-bottom: 20px;
+}
+
+.video-item {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #e9ecef;
+}
+
+.video-title {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
+.video-wrapper {
   position: relative;
   width: 100%;
-  height: 25vw;
-  min-height: 300px;
+  height: 0;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  overflow: hidden;
+  border-radius: 8px;
+  background: #000;
+}
+
+.video-player {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .protection-message {
@@ -537,7 +561,7 @@ const formattedDate = computed(() => {
   pointer-events: none;
 }
 
-/* Стили для секции материалов */
+/* Остальные стили остаются без изменений */
 .materials-section {
   background-color: #f8f9fa;
   padding: 20px;
@@ -545,50 +569,6 @@ const formattedDate = computed(() => {
   border-left: 4px solid #4CAF50;
 }
 
-.materials-section h4 {
-  margin: 0 0 15px 0;
-  color: #2c3e50;
-  font-size: 1.2em;
-}
-
-.material-item {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 15px;
-  padding: 15px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.material-item:last-child {
-  margin-bottom: 0;
-}
-
-.material-icon {
-  font-size: 24px;
-  margin-right: 15px;
-  flex-shrink: 0;
-}
-
-.material-info {
-  flex-grow: 1;
-}
-
-.material-info h5 {
-  margin: 0 0 8px 0;
-  color: #34495e;
-  font-size: 1.1em;
-}
-
-.file-size {
-  display: block;
-  margin-top: 5px;
-  font-size: 0.9em;
-  color: #7f8c8d;
-}
-
-/* Стили для домашнего задания */
 .homework-section {
   background-color: #fff3e0;
   padding: 20px;
@@ -596,105 +576,18 @@ const formattedDate = computed(() => {
   border-left: 4px solid #ff9800;
 }
 
-.homework-section h4 {
-  margin: 0 0 15px 0;
-  color: #e65100;
-  font-size: 1.2em;
-}
-
-.homework-content {
-  background: white;
-  padding: 15px;
-  border-radius: 6px;
-}
-
-.homework-title {
-  font-weight: 600;
-  color: #34495e;
-  margin: 0 0 10px 0;
-}
-
-.homework-text {
-  margin: 0;
-  color: #34495e;
-  line-height: 1.5;
-}
-
-.homework-button {
-  margin-top: 10px;
-  cursor: pointer;
-  border: none;
-}
-
-.deadline {
-  margin-top: 10px;
-  padding: 8px;
-  background-color: #fff8e1;
-  border-radius: 4px;
-  color: #f57c00;
-  font-size: 0.9em;
-  border-left: 3px solid #ffb300;
-}
-
-/* Кастомные стили для video.js */
-.vjs-custom-skin {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.vjs-protected .video-js) {
-  user-select: none !important;
-  -webkit-user-select: none !important;
-  -moz-user-select: none !important;
-  -ms-user-select: none !important;
-  -webkit-user-drag: none !important;
-  -khtml-user-drag: none !important;
-  -moz-user-drag: none !important;
-  -o-user-drag: none !important;
-}
-
-:deep(.vjs-protected video) {
-  pointer-events: none !important;
-}
-
-:deep(.vjs-protected .vjs-control-bar),
-:deep(.vjs-protected .vjs-big-play-button) {
-  pointer-events: auto !important;
-}
-
-:deep(.video-js) {
-  width: 100%;
-  height: 100%;
-}
-
-:deep(.vjs-big-play-button) {
-  background-color: rgba(178, 65, 209, 0.8);
-  border: none;
-  border-radius: 50%;
-}
-
-:deep(.vjs-big-play-button:hover) {
-  background-color: rgba(178, 65, 209, 1);
-}
-
 .download-button {
   display: inline-block;
-  padding: 10px 20px;
+  padding: 8px 16px;
   background-color: #b241d1;
   color: white;
   border-radius: 6px;
   text-decoration: none;
-  margin-top: 8px;
   font-size: 0.9em;
   transition: background-color 0.3s ease;
   cursor: pointer;
   border: none;
-  font-family: inherit;
-}
-
-.download-button:hover {
-  background-color: #9a36b3;
-  color: white;
+  white-space: nowrap;
 }
 
 .back-button {
@@ -706,7 +599,6 @@ const formattedDate = computed(() => {
   margin-bottom: 20px;
   color: #fff;
   transition: all 0.3s ease;
-  font-family: Evolventa;
 }
 
 .back-button:hover {
@@ -738,10 +630,29 @@ const formattedDate = computed(() => {
   border-radius: 6px;
   cursor: pointer;
   margin-top: 15px;
-  font-family: Evolventa;
 }
 
 .login-button:hover {
   background-color: #9a36b3;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .lesson-container {
+    width: 95%;
+    padding: 10px;
+  }
+  
+  .videos-container {
+    gap: 20px;
+  }
+  
+  .video-item {
+    padding: 15px;
+  }
+  
+  .video-title {
+    font-size: 1.1em;
+  }
 }
 </style>
