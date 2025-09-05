@@ -143,11 +143,13 @@ const tariffOptions = [
 // Опции для предметов
 const ChemistryOption = [
   { value: null, label: 'Нет' },
+  
   { value: 'Химия ЕГЭ', label: 'Химия ЕГЭ' },
   { value: 'Химия ОГЭ', label: 'Химия ОГЭ' },
 ];
 const BiologyOption = [
   { value: null, label: 'Нет'  }, 
+  {value:'Нет',label:null},
   { value: 'Биология ЕГЭ', label: 'Биология ЕГЭ' },
   { value: 'Биология ОГЭ', label: 'Биология ОГЭ' }
 ]
