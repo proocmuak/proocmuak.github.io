@@ -415,43 +415,57 @@ const getTaskTextWithoutTables = (task) => {
     }
 
     // Завершение домашнего задания
-    const completeHomework = async () => {
-      try {
-        error.value = null;
+// Завершение домашнего задания
+const completeHomework = async () => {
+  try {
+    error.value = null;
+    
+    // Пересчитываем общий балл перед завершением
+    updateTotalScore();
 
-        // Проверяем и сохраняем все ответы с определением правильности
-        for (const task of tasks.value) {
-          if (task.userAnswer) {
-            await saveTaskProgress(task, true);
-          }
-        }
-
-        // Сохраняем завершение домашнего задания
-        const { error: completionError } = await supabase
-          .from(`${subject.value}_homework_completed`)
-          .upsert({
-            homework_id: homeworkId.value,
-            user_id: user_id.value,
-            is_completed: true,
-            score: totalScore.value,
-            completed_at: new Date().toISOString()
-          }, {
-            onConflict: 'user_id,homework_id'
-          });
-
-        if (completionError) throw completionError;
-
-        isCompleted.value = true;
-        showAnswers.value = true;
-        
-        alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value);
-
-      } catch (err) {
-        error.value = err.message;
-        console.error('Ошибка завершения домашнего задания:', err);
-        alert('Ошибка: ' + err.message);
+    // Проверяем и сохраняем все ответы с определением правильности
+    for (const task of tasks.value) {
+      if (task.userAnswer) {
+        await saveTaskProgress(task, true);
       }
     }
+
+    // Обновляем общий балл после проверки всех заданий
+    updateTotalScore();
+
+    // Сохраняем завершение домашнего задания
+    const completionData = {
+      homework_id: parseInt(homeworkId.value), // Убедимся, что это число
+      user_id: user_id.value,
+      is_completed: true,
+      score: totalScore.value,
+      completed_at: new Date().toISOString()
+    };
+
+    console.log('Отправляемые данные:', completionData);
+
+    const { error: completionError } = await supabase
+      .from(`${subject.value}_homework_completed`)
+      .upsert(completionData, {
+        onConflict: 'user_id,homework_id'
+      });
+
+    if (completionError) {
+      console.error('Ошибка Supabase:', completionError);
+      throw new Error(completionError.message);
+    }
+
+    isCompleted.value = true;
+    showAnswers.value = true;
+    
+    alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value);
+
+  } catch (err) {
+    error.value = err.message;
+    console.error('Полная ошибка завершения домашнего задания:', err);
+    alert('Ошибка: ' + err.message);
+  }
+}
 
     // Загрузка заданий домашнего задания
 const fetchHomeworkTasks = async () => {

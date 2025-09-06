@@ -24,7 +24,7 @@
                 :ref="el => { videoRefs[index] = el }"
                 class="video-player"
                 controls
-                preload="auto"
+                preload="metadata"
                 controlslist="nodownload noremoteplayback"
                 disablepictureinpicture
                 @contextmenu.prevent="handleVideoContextMenu"
