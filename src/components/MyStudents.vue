@@ -6,7 +6,6 @@
         ← Назад к списку учеников
       </button>
     </div>
-
     <div v-else>
       <div class="header">
         <h2>Мои ученики</h2>
@@ -280,8 +279,8 @@ async loadAllStudents() {
 
     // Получаем тип экзамена (ЕГЭ/ОГЭ) для API
     getExamType(subjectName) {
-      if (subjectName.includes('ЕГЭ')) return 'ЕГЭ';
-      if (subjectName.includes('ОГЭ')) return 'ОГЭ';
+      if (subjectName.includes('ЕГЭ')) return 'ege';
+      if (subjectName.includes('ОГЭ')) return 'oge';
       return '';
     },
 

@@ -54,11 +54,10 @@
           
           <div class="homework-actions">
             <button 
-              v-if="hw.is_completed" 
-              @click="viewHomeworkDetails(hw)"
+              @click="openHomeworkSimple(hw)"
               class="view-btn"
             >
-              Посмотреть детали
+              {{ hw.is_completed ? 'Посмотреть детали' : 'Открыть задание' }}
             </button>
             <button 
               v-if="hw.is_completed && hw.completionPercentage < 60" 
@@ -69,9 +68,6 @@
               <span v-if="hw.sendingRevision">Отправка...</span>
               <span v-else>Отправить на переделывание</span>
             </button>
-            <button v-if="!hw.is_completed" class="not-completed-btn" disabled>
-              Ожидает выполнения
-            </button>
           </div>
         </div>
       </div>
@@ -79,23 +75,6 @@
 
     <div v-if="!loading && homework.length === 0" class="no-data">
       Нет домашних работ для отображения
-    </div>
-
-    <!-- Модальное окно для просмотра домашней работы -->
-    <div v-if="selectedHomework" class="modal-overlay" @click.self="closeModal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Домашняя работа: {{ selectedHomework.homework_name }}</h3>
-          <button @click="closeModal" class="close-btn">×</button>
-        </div>
-        <div class="modal-body">
-          <iframe 
-            :src="getHomeworkViewUrl(selectedHomework)" 
-            class="homework-iframe"
-            frameborder="0"
-          ></iframe>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -113,283 +92,132 @@ export default {
     subject: {
       type: String,
       required: true
+    },
+    examType: {
+      type: String,
+      default: 'ЕГЭ'
     }
   },
   data() {
     return {
       homework: [],
       loading: false,
-      error: null,
-      selectedHomework: null
+      error: null
     }
   },
   async mounted() {
     await this.loadHomework();
   },
   methods: {
-async loadHomework() {
-  this.loading = true;
-  this.error = null;
-  
-  try {
-    const homeworkTable = `${this.subject}_ege_homework_completed`;
-    const homeworkListTable = `${this.subject}_ege_homework_list`;
-    const progressTable = `${this.subject}_ege_progress`;
-    const homeworkTasksTable = `${this.subject}_ege_homework_tasks`;
-    const taskBankTable = `${this.subject}_ege_task_bank`;
-
-    // Получаем список всех домашних работ
-    const { data: homeworkList, error: listError } = await supabase
-      .from(homeworkListTable)
-      .select('*')
-      .order('lesson_number', { ascending: true });
-
-    if (listError) throw listError;
-
-    // Получаем статусы завершения домашних работ
-    const { data: completedHomework, error: completedError } = await supabase
-      .from(homeworkTable)
-      .select('homework_id, is_completed, score, completed_at')
-      .eq('user_id', this.student.user_id);
-
-    if (completedError) throw completedError;
-
-    // Получаем ВСЕ выполненные задания студента
-    const { data: allCompletedTasks, error: progressError } = await supabase
-      .from(progressTable)
-      .select('task_id, score, user_answer, is_completed')
-      .eq('user_id', this.student.user_id);
-
-    if (progressError) throw progressError;
-
-    // Для каждой домашней работы получаем задания и их максимальные баллы
-    const homeworkDetails = {};
-    
-    for (const homework of homeworkList) {
-      // Получаем задания для этой домашней работы
-      const { data: homeworkTasks, error: tasksError } = await supabase
-        .from(homeworkTasksTable)
-        .select('task_id, number')
-        .eq('homework_id', homework.homework_id);
-
-      if (tasksError) throw tasksError;
-
-      if (homeworkTasks && homeworkTasks.length > 0) {
-        const taskIds = homeworkTasks.map(task => task.task_id);
-        
-        // Получаем максимальные баллы для заданий
-        const { data: tasksData, error: taskBankError } = await supabase
-          .from(taskBankTable)
-          .select('id, points')
-          .in('id', taskIds);
-
-        if (taskBankError) throw taskBankError;
-
-        // Считаем максимальный балл для домашней работы
-        const maxScore = tasksData.reduce((sum, task) => sum + (task.points || 0), 0);
-        
-        homeworkDetails[homework.homework_id] = {
-          maxScore,
-          taskIds,
-          tasks: tasksData
-        };
-      } else {
-        homeworkDetails[homework.homework_id] = {
-          maxScore: homework.max_score || 0,
-          taskIds: [],
-          tasks: []
-        };
-      }
-    }
-
-    // Группируем выполненные задания по homework_id
-    const tasksByHomework = {};
-    if (allCompletedTasks && allCompletedTasks.length > 0) {
-      // Сначала получаем mapping task_id -> homework_id
-      const taskIds = allCompletedTasks.map(task => task.task_id);
+    async loadHomework() {
+      this.loading = true;
+      this.error = null;
       
-      const { data: taskHomeworkMapping, error: mappingError } = await supabase
-        .from(homeworkTasksTable)
-        .select('task_id, homework_id')
-        .in('task_id', taskIds);
+      try {
+        const homeworkTable = `${this.subject}_${this.examType.toLowerCase()}_homework_completed`;
+        const homeworkListTable = `${this.subject}_${this.examType.toLowerCase()}_homework_list`;
+        const progressTable = `${this.subject}_${this.examType.toLowerCase()}_progress`;
+        const homeworkTasksTable = `${this.subject}_${this.examType.toLowerCase()}_homework_tasks`;
+        const taskBankTable = `${this.subject}_${this.examType.toLowerCase()}_task_bank`;
 
-      if (mappingError) throw mappingError;
+        // Получаем список всех домашних работ
+        const { data: homeworkList, error: listError } = await supabase
+          .from(homeworkListTable)
+          .select('*')
+          .order('lesson_number', { ascending: true });
 
-      // Группируем задачи по homework_id
-      if (taskHomeworkMapping) {
-        taskHomeworkMapping.forEach(mapping => {
-          const task = allCompletedTasks.find(t => t.task_id === mapping.task_id);
-          if (task) {
-            if (!tasksByHomework[mapping.homework_id]) {
-              tasksByHomework[mapping.homework_id] = {
-                total_score: 0,
-                task_count: 0,
-                tasks: []
-              };
-            }
-            tasksByHomework[mapping.homework_id].total_score += task.score || 0;
-            tasksByHomework[mapping.homework_id].task_count += 1;
-            tasksByHomework[mapping.homework_id].tasks.push(task);
-          }
+        if (listError) throw listError;
+
+        // Получаем статусы завершения домашних работ
+        const { data: completedHomework, error: completedError } = await supabase
+          .from(homeworkTable)
+          .select('homework_id, is_completed, score, completed_at')
+          .eq('user_id', this.student.user_id);
+
+        if (completedError) throw completedError;
+
+        // Создаем полный список домашних работ
+        this.homework = homeworkList.map(homeworkItem => {
+          const completionData = completedHomework?.find(hw => hw.homework_id === homeworkItem.homework_id);
+          const isCompleted = completionData?.is_completed || false;
+          
+          const totalScore = completionData?.score || 0;
+          const maxScore = homeworkItem.max_score || 1;
+          const completionPercentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+
+          return {
+            homework_id: homeworkItem.homework_id,
+            homework_name: homeworkItem.homework_name,
+            lesson_number: homeworkItem.lesson_number,
+            lesson_name: homeworkItem.lesson_name,
+            max_score: maxScore,
+            is_completed: isCompleted,
+            total_score: totalScore,
+            last_completed_at: completionData?.completed_at,
+            completionPercentage: completionPercentage,
+            sendingRevision: false
+          };
         });
+
+      } catch (error) {
+        console.error('Ошибка загрузки домашних работ:', error);
+        this.error = 'Не удалось загрузить домашние работы';
+      } finally {
+        this.loading = false;
       }
-    }
-
-    // Создаем полный список домашних работ
-    this.homework = homeworkList.map(homeworkItem => {
-      const completionData = completedHomework?.find(hw => hw.homework_id === homeworkItem.homework_id);
-      const tasksData = tasksByHomework[homeworkItem.homework_id];
-      const homeworkDetail = homeworkDetails[homeworkItem.homework_id];
-      
-      const isCompleted = completionData?.is_completed || false;
-      
-      let totalScore = 0;
-      let completionPercentage = 0;
-      const maxScore = homeworkDetail?.maxScore || homeworkItem.max_score || 0;
-
-      if (isCompleted && completionData) {
-        // Если работа завершена, используем score из homework_completed
-        totalScore = completionData.score || 0;
-        completionPercentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-      } else if (tasksData) {
-        // Если работа не завершена, но есть выполненные задания
-        totalScore = tasksData.total_score;
-        completionPercentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-      }
-
-      return {
-        homework_id: homeworkItem.homework_id,
-        homework_name: homeworkItem.homework_name,
-        lesson_number: homeworkItem.lesson_number,
-        lesson_name: homeworkItem.lesson_name,
-        max_score: maxScore, // Используем рассчитанный maxScore
-        is_completed: isCompleted,
-        total_score: totalScore,
-        completed_tasks: tasksData?.task_count || 0,
-        total_tasks: homeworkDetail?.taskIds?.length || 0,
-        last_completed_at: completionData?.completed_at,
-        completionPercentage: completionPercentage,
-        sendingRevision: false
-      };
-    });
-
-  } catch (error) {
-    console.error('Ошибка загрузки домашних работ:', error);
-    this.error = 'Не удалось загрузить домашние работы';
-  } finally {
-    this.loading = false;
-  }
-},
-
-// Добавьте этот метод для отладки
-async debugHomeworkCalculation(homeworkId) {
-  try {
-    const homeworkTasksTable = `${this.subject}_ege_homework_tasks`;
-    const taskBankTable = `${this.subject}_ege_task_bank`;
-
-    // Получаем задания домашней работы
-    const { data: homeworkTasks, error: tasksError } = await supabase
-      .from(homeworkTasksTable)
-      .select('task_id')
-      .eq('homework_id', homeworkId);
-
-    if (tasksError) throw tasksError;
-
-    if (homeworkTasks && homeworkTasks.length > 0) {
-      const taskIds = homeworkTasks.map(task => task.task_id);
-      
-      // Получаем баллы заданий
-      const { data: tasksData, error: taskBankError } = await supabase
-        .from(taskBankTable)
-        .select('id, points')
-        .in('id', taskIds);
-
-      if (taskBankError) throw taskBankError;
-
-      const maxScore = tasksData.reduce((sum, task) => sum + (task.points || 0), 0);
-      console.log('Debug - Homework ID:', homeworkId);
-      console.log('Debug - Task IDs:', taskIds);
-      console.log('Debug - Tasks data:', tasksData);
-      console.log('Debug - Calculated max score:', maxScore);
-
-      return maxScore;
-    }
-
-    return 0;
-  } catch (error) {
-    console.error('Debug error:', error);
-    return 0;
-  }
-},
-
-// Добавьте этот метод для расчета максимального возможного балла
-calculateMaxPossibleScore(homeworkId, homeworkList) {
-  const homework = homeworkList.find(hw => hw.homework_id === homeworkId);
-  return homework?.max_score || 1;
-},
-
-// Обновите метод sendForRevision
-async sendForRevision(homework) {
-  if (!confirm(`Отправить "${homework.homework_name}" на переделывание?`)) return;
-
-  homework.sendingRevision = true;
-
-  try {
-    // Удаляем запись о завершении домашней работы
-    const homeworkTable = `${this.subject}_ege_homework_completed`;
-    const { error: deleteError } = await supabase
-      .from(homeworkTable)
-      .delete()
-      .eq('user_id', this.student.user_id)
-      .eq('homework_id', homework.homework_id);
-
-    if (deleteError) throw deleteError;
-
-    // Удаляем прогресс по заданиям этой домашней работы
-    const progressTable = `${this.subject}_ege_progress`;
-    
-    // Сначала получаем task_id для этой домашней работы
-    const { data: homeworkTasks, error: tasksError } = await supabase
-      .from(`${this.subject}_ege_homework_tasks`)
-      .select('task_id')
-      .eq('homework_id', homework.homework_id);
-
-    if (tasksError) throw tasksError;
-
-    if (homeworkTasks && homeworkTasks.length > 0) {
-      const taskIds = homeworkTasks.map(task => task.task_id);
-      const { error: progressError } = await supabase
-        .from(progressTable)
-        .delete()
-        .eq('user_id', this.student.user_id)
-        .in('task_id', taskIds);
-
-      if (progressError) throw progressError;
-    }
-
-    await this.loadHomework();
-    
-    alert('Работа успешно отправлена на переделывание');
-
-  } catch (error) {
-    console.error('Ошибка отправки на переделывание:', error);
-    alert('Не удалось отправить работу: ' + error.message);
-  } finally {
-    homework.sendingRevision = false;
-  }
-},
-
-    getHomeworkViewUrl(homework) {
-      // Генерируем URL для просмотра домашней работы
-      return `/Homework.html?subject=${this.subject}_ege&homework_id=${homework.homework_id}&view_mode=tutor&student_id=${this.student.user_id}`;
     },
 
-    viewHomeworkDetails(homework) {
-      this.selectedHomework = homework;
+    // Адаптированная функция для открытия домашнего задания
+    openHomeworkSimple(homework) {
+      try {
+        const subjectKey = this.subject;
+        const examTypeKey = this.examType.toLowerCase();
+        
+        const params = new URLSearchParams({
+          subject: `${subjectKey}_${examTypeKey}`,
+          homework_id: homework.homework_id,
+          homework_name: homework.homework_name || 'Домашнее задание',
+          lesson_number: homework.lesson_number || '',
+          lesson_name: homework.lesson_name || '',
+          view_mode: 'tutor',
+          student_id: this.student.user_id
+        });
+        
+        // Открываем в новом окне/вкладке вместо перенаправления
+        window.open(`/homework.html?${params.toString()}`, '_blank');
+        
+      } catch (error) {
+        console.error('Ошибка открытия домашнего задания:', error);
+        alert('Не удалось открыть домашнее задание.');
+      }
     },
 
-    closeModal() {
-      this.selectedHomework = null;
+    async sendForRevision(homework) {
+      if (!confirm(`Отправить "${homework.homework_name}" на переделывание?`)) return;
+
+      homework.sendingRevision = true;
+
+      try {
+        // Удаляем запись о завершении домашней работы
+        const homeworkTable = `${this.subject}_${this.examType.toLowerCase()}_homework_completed`;
+        const { error: deleteError } = await supabase
+          .from(homeworkTable)
+          .delete()
+          .eq('user_id', this.student.user_id)
+          .eq('homework_id', homework.homework_id);
+
+        if (deleteError) throw deleteError;
+
+        await this.loadHomework();
+        
+        alert('Работа успешно отправлена на переделывание');
+
+      } catch (error) {
+        console.error('Ошибка отправки на переделывание:', error);
+        alert('Не удалось отправить работу: ' + error.message);
+      } finally {
+        homework.sendingRevision = false;
+      }
     },
 
     formatDate(dateString) {
@@ -423,45 +251,6 @@ async sendForRevision(homework) {
 
 <style scoped>
 /* Стили остаются без изменений */
-.revision-btn {
-  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  margin-left: 10px;
-}
-
-.revision-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-}
-
-.revision-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.homework-card.low-score {
-  border-left-color: #dc3545;
-  background-color: #fff5f5;
-}
-
-.completion-percentage {
-  font-size: 12px;
-  color: #6b7280;
-  margin-left: 5px;
-}
-
-.homework-card.low-score .completion-percentage {
-  color: #dc3545;
-  font-weight: 600;
-}
-
 .homework-container {
   padding: 20px;
 }
@@ -534,6 +323,11 @@ async sendForRevision(homework) {
   border-left-color: #6c757d;
 }
 
+.homework-card.low-score {
+  border-left-color: #dc3545;
+  background-color: #fff5f5;
+}
+
 .homework-header {
   display: flex;
   justify-content: space-between;
@@ -583,6 +377,17 @@ async sendForRevision(homework) {
   font-size: 15px;
 }
 
+.completion-percentage {
+  font-size: 12px;
+  color: #6b7280;
+  margin-left: 5px;
+}
+
+.homework-card.low-score .completion-percentage {
+  color: #dc3545;
+  font-weight: 600;
+}
+
 .homework-actions {
   display: flex;
   justify-content: flex-end;
@@ -607,14 +412,25 @@ async sendForRevision(homework) {
   box-shadow: 0 4px 12px rgba(178, 65, 209, 0.3);
 }
 
-.not-completed-btn {
-  background-color: #f3f4f6;
-  color: #6c757d;
+.revision-btn {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  color: white;
   border: none;
   padding: 10px 20px;
   border-radius: 8px;
+  cursor: pointer;
   font-size: 14px;
   font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.revision-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.revision-btn:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
@@ -686,70 +502,7 @@ async sendForRevision(homework) {
   }
   
   .revision-btn {
-    margin-left: 0;
     margin-top: 10px;
   }
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 12px;
-  width: 90%;
-  height: 90%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
-}
-
-.modal-header h3 {
-  margin: 0;
-  color: #333;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #6c757d;
-  padding: 5px;
-}
-
-.close-btn:hover {
-  color: #333;
-}
-
-.modal-body {
-  flex: 1;
-  padding: 0;
-}
-
-.homework-iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
 }
 </style>
