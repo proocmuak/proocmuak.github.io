@@ -317,28 +317,7 @@ const getTaskTextWithoutTables = (task) => {
   const textWithoutTables = task.has_table ? task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : task.text;
   return formatTextWithParagraphs(textWithoutTables);
 }
-    // Проверка частичного совпадения
-    const checkPartialMatch = (userAnswer, correctAnswer) => {
-      if (userAnswer === correctAnswer) return false
-      
-      if (/^\d+$/.test(userAnswer)) {
-        if (userAnswer.length !== correctAnswer.length) return false
-        
-        let diffCount = 0
-        for (let i = 0; i < userAnswer.length; i++) {
-          if (userAnswer[i] !== correctAnswer[i]) {
-            diffCount++
-            if (diffCount > 1) return false
-          }
-        }
-        return diffCount === 1
-      }
-      
-      const correctParts = correctAnswer.split(/[,;]/).map(part => part.trim())
-      const userParts = userAnswer.split(/[,;]/).map(part => part.trim())
-      
-      return userParts.some(part => correctParts.includes(part))
-    }
+
 
     // Сохранение ответа
     const saveAnswer = async (task) => {
@@ -365,54 +344,159 @@ const getTaskTextWithoutTables = (task) => {
     }
 
     // Сохранение прогресса выполнения задания
-    const saveTaskProgress = async (task, checkCorrectness = false) => {
-      if (!user_id.value) return;
+// ================== УТИЛИТЫ ==================
 
-      let score = 0;
-      let is_completed = false;
+// Проверка: строка состоит из цифр/разделителей
+function isDigitSequence(s) {
+  return typeof s === 'string' && /^[0-9\s,;]+$/.test(s.trim());
+}
 
-      if (checkCorrectness) {
-        const correctAnswer = task.answer.toString().trim();
-        const isCorrect = task.userAnswer === correctAnswer;
-        let isPartiallyCorrect = false;
-        
-        if (task.points === 2 && !isCorrect) {
-          isPartiallyCorrect = checkPartialMatch(task.userAnswer, correctAnswer);
+// Разбиваем числовую строку на элементы
+function splitNumericElements(s) {
+  s = String(s || '').trim();
+  if (!s) return [];
+  // Если есть разделители (пробел, запятая и т.п.) — это могут быть многозначные числа
+  if (/[^0-9]/.test(s)) {
+    const tokens = s.split(/[^0-9]+/).filter(Boolean);
+    if (tokens.length > 0) return tokens;
+  }
+  // Иначе — строка из цифр без разделителей ("345" -> ["3","4","5"])
+  return s.split('');
+}
+
+function freqMap(arr) {
+  const m = new Map();
+  for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
+  return m;
+}
+
+/**
+ * Частичная проверка для числовых ответов по правилам ЕГЭ
+ */
+function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
+  if (userAnswer == null || correctAnswer == null) return false;
+
+  if (!isDigitSequence(String(userAnswer)) || !isDigitSequence(String(correctAnswer))) {
+    return false;
+  }
+
+  const correctElems = splitNumericElements(correctAnswer);
+  const userElems = splitNumericElements(userAnswer);
+
+  // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
+  if (!options.allowExtra && userElems.length > correctElems.length) return false;
+
+  const fc = freqMap(correctElems);
+  const fu = freqMap(userElems);
+
+  let matched = 0;
+  for (const [k, cnt] of fc.entries()) {
+    if (fu.has(k)) matched += Math.min(cnt, fu.get(k));
+  }
+
+  const mistakes = correctElems.length - matched;
+
+  if (mistakes === 0) return true;                     // полный ответ
+  if (maxPoints === 2 && mistakes === 1) return true;  // 1 ошибка → частично верно
+  return false;
+}
+
+// ================== ТЕКСТОВЫЕ ОТВЕТЫ ==================
+
+function normalizeText(str) {
+  return String(str || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function splitVariants(correctAnswer) {
+  return correctAnswer
+    .split(/\/|или/i) // разделители: "/" или "или"
+    .map(v => normalizeText(v))
+    .filter(Boolean);
+}
+
+function checkTextAnswer(userAnswer, correctAnswer) {
+  if (!userAnswer || !correctAnswer) return false;
+  const normalizedUser = normalizeText(userAnswer);
+  const variants = splitVariants(correctAnswer);
+  return variants.includes(normalizedUser);
+}
+
+// ================== ГЛАВНАЯ ФУНКЦИЯ ==================
+
+const saveTaskProgress = async (task, checkCorrectness = false) => {
+  if (!user_id.value) return;
+
+  let score = 0;
+  let is_completed = false;
+
+  if (checkCorrectness) {
+    const correctRaw = String(task.answer || '').trim();
+    const userRaw = String(task.userAnswer || '').trim();
+
+    const numericCheck = isDigitSequence(correctRaw) && isDigitSequence(userRaw);
+
+    let isCorrect = false;
+    let isPartiallyCorrect = false;
+
+    if (numericCheck) {
+      // ===== ЧИСЛОВЫЕ ОТВЕТЫ =====
+      const normalizeForEquality = (s) => {
+        if (isDigitSequence(s)) {
+          return splitNumericElements(s).join('');
         }
+        return s.trim().toLowerCase();
+      };
 
-        score = isCorrect ? task.points 
-                : isPartiallyCorrect ? 1 
-                : 0;
-        
-        is_completed = isCorrect || isPartiallyCorrect;
-        
-        task.isCorrect = isCorrect;
-        task.isPartiallyCorrect = isPartiallyCorrect;
-        task.awardedPoints = score;
+      const normalizedCorrect = normalizeForEquality(correctRaw);
+      const normalizedUser = normalizeForEquality(userRaw);
+
+      isCorrect = normalizedUser === normalizedCorrect;
+
+      if (!isCorrect && task.points === 2) {
+        isPartiallyCorrect = checkPartialMatch(userRaw, correctRaw, task.points);
       }
 
-      try {
-        const progressTable = `${subject.value}_progress`;
-        const { error } = await supabase
-          .from(progressTable)
-          .upsert({
-            user_id: user_id.value,
-            task_id: task.task_id,
-            is_completed: is_completed,
-            score: score,
-            user_answer: task.userAnswer,
-            last_updated: new Date().toISOString()
-          }, {
-            onConflict: 'user_id,task_id'
-          });
-
-        if (error) throw error;
-
-      } catch (err) {
-        console.error('Ошибка сохранения прогресса:', err);
-        throw err;
-      }
+    } else {
+      // ===== ТЕКСТОВЫЕ ОТВЕТЫ =====
+      isCorrect = checkTextAnswer(userRaw, correctRaw);
     }
+
+    score = isCorrect ? task.points
+          : isPartiallyCorrect ? 1
+          : 0;
+
+    is_completed = isCorrect || isPartiallyCorrect;
+
+    task.isCorrect = isCorrect;
+    task.isPartiallyCorrect = isPartiallyCorrect;
+    task.awardedPoints = score;
+  }
+
+  try {
+    const progressTable = `${subject.value}_progress`;
+    const { error } = await supabase
+      .from(progressTable)
+      .upsert({
+        user_id: user_id.value,
+        task_id: task.task_id,
+        is_completed: is_completed,
+        score: score,
+        user_answer: task.userAnswer,
+        last_updated: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,task_id'
+      });
+
+    if (error) throw error;
+
+  } catch (err) {
+    console.error('Ошибка сохранения прогресса:', err);
+    throw err;
+  }
+};
 
     // Завершение домашнего задания
 // Завершение домашнего задания
