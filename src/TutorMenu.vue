@@ -6,6 +6,7 @@ import { supabase } from './supabase.js'
 import editor_bank_task from './components/editor_bank_task.vue'
 import MyStudents from './components/MyStudents.vue';
 import TutorTaskBank from './TutorTaskBank.vue';
+import TutorNotification from './components/TutorNotification.vue'
 
 export default{
     components: {
@@ -14,7 +15,8 @@ export default{
         main_tutor_page,
         editor_bank_task,
         MyStudents,
-        TutorTaskBank
+        TutorTaskBank,
+        TutorNotification
     },
      data() {
     return {
