@@ -157,11 +157,11 @@ async loadAllStudents() {
   this.error = null;
   
   try {
-    // Получаем всех студентов куратора (учитываем оба варианта: с пробелом и без)
+    // ИСПРАВЛЕННЫЙ ЗАПРОС - используем ilike для поиска без учета регистра
     const { data: students, error: studentsError } = await supabase
       .from('students')
       .select('*')
-      .or(`tutor.eq.${this.tutorFirstName},tutor.eq.${this.tutorFirstName} `);
+      .ilike('tutor', `%${this.tutorFirstName}%`);
 
     if (studentsError) throw studentsError;
 
@@ -170,7 +170,7 @@ async loadAllStudents() {
       return;
     }
 
-    // Остальной код остается без изменений...
+    // Остальной код без изменений...
     const studentsWithDetails = await Promise.all(
       students.map(async (student) => {
         try {
