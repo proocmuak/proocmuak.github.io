@@ -1,6 +1,9 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { supabase } from './supabase.js'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 // Состояния формы
 const isLoginForm = ref(true)
@@ -8,238 +11,12 @@ const email = ref('')
 const password = ref('')
 const errorMessage = ref('')
 const successMessage = ref('')
-const telegramVerificationCode = ref('')
-const showTelegramVerification = ref(false)
-const telegramUsername = ref('')
-const isTelegramAuthAvailable = ref(false)
 
-// Проверяем доступность Telegram Web App API при загрузке
-onMounted(() => {
-  if (window.Telegram?.WebApp) {
-    isTelegramAuthAvailable.value = true
-    initTelegramAuth()
-  }
-})
-
-// Инициализация Telegram авторизации
-const initTelegramAuth = () => {
-  const tg = window.Telegram.WebApp
-  tg.expand()
-  tg.enableClosingConfirmation()
-  
-  // Получаем данные пользователя Telegram
-  const user = tg.initDataUnsafe?.user
-  if (user) {
-    telegramUsername.value = user.username
-    handleTelegramAuth(user)
-  }
-}
-
-// Обработка авторизации через Telegram
-const handleTelegramAuth = async (tgUser) => {
-  try {
-    const { username } = tgUser
-    
-    // Проверяем, есть ли пользователь в базе
-    const { data: existingUser, error: checkError } = await supabase
-      .from('personalities')
-      .select('*')
-      .eq('telegram', username)
-      .maybeSingle()
-
-    if (checkError) throw checkError
-
-    if (existingUser) {
-      // Пользователь существует - входим
-      await completeTelegramLogin(existingUser)
-    } else {
-      // Новый пользователь - показываем форму регистрации
-      showTelegramVerification.value = true
-      email.value = `${username}@telegram.com`
-      await generateVerificationCode(username)
-    }
-  } catch (error) {
-    errorMessage.value = 'Ошибка авторизации через Telegram'
-    console.error('Telegram auth error:', error)
-  }
-}
-
-// Генерация кода верификации
-const generateVerificationCode = async (username) => {
-  try {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase()
-    
-    // Сохраняем код в базе
-    const { error } = await supabase
-      .from('telegram_verification')
-      .upsert({
-        telegram_username: username,
-        verification_code: code,
-        expires_at: new Date(Date.now() + 15 * 60 * 1000)
-      })
-
-    if (error) throw error
-
-    successMessage.value = 'Код верификации отправлен в Telegram!'
-    errorMessage.value = ''
-  } catch (error) {
-    errorMessage.value = 'Ошибка генерации кода'
-    console.error('Code generation error:', error)
-  }
-}
-
-// Завершение входа через Telegram
-const completeTelegramLogin = async (userData) => {
-  try {
-    // Устанавливаем сессию или перенаправляем
-    localStorage.setItem('userEmail', userData.email)
-    localStorage.setItem('telegramAuth', 'true')
-    
-    // Перенаправляем в зависимости от роли
-    switch (userData.role) {
-      case 'tutor':
-        window.location.href = '/tutor_menu.html'
-        break
-      case 'teacher':
-        window.location.href = '/teacher_menu.html'
-        break
-      default:
-        window.location.href = '/student_menu.html'
-        break
-    }
-  } catch (error) {
-    errorMessage.value = 'Ошибка входа'
-    console.error('Login error:', error)
-  }
-}
-
-// Проверка кода верификации
-const verifyTelegramCode = async () => {
-  try {
-    if (!telegramVerificationCode.value || telegramVerificationCode.value.length !== 6) {
-      errorMessage.value = 'Введите 6-значный код'
-      return false
-    }
-
-    const { data: verification, error } = await supabase
-      .from('telegram_verification')
-      .select('*')
-      .eq('telegram_username', telegramUsername.value)
-      .eq('verification_code', telegramVerificationCode.value.toUpperCase())
-      .gt('expires_at', new Date())
-      .single()
-
-    if (error || !verification) {
-      errorMessage.value = 'Неверный или просроченный код'
-      return false
-    }
-
-    return true
-  } catch (error) {
-    errorMessage.value = 'Ошибка верификации'
-    console.error('Verification error:', error)
-    return false
-  }
-}
-
-// Создание пользователя с Telegram
-const createUserWithTelegram = async () => {
-  try {
-    // Создаем auth запись
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email.value,
-      password: Math.random().toString(36) + Math.random().toString(36)
-    })
-
-    if (authError) throw authError
-
-    // Создаем запись в personalities
-    const { error: profileError } = await supabase
-      .from('personalities')
-      .insert({
-        email: email.value,
-        telegram: telegramUsername.value,
-        role: 'student',
-        user_id: authData.user.id,
-        is_telegram_verified: true
-      })
-
-    if (profileError) {
-      // Если пользователь уже существует, пытаемся обновить
-      const { error: updateError } = await supabase
-        .from('personalities')
-        .update({
-          telegram: telegramUsername.value,
-          is_telegram_verified: true
-        })
-        .eq('email', email.value)
-
-      if (updateError) throw updateError
-    }
-
-    successMessage.value = 'Аккаунт успешно создан! Перенаправление...'
-    errorMessage.value = ''
-    
-    setTimeout(() => {
-      window.location.href = '/student_menu.html'
-    }, 2000)
-
-  } catch (error) {
-    errorMessage.value = 'Ошибка создания аккаунта'
-    console.error('Create user error:', error)
-  }
-}
-
-// Обычная регистрация
-const handleSignUp = async () => {
-  try {
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email.value,
-      password: password.value
-    })
-    
-    if (authError) {
-      if (authError.message.includes('Email logins are disabled')) {
-        errorMessage.value = 'Регистрация по email временно недоступна. Пожалуйста, используйте другой метод входа.'
-      } else {
-        throw authError
-      }
-      return
-    }
-    
-    // Добавляем пользователя в таблицу personalities
-    if (authData.user) {
-      const { data: existingData, error: checkError } = await supabase
-        .from('personalities')
-        .select('user_id')
-        .eq('email', email.value)
-        .maybeSingle()
-      
-      if (checkError) throw checkError
-      
-      if (!existingData) {
-        const { error: insertError } = await supabase
-          .from('personalities')
-          .insert([
-            {
-              email: email.value,
-              role: 'student',
-              user_id: authData.user.id
-            }
-          ])
-        
-        if (insertError) throw insertError
-      }
-    }
-    
-    successMessage.value = 'Проверьте вашу почту для подтверждения!'
-    errorMessage.value = ''
-    email.value = ''
-    password.value = ''
-  } catch (error) {
-    errorMessage.value = error.message
-    console.error('Ошибка регистрации:', error)
-  }
+// Переключение между формами
+const toggleForm = () => {
+  isLoginForm.value = !isLoginForm.value
+  errorMessage.value = ''
+  successMessage.value = ''
 }
 
 // Обработка входа
@@ -251,6 +28,7 @@ const handleLogin = async () => {
     })
     
     if (authError) {
+      // Проверяем конкретную ошибку о disabled email logins
       if (authError.message.includes('Email logins are disabled')) {
         errorMessage.value = 'Вход по email временно недоступен. Пожалуйста, используйте другой метод входа.'
       } else {
@@ -261,17 +39,22 @@ const handleLogin = async () => {
     
     localStorage.setItem('userEmail', email.value)
     
-    // Проверяем существование записи
+    // Проверяем существование записи перед вставкой
     const { data: existingData, error: checkError } = await supabase
       .from('personalities')
       .select('user_id, role')
       .eq('email', email.value)
       .maybeSingle()
     
-    if (checkError) throw checkError
+    if (checkError) {
+      console.error('Ошибка при проверке профиля:', checkError)
+      throw checkError
+    }
     
     // Если записи нет, создаем ее
     if (!existingData) {
+      console.log('Создаем новую запись в personalities для пользователя:', email.value)
+      
       const { error: insertError } = await supabase
         .from('personalities')
         .insert([
@@ -282,8 +65,12 @@ const handleLogin = async () => {
           }
         ])
       
-      if (insertError) console.error('Ошибка при создании профиля:', insertError)
+      if (insertError) {
+        console.error('Ошибка при создании профиля:', insertError)
+        // Не прерываем вход, просто логируем ошибку
+      }
       
+      // Перенаправляем как студента
       window.location.href = '/student_menu.html'
       return
     }
@@ -310,35 +97,78 @@ const handleLogin = async () => {
   }
 }
 
-// Регистрация с Telegram
-const handleSignUpWithTelegram = async () => {
-  if (showTelegramVerification.value) {
-    const isValid = await verifyTelegramCode()
-    if (isValid) {
-      await createUserWithTelegram()
+// Обработка регистрации
+const handleSignUp = async () => {
+  try {
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: email.value,
+      password: password.value
+    })
+    
+    if (authError) {
+      // Проверяем конкретную ошибку о disabled email logins
+      if (authError.message.includes('Email logins are disabled')) {
+        errorMessage.value = 'Регистрация по email временно недоступен. Пожалуйста, используйте другой метод входа.'
+      } else {
+        throw authError
+      }
+      return
     }
-  } else {
-    await handleSignUp()
+    
+    // Добавляем пользователя в таблицу personalities
+    if (authData.user) {
+      // Сначала проверяем, существует ли уже запись
+      const { data: existingData, error: checkError } = await supabase
+        .from('personalities')
+        .select('user_id')
+        .eq('email', email.value)
+        .maybeSingle()
+      
+      if (checkError) {
+        console.error('Ошибка при проверке существующей записи:', checkError)
+        throw checkError
+      }
+      
+      // Если записи нет, тогда вставляем
+      if (!existingData) {
+        const { error: insertError } = await supabase
+          .from('personalities')
+          .insert([
+            {
+              email: email.value,
+              role: 'student',
+              user_id: authData.user.id
+            }
+          ])
+        
+        if (insertError) {
+          console.error('Ошибка при создании профиля:', insertError)
+          // Если это ошибка дублирования ключа, обрабатываем особо
+          if (insertError.code === '23505') {
+            errorMessage.value = 'Профиль с таким email уже существует. Попробуйте войти в систему.'
+          } else {
+            throw insertError
+          }
+        }
+      } else {
+        console.log('Профиль уже существует для email:', email.value)
+        successMessage.value = 'Аккаунт уже существует. Проверьте вашу почту для подтверждения!'
+      }
+    }
+    
+    successMessage.value = 'Проверьте вашу почту для подтверждения!'
+    email.value = ''
+    password.value = ''
+  } catch (error) {
+    errorMessage.value = error.message
+    console.error('Ошибка регистрации:', error)
   }
-}
-
-// Переключение между формами
-const toggleForm = () => {
-  isLoginForm.value = !isLoginForm.value
-  errorMessage.value = ''
-  successMessage.value = ''
-  showTelegramVerification.value = false
-  telegramVerificationCode.value = ''
 }
 
 // Вход через Telegram
-const handleTelegramLogin = () => {
-  if (isTelegramAuthAvailable.value) {
-    window.Telegram.WebApp.openTelegramLink('https://t.me/schoolpurtobot?start=web_auth')
-  } else {
-    // Fallback для десктопов
-    window.open('https://t.me/schoolpurtobot?start=web_auth', '_blank')
-  }
+const handleTelegramLogin = async () => {
+  // Здесь будет реализация OAuth через Telegram
+  alert('Функция входа через Telegram будет реализована позже')
 }
 </script>
 
@@ -389,29 +219,13 @@ const handleTelegramLogin = () => {
           type="text" 
           id="email_or_phone" 
           placeholder="E-mail"
-          :disabled="showTelegramVerification"
         >
         <input 
           v-model="password"
           type="password" 
           id="password" 
           placeholder="Пароль"
-          v-if="!showTelegramVerification"
         >
-        
-        <!-- Поле для кода верификации Telegram -->
-        <div v-if="showTelegramVerification" class="telegram-verification">
-          <input
-            v-model="telegramVerificationCode"
-            type="text"
-            placeholder="Введите код из Telegram"
-            maxlength="6"
-            class="verification-input"
-          >
-          <div class="verification-hint" v-if="telegramUsername">
-            Код отправлен в Telegram @{{ telegramUsername }}
-          </div>
-        </div>
       </div>
       
       <div v-if="errorMessage" class="error-message">
@@ -426,12 +240,11 @@ const handleTelegramLogin = () => {
         <div 
           class="enter_button" 
           :class="{ 'register-button': !isLoginForm }"
-          @click="isLoginForm ? handleLogin() : handleSignUpWithTelegram()"
+          @click="isLoginForm ? handleLogin() : handleSignUp()"
         >
-          {{ isLoginForm ? 'Войти' : 
-             showTelegramVerification ? 'Подтвердить' : 'Зарегистрироваться' }}
+          {{ isLoginForm ? 'Войти' : 'Зарегистрироваться' }}
         </div>
-        <div class="forget_password" v-if="isLoginForm && !showTelegramVerification">
+        <div class="forget_password" v-if="isLoginForm">
           Забыли пароль?
         </div>
       </div>
@@ -828,52 +641,5 @@ gap: 20%;
   background-color: #9a36b5;
   transform: scale(1.05);
   transition: all 0.2s ease;
-}
-
-/* Стили для Telegram верификации */
-.telegram-verification {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.verification-input {
-  border: 0.15vh solid #b241d1;
-  padding: 10px;
-  font-family: Evolventa;
-  text-align: center;
-  letter-spacing: 2px;
-  font-size: 18px;
-  text-transform: uppercase;
-}
-
-.verification-hint {
-  font-size: 12px;
-  color: #666;
-  text-align: center;
-}
-
-.verification-input:focus {
-  outline: none;
-  border: 0.2vh solid #b241d1;
-}
-
-/* Адаптивность для мобильных */
-@media (max-width: 767px) {
-  .centerpart_for_enter {
-    width: 90%;
-    height: auto;
-    padding: 5%;
-  }
-  
-  .enter_or_forget_password {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  
-  .verification-input {
-    font-size: 16px;
-    padding: 8px;
-  }
 }
 </style>
