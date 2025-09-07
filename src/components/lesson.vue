@@ -1,12 +1,12 @@
 <template>
   <div class="lesson-container">
     <button @click="handleBack" class="back-button">Вернуться к календарю</button>
-
+    
     <div v-if="!isAuthenticated" class="auth-message">
       <p>Пожалуйста, войдите в систему для просмотра уроков</p>
       <button @click="redirectToLogin" class="login-button">Войти</button>
     </div>
-
+    
     <div v-else>
       <div v-if="loading">Загрузка...</div>
       <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
@@ -14,29 +14,34 @@
       <div v-else class="lesson_info">
         <h2>Урок {{ lesson.number }}</h2>
         <h3>{{ lesson.title }} ({{ formattedDate }})</h3>
-
-        <!-- VK Видео через iframe -->
-        <div v-if="vkVideos.length" class="videos-container">
-          <div v-for="(video, index) in vkVideos" :key="index" class="video-item">
+        
+        <!-- Все видео отображаются последовательно -->
+        <div v-if="allVideos.length > 0" class="videos-container">
+          <div v-for="(videoHtml, index) in allVideos" :key="index" class="video-item">
             <h4 class="video-title">Видео {{ index + 1 }}</h4>
-            <div class="video-wrapper">
-              <iframe
-                :src="`https://vk.com/video${video.owner_id}_${video.video_id}`"
-                width="100%" height="100%"
-                frameborder="0"
-                allowfullscreen
-              ></iframe>
+            <div class="video-wrapper" @contextmenu.prevent="showProtectionMessage">
+              <div class="iframe-container">
+                <div v-html="processIframeHtml(videoHtml)" class="iframe-content"></div>
+              </div>
+              
+              <!-- Сообщение о защите -->
+              <div v-if="showMessage" class="protection-message">
+                Скачивание видео запрещено
+              </div>
             </div>
           </div>
         </div>
-
-        <!-- Материалы -->
+        
+        <!-- Остальной код без изменений -->
+        <!-- Секция рабочих материалов -->
         <div v-if="hasMaterials" class="materials-section">
           <h4>Материалы урока:</h4>
-
-          <div v-if="workbooks.length" class="material-category">
+          
+          <!-- Рабочие тетради -->
+          <div v-if="workbooks.length > 0" class="material-category">
             <h5 class="category-title">
-              <span class="category-icon">📘</span> Рабочие тетради
+              <span class="category-icon">📘</span>
+              Рабочие тетради
             </h5>
             <div class="files-list">
               <div v-for="(file, index) in workbooks" :key="index" class="file-item">
@@ -44,14 +49,18 @@
                   <span class="file-name">Тетрадь {{ index + 1 }}</span>
                   <span class="file-size" v-if="fileSizes.workbooks[index]">{{ fileSizes.workbooks[index] }}</span>
                 </div>
-                <a :href="file" target="_blank" class="download-button">Скачать</a>
+                <a :href="file" target="_blank" class="download-button">
+                  Скачать
+                </a>
               </div>
             </div>
           </div>
-
-          <div v-if="practices.length" class="material-category">
+          
+          <!-- Практические задания -->
+          <div v-if="practices.length > 0" class="material-category">
             <h5 class="category-title">
-              <span class="category-icon">📝</span> Практические задания
+              <span class="category-icon">📝</span>
+              Практические задания
             </h5>
             <div class="files-list">
               <div v-for="(file, index) in practices" :key="index" class="file-item">
@@ -59,12 +68,14 @@
                   <span class="file-name">Задание {{ index + 1 }}</span>
                   <span class="file-size" v-if="fileSizes.practices[index]">{{ fileSizes.practices[index] }}</span>
                 </div>
-                <a :href="file" target="_blank" class="download-button">Скачать</a>
+                <a :href="file" target="_blank" class="download-button">
+                  Скачать
+                </a>
               </div>
             </div>
           </div>
         </div>
-
+        
         <!-- Домашнее задание -->
         <div v-if="homeworkData" class="homework-section">
           <h4>Домашнее задание:</h4>
@@ -78,7 +89,7 @@
             </div>
           </div>
         </div>
-
+        
         <div v-else-if="hasHomework" class="homework-section">
           <h4>Домашнее задание:</h4>
           <div class="homework-content">
@@ -87,168 +98,653 @@
             </div>
           </div>
         </div>
-
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, watch, computed, onUnmounted } from 'vue'
 import { supabase } from '../supabase.js'
 
 const props = defineProps({
-  subject: { type: String, required: true },
-  lessonNumber: { type: Number, required: true }
+  subject: {
+    type: String,
+    required: true,
+    validator: value => value && typeof value === 'string'
+  },
+  lessonNumber: {
+    type: Number,
+    required: true,
+    validator: value => Number.isInteger(value) && value > 0
+  }
 })
+
 const emit = defineEmits(['back-to-calendar'])
 
 const lesson = ref(null)
 const homeworkData = ref(null)
 const loading = ref(false)
 const error = ref(null)
-const isAuthenticated = ref(true)
-const fileSizes = ref({ workbooks: [], practices: [] })
+const showMessage = ref(false)
+const fileSizes = ref({
+  workbooks: [],
+  practices: []
+})
+const user = ref(null)
+const isAuthenticated = ref(false)
 
-const vkVideos = computed(() => {
-  if (!lesson.value?.video) return []
-  return lesson.value.video
-    .map(parseVkVideoUrl)
-    .filter(v => v !== null)
+let messageTimer = null
+
+// Компьютеды для работы с массивами
+const allVideos = computed(() => {
+  if (!lesson.value?.video || !Array.isArray(lesson.value.video)) return []
+  return lesson.value.video.filter(html => html && typeof html === 'string')
 })
 
-const workbooks = computed(() => lesson.value?.workbook || [])
-const practices = computed(() => lesson.value?.practice || [])
-const homeworkArray = computed(() => lesson.value?.homework ? [].concat(lesson.value.homework) : [])
-const hasHomework = computed(() => homeworkArray.value.length > 0)
-const hasMaterials = computed(() => workbooks.value.length > 0 || practices.value.length > 0)
+const workbooks = computed(() => {
+  if (!lesson.value?.workbook || !Array.isArray(lesson.value.workbook)) return []
+  return lesson.value.workbook
+})
 
-const redirectToLogin = () => { window.location.href = '/login.html' }
-const handleBack = () => emit('back-to-calendar')
-const openHomeworkSimple = (homework) => {
-  const params = new URLSearchParams({
-    subject: `${props.subject}_ege`,
-    homework_id: homework.homework_id,
-    homework_name: homework.homework_name || 'Домашнее задание',
-    lesson_number: homework.lesson_number || lesson.value?.number || '',
-    lesson_name: homework.lesson_name || lesson.value?.title || '',
-    view_mode: 'student'
-  })
-  window.location.href = `homework.html?${params.toString()}`
+const practices = computed(() => {
+  if (!lesson.value?.practice || !Array.isArray(lesson.value.practice)) return []
+  return lesson.value.practice
+})
+
+const homeworkArray = computed(() => {
+  if (!lesson.value?.homework) return []
+  if (Array.isArray(lesson.value.homework)) return lesson.value.homework
+  return [lesson.value.homework]
+})
+
+const hasHomework = computed(() => {
+  return homeworkArray.value.length > 0
+})
+
+const hasMaterials = computed(() => {
+  return workbooks.value.length > 0 || practices.value.length > 0
+})
+
+// Функция для обработки HTML iframe - фиксируем размер 640x360
+const processIframeHtml = (html) => {
+  if (!html) return ''
+  
+  // Устанавливаем фиксированные размеры 640x360
+  return html
+    .replace(/width="[^"]*"/g, 'width="640"')
+    .replace(/height="[^"]*"/g, 'height="360"')
+    .replace(/<iframe/, '<iframe style="border: none;"')
 }
-const formatDeadline = (d) => d ? new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
 
-async function fetchLesson() {
+// Проверка аутентификации
+const checkAuth = async () => {
   try {
-    loading.value = true
-    const tableName = `${props.subject}_ege`
-    const { data, error: supabaseError } = await supabase.from(tableName)
-      .select('number, title, date, video, homework, workbook, practice')
-      .eq('number', props.lessonNumber)
-      .single()
-    if (supabaseError) throw supabaseError
-
-    lesson.value = {
-      ...data,
-      video: convertToArray(data.video),
-      workbook: convertToArray(data.workbook),
-      practice: convertToArray(data.practice),
-      homework: convertToArray(data.homework)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      user.value = session.user
+      isAuthenticated.value = true
+      return true
+    } else {
+      isAuthenticated.value = false
+      return false
     }
-
-    await getFileSizes()
-    await fetchHomeworkData(data?.title)
-
   } catch (err) {
-    error.value = err.message
-  } finally {
-    loading.value = false
+    console.error('Ошибка проверки аутентификации:', err)
+    isAuthenticated.value = false
+    return false
   }
 }
 
-const convertToArray = val => {
-  if (!val) return []
-  if (Array.isArray(val)) return val
-  try { return JSON.parse(val) } catch { return [val] }
+const redirectToLogin = () => {
+  window.location.href = '/login.html'
 }
 
-// Парсинг ссылки VK видео → { owner_id, video_id }
-function parseVkVideoUrl(url) {
-  if (!url) return null
-  const match = url.match(/video(\-?\d+)_([0-9]+)/)
-  if (match && match.length === 3) return { owner_id: match[1], video_id: match[2] }
-  return null
+const handleBack = () => emit('back-to-calendar')
+
+const openHomeworkSimple = (homework) => {
+  try {
+    const params = new URLSearchParams({
+      subject: `${props.subject}_ege`,
+      homework_id: homework.homework_id,
+      homework_name: homework.homework_name || 'Домашнее задание',
+      lesson_number: homework.lesson_number || lesson.value?.number || '',
+      lesson_name: homework.lesson_name || lesson.value?.title || '',
+      view_mode: 'student'
+    })
+    
+    window.location.href = `homework.html?${params.toString()}`
+  } catch (error) {
+    console.error('Ошибка открытия домашнего задания:', error)
+    alert('Не удалось открыть домашнее задание.')
+  }
+}
+
+const formatDeadline = (deadline) => {
+  if (!deadline) return ''
+  try {
+    const date = new Date(deadline)
+    return date.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    })
+  } catch {
+    return deadline
+  }
 }
 
 // Получение размеров файлов
 const getFileSizes = async () => {
   fileSizes.value = { workbooks: [], practices: [] }
-  for (const file of workbooks.value) fileSizes.value.workbooks.push(await getFileSize(file))
-  for (const file of practices.value) fileSizes.value.practices.push(await getFileSize(file))
+  
+  // Размеры рабочих тетрадей
+  for (const file of workbooks.value) {
+    const size = await getFileSize(file)
+    fileSizes.value.workbooks.push(size)
+  }
+  
+  // Размеры практических заданий
+  for (const file of practices.value) {
+    const size = await getFileSize(file)
+    fileSizes.value.practices.push(size)
+  }
 }
+
 const getFileSize = async (url) => {
   if (!url) return null
   try {
-    const res = await fetch(url, { method: 'HEAD' })
-    const size = res.headers.get('content-length')
-    return size ? formatFileSize(parseInt(size)) : null
-  } catch { return null }
-}
-const formatFileSize = (bytes) => {
-  if (!bytes) return ''
-  const sizes = ['Б','КБ','МБ','ГБ']
-  const i = Math.floor(Math.log(bytes)/Math.log(1024))
-  return Math.round(bytes/Math.pow(1024,i)*100)/100 + ' ' + sizes[i]
+    const response = await fetch(url, { method: 'HEAD' })
+    if (response.ok) {
+      const size = response.headers.get('content-length')
+      if (size) {
+        return formatFileSize(parseInt(size))
+      }
+    }
+    return null
+  } catch (error) {
+    console.log('Не удалось получить размер файла:', error)
+    return null
+  }
 }
 
-// Домашнее задание
-async function fetchHomeworkData(lessonName) {
-  if (!lessonName) { homeworkData.value = null; return }
+const formatFileSize = (bytes) => {
+  if (!bytes) return ''
+  const sizes = ['Б', 'КБ', 'МБ', 'ГБ']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
+}
+
+const showProtectionMessage = () => {
+  showMessage.value = true
+  if (messageTimer) clearTimeout(messageTimer)
+  messageTimer = setTimeout(() => {
+    showMessage.value = false
+  }, 2000)
+}
+
+onUnmounted(() => {
+  if (messageTimer) clearTimeout(messageTimer)
+})
+
+async function fetchLesson() {
+  try {
+    const authCheck = await checkAuth()
+    if (!authCheck) {
+      loading.value = false
+      return
+    }
+    
+    loading.value = true
+    error.value = null
+    lesson.value = null
+    homeworkData.value = null
+    
+    const tableName = `${props.subject}_ege`
+    
+    const { data, error: supabaseError } = await supabase
+      .from(tableName)
+      .select('number, title, date, video, homework, workbook, practice')
+      .eq('number', props.lessonNumber)
+      .single()
+
+    if (supabaseError) {
+      if (supabaseError.code === 'PGRST116') {
+        console.log('Урок не найден, это нормально')
+        lesson.value = null
+      } else if (supabaseError.code === 'PGRST301' || supabaseError.message.includes('auth')) {
+        await checkAuth()
+        throw supabaseError
+      } else {
+        throw supabaseError
+      }
+    } else {
+      lesson.value = {
+        ...data,
+        video: convertToArray(data.video),
+        workbook: convertToArray(data.workbook),
+        practice: convertToArray(data.practice),
+        homework: convertToArray(data.homework)
+      }
+      
+      await getFileSizes()
+    }
+    
+    try {
+      await fetchHomework(data?.title)
+    } catch (homeworkErr) {
+      console.log('Таблица домашних заданий не доступна или пуста:', homeworkErr.message)
+      homeworkData.value = null
+    }
+    
+  } catch (err) {
+    if (err.code !== 'PGRST116') {
+      error.value = err.message
+      console.error('Ошибка загрузки урока:', err)
+    }
+    if (err.message.includes('auth') || err.message.includes('401')) {
+      isAuthenticated.value = false
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+const convertToArray = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) return value.filter(item => item != null && item !== '')
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) {
+        return parsed.filter(item => item != null && item !== '')
+      }
+      return value.trim() ? [value] : []
+    } catch {
+      return value.trim() ? [value] : []
+    }
+  }
+  return []
+}
+
+async function fetchHomework(lessonName) {
+  if (!lessonName) {
+    homeworkData.value = null
+    return
+  }
+  
   try {
     const homeworkTable = `${props.subject}_ege_homework_list`
-    const { data } = await supabase.from(homeworkTable)
+    
+    const { data, error: homeworkError } = await supabase
+      .from(homeworkTable)
       .select('homework_id, homework_name, lesson_number, lesson_name, deadline')
       .eq('lesson_name', lessonName)
       .maybeSingle()
+
+    if (homeworkError) {
+      console.log('Ошибка загрузки домашнего задания:', homeworkError.message)
+      homeworkData.value = null
+      return
+    }
+    
     homeworkData.value = data || null
-  } catch { homeworkData.value = null }
+    
+  } catch (err) {
+    console.log('Не удалось загрузить домашнее задание:', err.message)
+    homeworkData.value = null
+  }
 }
 
-onMounted(() => fetchLesson())
+onMounted(() => {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT') {
+      user.value = null
+      isAuthenticated.value = false
+    } else if (event === 'SIGNED_IN' && session) {
+      user.value = session.user
+      isAuthenticated.value = true
+      fetchLesson()
+    }
+  })
+  
+  checkAuth().then(authenticated => {
+    if (authenticated) {
+      fetchLesson()
+    }
+  })
+})
+
+watch(() => props.lessonNumber, (newLessonNumber) => {
+  if (newLessonNumber && isAuthenticated.value) {
+    fetchLesson()
+  }
+})
 
 const formattedDate = computed(() => {
   if (!lesson.value?.date) return ''
   const date = new Date(lesson.value.date)
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long'
+  })
 })
 </script>
 
 <style scoped>
-.lesson-container { width: 70%; margin: 0 auto; padding: 20px; }
-.lesson_info { display: grid; grid-template-rows: auto; gap: 20px; }
+.lesson-container {
+  width: 70%;
+  margin: 0 auto;
+  padding: 20px;
+}
 
-.videos-container { display: flex; flex-direction: column; gap: 30px; margin-bottom: 20px; }
-.video-item { background: #f8f9fa; border-radius: 12px; padding: 20px; border: 1px solid #e9ecef; }
-.video-title { margin: 0 0 15px 0; color: #2c3e50; font-size: 1.2em; font-weight: 600; }
-.video-wrapper { position: relative; width: 100%; height: 0; padding-bottom: 56.25%; overflow: hidden; border-radius: 8px; background: #000; }
-.video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.lesson_info {
+  display: grid;
+  grid-template-rows: auto;
+  gap: 20px;
+}
 
-.materials-section { background-color: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #4CAF50; }
-.homework-section { background-color: #fff3e0; padding: 20px; border-radius: 8px; border-left: 4px solid #ff9800; }
+/* Контейнер для всех видео */
+.videos-container {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  margin-bottom: 20px;
+}
 
-.download-button { display: inline-block; padding: 8px 16px; background-color: #b241d1; color: white; border-radius: 6px; text-decoration: none; font-size: 0.9em; transition: 0.3s; cursor: pointer; border: none; white-space: nowrap; }
-.back-button { padding: 10px 20px; background-color: #b241d1; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 20px; color: #fff; transition: 0.3s; }
-.back-button:hover { background-color: #9a36b3; }
+.video-item {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #e9ecef;
+}
 
-.error-message { color: #ff4757; padding: 20px; text-align: center; background-color: #ffe6e6; border-radius: 8px; border: 1px solid #ff4757; }
-.auth-message { text-align: center; padding: 40px; background-color: #f8f9fa; border-radius: 8px; margin: 20px 0; }
-.login-button { padding: 10px 20px; background-color: #b241d1; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 15px; }
-.login-button:hover { background-color: #9a36b3; }
+.video-title {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 1.2em;
+  font-weight: 600;
+  text-align: center;
+}
 
+.video-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 400px; /* Достаточно места для iframe 360px + отступы */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.iframe-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+}
+
+.iframe-content {
+  width: 640px;
+  height: 360px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.iframe-content iframe {
+  width: 640px;
+  height: 360px;
+  border-radius: 8px;
+  border: none;
+}
+
+.protection-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(178, 65, 209, 0.9);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  z-index: 20;
+  font-weight: bold;
+  pointer-events: none;
+}
+
+/* Стили для материалов */
+.materials-section {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #4CAF50;
+}
+
+.material-category {
+  margin-bottom: 20px;
+}
+
+.material-category:last-child {
+  margin-bottom: 0;
+}
+
+.category-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 1.1em;
+}
+
+.category-icon {
+  font-size: 1.2em;
+}
+
+.files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.file-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.file-size {
+  font-size: 0.85em;
+  color: #666;
+}
+
+/* Стили для домашнего задания */
+.homework-section {
+  background-color: #fff3e0;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #ff9800;
+}
+
+.homework-content {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.homework-title {
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.homework-button {
+  align-self: flex-start;
+}
+
+.deadline {
+  font-size: 0.9em;
+  color: #666;
+  font-style: italic;
+}
+
+.homework-item {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.homework-text {
+  margin: 0;
+  color: #2c3e50;
+}
+
+/* Кнопки */
+.download-button {
+  display: inline-block;
+  padding: 8px 16px;
+  background-color: #b241d1;
+  color: white;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.9em;
+  transition: background-color 0.3s ease;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+}
+
+.download-button:hover {
+  background-color: #9a36b3;
+}
+
+.back-button {
+  padding: 10px 20px;
+  background-color: #b241d1;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 20px;
+  color: #fff;
+  transition: all 0.3s ease;
+}
+
+.back-button:hover {
+  background-color: #9a36b3;
+}
+
+.error-message {
+  color: #ff4757;
+  padding: 20px;
+  text-align: center;
+  background-color: #ffe6e6;
+  border-radius: 8px;
+  border: 1px solid #ff4757;
+}
+
+.auth-message {
+  text-align: center;
+  padding: 40px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.login-button {
+  padding: 10px 20px;
+  background-color: #b241d1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 15px;
+}
+
+.login-button:hover {
+  background-color: #9a36b3;
+}
+
+/* Адаптивность */
 @media (max-width: 768px) {
-  .lesson-container { width: 95%; padding: 10px; }
-  .videos-container { gap: 20px; }
-  .video-item { padding: 15px; }
-  .video-title { font-size: 1.1em; }
+  .lesson-container {
+    width: 95%;
+    padding: 10px;
+  }
+  
+  .videos-container {
+    gap: 20px;
+  }
+  
+  .video-item {
+    padding: 15px;
+  }
+  
+  .video-title {
+    font-size: 1.1em;
+  }
+  
+  .video-wrapper {
+    min-height: 300px;
+  }
+  
+  .iframe-container {
+    padding: 15px;
+  }
+  
+  .iframe-content {
+    width: 100%;
+    max-width: 640px;
+    height: auto;
+    aspect-ratio: 16/9;
+  }
+  
+  .iframe-content iframe {
+    width: 100%;
+    height: 100%;
+    max-width: 640px;
+    max-height: 360px;
+  }
+  
+  .file-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .download-button {
+    align-self: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .video-wrapper {
+    min-height: 250px;
+  }
+  
+  .iframe-container {
+    padding: 10px;
+  }
 }
 </style>

@@ -50,22 +50,28 @@
             ></textarea>
           </div>
           
-          <!-- Видео (массив ссылок) -->
+          <!-- Видео (массив iframe) -->
           <div class="form-group">
-            <label>Видео (можно несколько):</label>
-            <VideoUploader 
-              @videos-uploaded="handleVideosUploaded"
-              :current-videos="newRow.video || []"
-              multiple
-            />
+            <label>Видео iframe (можно несколько, разделяйте пустой строкой):</label>
+            <textarea 
+              v-model="videoTextInput"
+              @input="processVideoTextInput"
+              placeholder="Вставьте iframe коды здесь, разделяя их пустой строкой"
+              class="form-textarea"
+              rows="6"
+            ></textarea>
+            
             <div v-if="newRow.video && newRow.video.length > 0" class="files-preview">
-              <h4>Загруженные видео:</h4>
-              <ul>
-                <li v-for="(url, index) in newRow.video" :key="index" class="file-item">
-                  <a :href="url" target="_blank" class="file-link">Видео {{ index + 1 }}</a>
-                  <button @click="removeVideo(index)" class="btn-remove-small">×</button>
-                </li>
-              </ul>
+              <h4>Добавленные видео ({{ newRow.video.length }}):</h4>
+              <div class="iframe-previews">
+                <div v-for="(iframeHtml, index) in newRow.video" :key="index" class="iframe-preview-item">
+                  <div class="iframe-preview-header">
+                    <span>Видео {{ index + 1 }}</span>
+                    <button @click="removeVideo(index)" class="btn-remove-small">×</button>
+                  </div>
+                  <div class="iframe-preview-content" v-html="iframeHtml"></div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -151,16 +157,24 @@
                 
                 <!-- Видео -->
                 <td class="table-cell">
-                  <VideoUploader 
-                    @videos-uploaded="(urls) => updateRowFiles(row, 'video', urls)"
-                    :current-videos="row.video || []"
-                    compact
-                    multiple
-                  />
-                  <div v-if="row.video && row.video.length > 0" class="files-list-compact">
-                    <div v-for="(url, index) in row.video" :key="index" class="file-item-compact">
-                      <a :href="url" target="_blank" class="file-link">🎬</a>
-                      <span class="file-tooltip">Видео {{ index + 1 }}</span>
+                  <div class="video-management">
+                    <div class="video-text-input">
+                      <textarea
+                        :value="getVideoTextForRow(row)"
+                        @input="(e) => updateRowVideosFromText(row, e.target.value)"
+                        placeholder="Вставьте iframe коды, разделяя пустой строкой"
+                        rows="3"
+                        class="table-textarea"
+                      ></textarea>
+                    </div>
+                    <div v-if="row.video && row.video.length > 0" class="files-list-compact">
+                      <div class="video-count">Видео: {{ row.video.length }}</div>
+                      <div class="video-previews">
+                        <div v-for="(iframeHtml, index) in row.video" :key="index" class="video-preview-item">
+                          <div class="video-preview" v-html="iframeHtml"></div>
+                          <button @click="removeRowVideo(row, index)" class="btn-remove-small">×</button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -226,7 +240,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { supabase } from '../supabase.js'
-import VideoUploader from './VideoUploader.vue'
 import FileUploader from './FileUploader.vue'
 
 const props = defineProps({
@@ -254,6 +267,7 @@ const emit = defineEmits(['back-to-edit'])
 const activeTab = ref('add')
 const rows = ref([])
 const newRow = ref({})
+const videoTextInput = ref('')
 const nextId = ref(1)
 const error = ref(null)
 const done = ref(false)
@@ -276,6 +290,43 @@ const getDefaultValue = (fieldType) => {
   }
 }
 
+// Функции для работы с iframe
+const extractIframesFromText = (text) => {
+  if (!text) return []
+  
+  // Разделяем текст по пустым строкам или явным разделителям
+  const blocks = text.split(/\n\s*\n/).filter(block => block.trim())
+  
+  const iframes = []
+  
+  blocks.forEach(block => {
+    const trimmedBlock = block.trim()
+    
+    // Ищем iframe в блоке
+    const iframeMatch = trimmedBlock.match(/<iframe[^>]*>.*?<\/iframe>/i)
+    if (iframeMatch) {
+      // Найден iframe - добавляем его
+      iframes.push(iframeMatch[0])
+    } else if (trimmedBlock.startsWith('<iframe') && !trimmedBlock.includes('</iframe>')) {
+      // Если iframe не закрыт, пытаемся восстановить
+      iframes.push(trimmedBlock + '</iframe>')
+    } else if (trimmedBlock) {
+      // Если это не iframe, но есть текст, создаем iframe из ссылки
+      const urlMatch = trimmedBlock.match(/(https?:\/\/[^\s]+)/)
+      if (urlMatch) {
+        iframes.push(`<iframe src="${urlMatch[1]}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`)
+      }
+    }
+  })
+  
+  return iframes
+}
+
+const iframesToText = (iframes) => {
+  if (!iframes || !Array.isArray(iframes)) return ''
+  return iframes.join('\n\n')
+}
+
 // Инициализация
 const initNewRow = () => {
   const initialData = props.fields.reduce((obj, field) => {
@@ -290,11 +341,13 @@ const initNewRow = () => {
   initialData.homework = []
   
   newRow.value = { ...initialData }
+  videoTextInput.value = ''
 }
 
-// Обработчики файлов для новой записи
-const handleVideosUploaded = (urls) => {
-  newRow.value.video = [...(newRow.value.video || []), ...urls]
+// Обработчики для новой записи
+const processVideoTextInput = () => {
+  const iframes = extractIframesFromText(videoTextInput.value)
+  newRow.value.video = iframes
 }
 
 const handleWorkbooksUploaded = (urls) => {
@@ -307,6 +360,8 @@ const handlePracticesUploaded = (urls) => {
 
 const removeVideo = (index) => {
   newRow.value.video.splice(index, 1)
+  // Обновляем текстовое поле
+  videoTextInput.value = iframesToText(newRow.value.video)
 }
 
 const removeWorkbook = (index) => {
@@ -366,7 +421,7 @@ const convertToArray = (value) => {
     try {
       // Пробуем распарсить JSON
       const parsed = JSON.parse(value)
-      return Array.isArray(parsed) ? parsed : [value]
+      return Array.isArray(parsed) ? parsed : [parsed]
     } catch {
       // Если не JSON, возвращаем как массив из одного элемента
       return [value]
@@ -437,6 +492,22 @@ const updateRow = async (row) => {
     console.error('Ошибка при обновлении:', error)
     alert('Ошибка обновления: ' + error.message)
   }
+}
+
+// Функции для работы с видео в существующих записях
+const getVideoTextForRow = (row) => {
+  return iframesToText(row.video || [])
+}
+
+const updateRowVideosFromText = (row, text) => {
+  const iframes = extractIframesFromText(text)
+  row.video = iframes
+  updateRow(row)
+}
+
+const removeRowVideo = (row, index) => {
+  row.video.splice(index, 1)
+  updateRow(row)
 }
 
 const updateRowFiles = async (row, fieldName, urls) => {
@@ -634,10 +705,37 @@ label {
   color: #004085;
 }
 
-.files-preview ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.iframe-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.iframe-preview-item {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  background: white;
+}
+
+.iframe-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #eee;
+}
+
+.iframe-preview-content {
+  display: flex;
+  justify-content: center;
+}
+
+.iframe-preview-content iframe {
+  max-width: 100%;
+  height: 200px;
 }
 
 .file-item {
@@ -728,6 +826,43 @@ label {
 .table-textarea {
   min-height: 60px;
   resize: vertical;
+}
+
+.video-management {
+  min-width: 300px;
+}
+
+.video-text-input {
+  margin-bottom: 10px;
+}
+
+.video-count {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 5px;
+}
+
+.video-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.video-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.video-preview {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.video-preview iframe {
+  max-width: 100%;
+  height: 80px;
 }
 
 .file-link {
@@ -843,6 +978,10 @@ label {
   
   .table-cell {
     padding: 8px;
+  }
+  
+  .video-management {
+    min-width: auto;
   }
 }
 </style>

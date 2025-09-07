@@ -27,7 +27,7 @@
             <span v-if="notification.score !== null" class="score">
               Оценка: {{ notification.score }}
             </span>
-            <span class="tutor-name">Для куратора: {{ notification.tutor_name }}</span>
+            <span class="tutor-name">Для куратора: "{{ notification.tutor_name }}"</span>
           </div>
         </div>
         <div class="notification-actions">
@@ -43,6 +43,7 @@
     </div>
 
     <!-- Отладочная информация -->
+
   </div>
 </template>
 
@@ -57,7 +58,7 @@ export default {
     const loading = ref(true)
     let realtimeSubscription = null
     const currentTutorName = ref('')
-    const searchTutorName = ref('')
+    const searchNames = ref([])
 
     // Функция для получения имени текущего куратора
     const getCurrentTutorName = async () => {
@@ -83,9 +84,23 @@ export default {
       }
     }
 
-    // Функция для получения только имени (без фамилии)
-    const getFirstName = (fullName) => {
-      return fullName.split(' ')[0] || fullName
+    // Функция для генерации вариантов поиска
+    const generateSearchNames = (fullName) => {
+      const names = []
+      
+      // Извлекаем только имя (первое слово)
+      const firstName = fullName.split(' ')[0] || fullName
+      
+      // Добавляем варианты:
+      names.push(firstName) // "Ольга"
+      names.push(firstName + ' ') // "Ольга " (с пробелом)
+      
+      // Также добавляем полное имя на случай, если где-то оно используется
+      names.push(fullName)
+      names.push(fullName + ' ')
+      
+      // Убираем дубликаты
+      return [...new Set(names.filter(name => name && name.trim()))]
     }
 
     // Функция для загрузки уведомлений
@@ -101,13 +116,75 @@ export default {
           return
         }
 
-        // Получаем только имя для поиска (без фамилии)
-        const firstName = getFirstName(tutorName)
-        searchTutorName.value = firstName
-        console.log('Поиск по имени:', firstName)
+        // Генерируем варианты для поиска
+        const namesToSearch = generateSearchNames(tutorName)
+        searchNames.value = namesToSearch
+        console.log('Варианты для поиска:', namesToSearch)
 
-        // Запрос для получения уведомлений - ищем точное совпадение по имени
-        const { data, error } = await supabase
+        // Создаем запросы для каждого варианта имени
+        const promises = namesToSearch.map(name => 
+          supabase
+            .from('homework_notifications')
+            .select(`
+              id,
+              student_id,
+              homework_id,
+              subject,
+              completed_at,
+              score,
+              is_read,
+              tutor_name,
+              students:student_id (first_name, last_name)
+            `)
+            .eq('tutor_name', name)
+            .order('completed_at', { ascending: false })
+        )
+
+        // Выполняем все запросы параллельно
+        const results = await Promise.all(promises)
+        
+        // Объединяем результаты и убираем дубликаты
+        const allNotifications = results.flatMap(result => result.data || [])
+        const uniqueNotifications = allNotifications.filter((notification, index, array) => 
+          index === array.findIndex(n => n.id === notification.id)
+        )
+
+        console.log('Все найденные уведомления:', uniqueNotifications)
+
+        // Форматируем данные для отображения
+        notifications.value = uniqueNotifications.map(notification => ({
+          id: notification.id,
+          student_id: notification.student_id,
+          homework_id: notification.homework_id,
+          subject: notification.subject,
+          completed_at: notification.completed_at,
+          score: notification.score,
+          is_read: notification.is_read,
+          tutor_name: notification.tutor_name,
+          student_first_name: notification.students?.first_name || 'Неизвестный',
+          student_last_name: notification.students?.last_name || 'ученик'
+        }))
+      } catch (error) {
+        console.error('Ошибка:', error)
+      } finally {
+        loading.value = false
+      }
+    }
+
+    // Альтернативный метод с использованием ILIKE и OR
+    const loadNotificationsAlternative = async () => {
+      try {
+        loading.value = true
+        const tutorName = await getCurrentTutorName()
+        currentTutorName.value = tutorName
+        
+        if (!tutorName) return
+
+        const firstName = tutorName.split(' ')[0] || tutorName
+        searchNames.value = [firstName, firstName + ' ', tutorName, tutorName + ' ']
+        
+        // Создаем сложный запрос с OR условиями
+        let query = supabase
           .from('homework_notifications')
           .select(`
             id,
@@ -120,7 +197,13 @@ export default {
             tutor_name,
             students:student_id (first_name, last_name)
           `)
-          .eq('tutor_name', firstName) // Точное совпадение с именем
+
+        // Добавляем условия OR для каждого варианта
+        searchNames.value.forEach(name => {
+          query = query.or(`tutor_name.eq.${name}`)
+        })
+
+        const { data, error } = await query
           .order('completed_at', { ascending: false })
           .limit(50)
 
@@ -129,9 +212,8 @@ export default {
           return
         }
 
-        console.log('Получены уведомления:', data)
-
-        // Форматируем данные для отображения
+        console.log('Уведомления (альтернативный метод):', data)
+        
         notifications.value = data.map(notification => ({
           id: notification.id,
           student_id: notification.student_id,
@@ -159,15 +241,23 @@ export default {
         // Получаем все уведомления чтобы посмотреть структуру данных
         const { data, error } = await supabase
           .from('homework_notifications')
-          .select('*')
-          .limit(10)
+          .select('tutor_name')
+          .limit(20)
 
         if (error) {
           console.error('Ошибка тестового запроса:', error)
           return
         }
 
-        console.log('Тестовые данные:', data)
+        // Группируем по значениям tutor_name
+        const tutorNames = {}
+        data.forEach(item => {
+          const name = item.tutor_name || 'NULL'
+          tutorNames[name] = (tutorNames[name] || 0) + 1
+        })
+
+        console.log('Уникальные значения tutor_name:', tutorNames)
+        alert('Проверьте консоль для просмотра уникальных значений tutor_name')
         
       } catch (error) {
         console.error('Ошибка:', error)
@@ -205,7 +295,7 @@ export default {
             table: 'homework_notifications'
           }, 
           (payload) => {
-            console.log('Получено реальное обновление:', payload)
+            console.log('Получено реальное обновление:', payload.new.tutor_name)
             // Перезагружаем уведомления при любом новом добавлении
             loadNotifications()
           }
@@ -254,6 +344,11 @@ export default {
 
     onMounted(async () => {
       await loadNotifications()
+      // Если не нашли уведомлений, пробуем альтернативный метод
+      if (notifications.value.length === 0) {
+        console.log('Пробуем альтернативный метод поиска...')
+        await loadNotificationsAlternative()
+      }
       await subscribeToRealtime()
     })
 
@@ -267,7 +362,7 @@ export default {
       notifications,
       loading,
       currentTutorName,
-      searchTutorName,
+      searchNames,
       markAsRead,
       formatDate,
       getSubjectName,
@@ -280,6 +375,7 @@ export default {
 </script>
 
 <style scoped>
+/* Стили остаются такими же как в предыдущем варианте */
 .tutor-notifications {
   max-width: 900px;
   margin: 0 auto;
