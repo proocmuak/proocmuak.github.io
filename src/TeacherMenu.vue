@@ -38,7 +38,8 @@ import settings from './components/settings.vue';
 import main_teacher_page from './components/change_courses.vue';
 import editor_students from './components/editor_students.vue'
 import editor_bank_task from './components/editor_bank_task.vue';
-import editor_homework from './components/editor_homework.vue'
+import editor_homework from './components/editor_homework.vue';
+import all_students from './components/all_students.vue'
 
 import { supabase } from './supabase.js'
 
@@ -46,7 +47,8 @@ const components = {
   main_teacher_page: markRaw(main_teacher_page),
   settings: markRaw(settings),
   editor_bank_task: markRaw(editor_bank_task),
-  editor_homework: markRaw(editor_homework)
+  editor_homework: markRaw(editor_homework),
+  all_students: markRaw(all_students)
 }
 
 export default {
@@ -56,7 +58,8 @@ export default {
     main_teacher_page,
     editor_students,
     editor_bank_task,
-    editor_homework
+    editor_homework, 
+    all_students
   },
   data() {
     return {

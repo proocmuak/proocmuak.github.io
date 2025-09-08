@@ -108,6 +108,31 @@ export default {
   async mounted() {
     await this.loadHomework();
   },
+ name: 'StudentHomework',
+  props: {
+    student: {
+      type: Object,
+      required: true
+    },
+    subject: {
+      type: String,
+      required: true
+    },
+    examType: {
+      type: String,
+      default: 'ЕГЭ'
+    }
+  },
+  data() {
+    return {
+      homework: [],
+      loading: false,
+      error: null
+    }
+  },
+  async mounted() {
+    await this.loadHomework();
+  },
   methods: {
     async loadHomework() {
       this.loading = true;
@@ -136,8 +161,45 @@ export default {
 
         if (completedError) throw completedError;
 
+        // Для каждой домашней работы получаем максимальный балл из заданий
+        const homeworkWithMaxScores = await Promise.all(
+          homeworkList.map(async (homeworkItem) => {
+            // Получаем все задания для этой домашней работы
+            const { data: homeworkTasks, error: tasksError } = await supabase
+              .from(homeworkTasksTable)
+              .select('task_id')
+              .eq('homework_id', homeworkItem.homework_id);
+
+            if (tasksError) throw tasksError;
+
+            if (!homeworkTasks || homeworkTasks.length === 0) {
+              return {
+                ...homeworkItem,
+                max_score: 0
+              };
+            }
+
+            // Получаем баллы для всех заданий
+            const taskIds = homeworkTasks.map(task => task.task_id);
+            const { data: tasksData, error: tasksDataError } = await supabase
+              .from(taskBankTable)
+              .select('id, points')
+              .in('id', taskIds);
+
+            if (tasksDataError) throw tasksDataError;
+
+            // Суммируем баллы всех заданий
+            const maxScore = tasksData.reduce((sum, task) => sum + (task.points || 0), 0);
+
+            return {
+              ...homeworkItem,
+              max_score: maxScore
+            };
+          })
+        );
+
         // Создаем полный список домашних работ
-        this.homework = homeworkList.map(homeworkItem => {
+        this.homework = homeworkWithMaxScores.map(homeworkItem => {
           const completionData = completedHomework?.find(hw => hw.homework_id === homeworkItem.homework_id);
           const isCompleted = completionData?.is_completed || false;
           
@@ -166,7 +228,6 @@ export default {
         this.loading = false;
       }
     },
-
     // Адаптированная функция для открытия домашнего задания
     openHomeworkSimple(homework) {
       try {
