@@ -44,7 +44,13 @@
                 </div>
 
                 <div class="task-content">
-                  <div class="task-text" v-html="sanitizeHtml(getTaskTextWithoutTables(task))"></div>
+                  <div 
+                  class="task-text" 
+                  v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
+                  @copy.prevent
+                  @cut.prevent
+                  @dragstart.prevent
+                  ></div>
                   
                   <div v-if="task.has_table && task.table_data" class="task-table-container">
                     <table :class="{ 'with-borders': task.table_data.borders }">
@@ -373,12 +379,13 @@ function freqMap(arr) {
 /**
  * Частичная проверка для числовых ответов по правилам ЕГЭ
  */
+function hasDuplicates(arr) {
+  return new Set(arr).size !== arr.length;
+}
+
 function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
   if (userAnswer == null || correctAnswer == null) return false;
-
-  if (!isDigitSequence(String(userAnswer)) || !isDigitSequence(String(correctAnswer))) {
-    return false;
-  }
+  if (!isDigitSequence(String(userAnswer)) || !isDigitSequence(String(correctAnswer))) return false;
 
   const correctElems = splitNumericElements(correctAnswer);
   const userElems = splitNumericElements(userAnswer);
@@ -386,6 +393,19 @@ function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = {
   // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
   if (!options.allowExtra && userElems.length > correctElems.length) return false;
 
+  // Если в эталоне есть дубликаты и длины равны => считаем, что порядок важен => сравниваем по позициям
+  if (hasDuplicates(correctElems) && userElems.length === correctElems.length) {
+    let matches = 0;
+    for (let i = 0; i < correctElems.length; i++) {
+      if (userElems[i] === correctElems[i]) matches++;
+    }
+    const mistakes = correctElems.length - matches;
+    if (mistakes === 0) return true;                  // полный
+    if (maxPoints === 2 && mistakes === 1) return true; // одна позиция не совпала -> частично
+    return false;                                     // иначе 0
+  }
+
+  // В остальных случаях — мультисет-логика (как раньше)
   const fc = freqMap(correctElems);
   const fu = freqMap(userElems);
 
@@ -396,10 +416,11 @@ function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = {
 
   const mistakes = correctElems.length - matched;
 
-  if (mistakes === 0) return true;                     // полный ответ
-  if (maxPoints === 2 && mistakes === 1) return true;  // 1 ошибка → частично верно
+  if (mistakes === 0) return true;            // полностью совпадает
+  if (maxPoints === 2 && mistakes === 1) return true; // одна ошибка => частично
   return false;
 }
+
 
 // ================== ТЕКСТОВЫЕ ОТВЕТЫ ==================
 
@@ -820,6 +841,22 @@ const fetchHomeworkTasks = async () => {
         error.value = 'Не указаны параметры домашнего задания'
         loading.value = false
       }
+
+        // Блокировка контекстного меню
+  document.addEventListener('contextmenu', (e) => {
+    if (e.target.closest('.task-text')) {
+      e.preventDefault()
+      return false
+    }
+  })
+  
+  // Блокировка выделения текста (опционально)
+  document.addEventListener('selectstart', (e) => {
+    if (e.target.closest('.task-text')) {
+      e.preventDefault()
+      return false
+    }
+  })
     })
 
     // Обновляем общий балл при изменениях
@@ -1664,5 +1701,35 @@ a {
     grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   }
 }
+.task-text {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+}
 
+.task-text ::selection {
+  background: transparent;
+}
+
+.task-text ::-moz-selection {
+  background: transparent;
+}
+
+/* Дополнительная защита через псевдо-элемент */
+.task-text {
+  position: relative;
+}
+
+.task-text::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  pointer-events: none;
+}
 </style>

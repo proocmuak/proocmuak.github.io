@@ -26,7 +26,6 @@ export default {
       loadingProgress: false,
       showAnswerOnly: false,
       showExplanation: false,
-      // Добавляем вычисляемое свойство для проверки части задания
       isFirstPart: false
     };
   },
@@ -74,8 +73,8 @@ export default {
       
       return this.formatTextWithParagraphs(answer);
     },
- formattedExplanation() {
-if (!this.task.explanation) return '';
+    formattedExplanation() {
+      if (!this.task.explanation) return '';
       const explanation = this.task.explanation.toString();
       
       if (/^\d+$/.test(explanation.trim())) {
@@ -83,7 +82,7 @@ if (!this.task.explanation) return '';
       }
       
       return this.formatTextWithParagraphs(explanation);
-  },
+    },
     hasAnswerImages() {
       return this.task.image_answer && this.task.image_answer.length > 0;
     },
@@ -95,35 +94,121 @@ if (!this.task.explanation) return '';
     }
   },
   methods: {
+    // ================== НОВЫЕ ФУНКЦИИ ПРОВЕРКИ ==================
+    isDigitSequence(s) {
+      return typeof s === 'string' && /^[0-9\s,;]+$/.test(s.trim());
+    },
+
+    splitNumericElements(s) {
+      s = String(s || '').trim();
+      if (!s) return [];
+      // Если есть разделители (пробел, запятая и т.п.) — это могут быть многозначные числа
+      if (/[^0-9]/.test(s)) {
+        const tokens = s.split(/[^0-9]+/).filter(Boolean);
+        if (tokens.length > 0) return tokens;
+      }
+      // Иначе — строка из цифр без разделителей ("345" -> ["3","4","5"])
+      return s.split('');
+    },
+
+    freqMap(arr) {
+      const m = new Map();
+      for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
+      return m;
+    },
+
+    hasDuplicates(arr) {
+      return new Set(arr).size !== arr.length;
+    },
+
+    checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
+      if (userAnswer == null || correctAnswer == null) return false;
+      if (!this.isDigitSequence(String(userAnswer)) || !this.isDigitSequence(String(correctAnswer))) return false;
+
+      const correctElems = this.splitNumericElements(correctAnswer);
+      const userElems = this.splitNumericElements(userAnswer);
+
+      // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
+      if (!options.allowExtra && userElems.length > correctElems.length) return false;
+
+      // Если в эталоне есть дубликаты и длины равны => считаем, что порядок важен => сравниваем по позициям
+      if (this.hasDuplicates(correctElems) && userElems.length === correctElems.length) {
+        let matches = 0;
+        for (let i = 0; i < correctElems.length; i++) {
+          if (userElems[i] === correctElems[i]) matches++;
+        }
+        const mistakes = correctElems.length - matches;
+        if (mistakes === 0) return true;                  // полный
+        if (maxPoints === 2 && mistakes === 1) return true; // одна позиция не совпала -> частично
+        return false;                                     // иначе 0
+      }
+
+      // В остальных случаях — мультисет-логика
+      const fc = this.freqMap(correctElems);
+      const fu = this.freqMap(userElems);
+
+      let matched = 0;
+      for (const [k, cnt] of fc.entries()) {
+        if (fu.has(k)) matched += Math.min(cnt, fu.get(k));
+      }
+
+      const mistakes = correctElems.length - matched;
+
+      if (mistakes === 0) return true;            // полностью совпадает
+      if (maxPoints === 2 && mistakes === 1) return true; // одна ошибка => частично
+      return false;
+    },
+
+    normalizeText(str) {
+      return String(str || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+    },
+
+    splitVariants(correctAnswer) {
+      return correctAnswer
+        .split(/\/|или/i) // разделители: "/" или "или"
+        .map(v => this.normalizeText(v))
+        .filter(Boolean);
+    },
+
+    checkTextAnswer(userAnswer, correctAnswer) {
+      if (!userAnswer || !correctAnswer) return false;
+      const normalizedUser = this.normalizeText(userAnswer);
+      const variants = this.splitVariants(correctAnswer);
+      return variants.includes(normalizedUser);
+    },
+
+    // ================== СУЩЕСТВУЮЩИЕ МЕТОДЫ ==================
     sanitizeHtml(html) {
       return DOMPurify.sanitize(html, {
         ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
         ALLOWED_ATTR: ['style', 'class']
       })
     },
-formatTextWithParagraphs(text) {
-  if (!text) return '';
-  
-  // Если текст уже содержит HTML-теги, возвращаем как есть
-  if (text.includes('<') && text.includes('>')) {
-    return text;
-  }
-  
-  // Заменяем множественные переносы строк на абзацы
-  let formattedText = text
-    .trim()
-    .replace(/\r\n/g, '\n')  // Нормализуем переносы строк
-    .replace(/\n{3,}/g, '\n\n')  // Заменяем 3+ переносов на 2
-    .replace(/\n\n/g, '</p><p>')  // Двойные переносы -> новые абзацы
-    .replace(/\n/g, '<br>');  // Одиночные переносы -> теги <br>
-  
-  // Оборачиваем в тег <p>, если нет открывающего/закрывающего тега
-  if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
-    formattedText = `<p>${formattedText}</p>`;
-  }
-  
-  return formattedText;
-},
+
+    formatTextWithParagraphs(text) {
+      if (!text) return '';
+      
+      if (text.includes('<') && text.includes('>')) {
+        return text;
+      }
+      
+      let formattedText = text
+        .trim()
+        .replace(/\r\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+      
+      if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
+        formattedText = `<p>${formattedText}</p>`;
+      }
+      
+      return formattedText;
+    },
+
     getImageUrl(imagePath) {
       if (imagePath.startsWith('http')) return imagePath;
       
@@ -134,20 +219,22 @@ formatTextWithParagraphs(text) {
       
       return publicUrl;
     },
+
     showAnswer() {
       this.showAnswerOnly = true;
       this.answerChecked = true;
     },
+
     toggleExplanation() {
       this.showExplanation = !this.showExplanation;
     },
+
     async checkAnswer() {
       if (!this.userAnswer.trim()) {
         alert('Пожалуйста, введите ответ');
         return;
       }
       
-      // ИЗМЕНЕНИЕ: Проверяем часть задания вместо количества баллов
       if (!this.isFirstPart) {
         this.showAnswerOnly = true;
         this.answerChecked = true;
@@ -158,18 +245,38 @@ formatTextWithParagraphs(text) {
       const correctAnswer = this.task.answer.toString().trim();
       
       this.answerChecked = true;
-      this.isFullyCorrect = userAnswer === correctAnswer;
       
-      // Для заданий первой части проверяем частичное совпадение
-      if (this.isFirstPart && !this.isFullyCorrect) {
-        this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer);
+      // Используем новую логику проверки
+      const numericCheck = this.isDigitSequence(correctAnswer) && this.isDigitSequence(userAnswer);
+
+      if (numericCheck) {
+        // Числовые ответы
+        const normalizeForEquality = (s) => {
+          if (this.isDigitSequence(s)) {
+            return this.splitNumericElements(s).join('');
+          }
+          return s.trim().toLowerCase();
+        };
+
+        const normalizedCorrect = normalizeForEquality(correctAnswer);
+        const normalizedUser = normalizeForEquality(userAnswer);
+
+        this.isFullyCorrect = normalizedUser === normalizedCorrect;
+
+        if (!this.isFullyCorrect && this.task.points === 2) {
+          this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer, this.task.points);
+        } else {
+          this.isPartiallyCorrect = false;
+        }
       } else {
+        // Текстовые ответы
+        this.isFullyCorrect = this.checkTextAnswer(userAnswer, correctAnswer);
         this.isPartiallyCorrect = false;
       }
 
-      this.awardedPoints = this.isFullyCorrect ? this.task.points 
-                        : this.isPartiallyCorrect ? 1 
-                        : 0;
+      this.awardedPoints = this.isFullyCorrect ? this.task.points
+            : this.isPartiallyCorrect ? 1
+            : 0;
 
       await this.saveTaskProgress();
       
@@ -181,32 +288,13 @@ formatTextWithParagraphs(text) {
         userAnswer: userAnswer
       });
     },
+
     calculatePoints() {
       if (this.isFullyCorrect) return this.task.points;
       if (this.isPartiallyCorrect) return 1;
       return 0;
     },
-    checkPartialMatch(userAnswer, correctAnswer) {
-      if (userAnswer === correctAnswer) return false;
-      
-      if (/^\d+$/.test(userAnswer)) {
-        if (userAnswer.length !== correctAnswer.length) return false;
-        
-        let diffCount = 0;
-        for (let i = 0; i < userAnswer.length; i++) {
-          if (userAnswer[i] !== correctAnswer[i]) {
-            diffCount++;
-            if (diffCount > 1) return false;
-          }
-        }
-        return diffCount === 1;
-      }
-      
-      const correctParts = correctAnswer.split(/[,;]/).map(part => part.trim());
-      const userParts = userAnswer.split(/[,;]/).map(part => part.trim());
-      
-      return userParts.some(part => correctParts.includes(part));
-    },
+
     async saveTaskProgress() {
       if (!this.user?.id) return;
 
@@ -269,6 +357,7 @@ formatTextWithParagraphs(text) {
         throw error;
       }
     },
+
     async loadTaskProgress() {
       if (!this.user?.id) return;
       
@@ -304,11 +393,13 @@ formatTextWithParagraphs(text) {
         console.error('Ошибка загрузки прогресса:', error);
       }
     },
+
     getProgressTableName() {
       return this.task.subject.includes('Химия') 
         ? 'chemistry_ege_progress' 
         : 'biology_ege_progress';
     },
+
     updateStatusFlags() {
       this.isFullyCorrect = this.awardedPoints === this.task.points;
       this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
@@ -317,18 +408,19 @@ formatTextWithParagraphs(text) {
         this.awardedPoints = 0;
       }
     },
+
     openImageModal(imageUrl) {
       this.selectedImage = imageUrl;
       this.showImageModal = true;
       document.body.style.overflow = 'hidden';
     },
+
     closeImageModal() {
       this.showImageModal = false;
       document.body.style.overflow = '';
     }
   },
   mounted() {
-    // ИЗМЕНЕНИЕ: Определяем часть задания при монтировании
     this.isFirstPart = this.task.part === 'Первая часть';
     this.loadTaskProgress();
   },
@@ -342,7 +434,6 @@ formatTextWithParagraphs(text) {
     task: {
       immediate: true,
       handler(newTask) {
-        // ИЗМЕНЕНИЕ: Обновляем часть задания при изменении задачи
         this.isFirstPart = newTask.part === 'Первая часть';
         if (this.user) this.loadTaskProgress();
       }
@@ -355,6 +446,8 @@ formatTextWithParagraphs(text) {
   }
 }
 </script>
+
+<!-- Остальная часть компонента (template и styles) остается без изменений -->
 
 <template>
   <div class="task-card">

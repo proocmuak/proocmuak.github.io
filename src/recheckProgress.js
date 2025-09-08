@@ -25,6 +25,10 @@ function freqMap(arr) {
   return m;
 }
 
+function hasDuplicates(arr) {
+  return new Set(arr).size !== arr.length;
+}
+
 function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
   if (userAnswer == null || correctAnswer == null) return false;
   if (!isDigitSequence(String(userAnswer)) || !isDigitSequence(String(correctAnswer))) return false;
@@ -32,8 +36,22 @@ function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = {
   const correctElems = splitNumericElements(correctAnswer);
   const userElems = splitNumericElements(userAnswer);
 
+  // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
   if (!options.allowExtra && userElems.length > correctElems.length) return false;
 
+  // Если в эталоне есть дубликаты и длины равны => считаем, что порядок важен => сравниваем по позициям
+  if (hasDuplicates(correctElems) && userElems.length === correctElems.length) {
+    let matches = 0;
+    for (let i = 0; i < correctElems.length; i++) {
+      if (userElems[i] === correctElems[i]) matches++;
+    }
+    const mistakes = correctElems.length - matches;
+    if (mistakes === 0) return true;                  // полный
+    if (maxPoints === 2 && mistakes === 1) return true; // одна позиция не совпала -> частично
+    return false;                                     // иначе 0
+  }
+
+  // В остальных случаях — мультисет-логика (как раньше)
   const fc = freqMap(correctElems);
   const fu = freqMap(userElems);
 
@@ -43,10 +61,12 @@ function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = {
   }
 
   const mistakes = correctElems.length - matched;
-  if (mistakes === 0) return true;
-  if (maxPoints === 2 && mistakes === 1) return true;
+
+  if (mistakes === 0) return true;            // полностью совпадает
+  if (maxPoints === 2 && mistakes === 1) return true; // одна ошибка => частично
   return false;
 }
+
 
 function normalizeText(str) {
   return String(str || "")
