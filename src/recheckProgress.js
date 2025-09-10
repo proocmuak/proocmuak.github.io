@@ -1,250 +1,215 @@
-// recheckProgress.js
-import 'dotenv/config';
-import {supabase} from './supabase.js'
+import { supabase } from './supabase.js'
 
-// ========== УТИЛИТЫ проверки ответов ==========
+// === список заданий с учётом порядка ===
+const ORDERED_TASKS = {
+  chemistry: [6, 7, 8, 14, 15, 22, 23, 24],
+  biology: [2, 6, 8, 10, 12, 14, 16, 19, 20]
+}
+
+// === нормализация номера ===
+function normalizeTaskNumber(taskNumber) {
+  if (taskNumber == null) return null
+  const s = String(taskNumber).trim()
+  const m = s.match(/\d+/)
+  if (!m) return null
+  const n = parseInt(m[0], 10)
+  return Number.isNaN(n) ? null : n
+}
+
+// === короткий subject из названия таблицы ===
+function shortSubjectFromProgressTable(progressTableName) {
+  const s = String(progressTableName).toLowerCase()
+  if (s.includes('chemistry')) return 'chemistry'
+  if (s.includes('biology')) return 'biology'
+  return null
+}
+
+// === вспомогательные функции для проверки ===
+function splitAnswerVariantsRaw(raw) {
+  if (!raw) return []
+  return String(raw)
+    .split(/[/]|ИЛИ/i)
+    .map(s => s.trim())
+    .filter(Boolean)
+}
 
 function isDigitSequence(s) {
-  if (s == null) return false;
-  return typeof s === 'string' && /^[0-9\s,;]+$/.test(s.trim());
+  return /^[0-9]+$/.test(s)
 }
 
 function splitNumericElements(s) {
-  s = String(s || '').trim();
-  if (!s) return [];
-  if (/[^0-9]/.test(s)) {
-    const tokens = s.split(/[^0-9]+/).filter(Boolean);
-    if (tokens.length > 0) return tokens;
-  }
-  return s.split('');
+  return s.split('').filter(ch => /\d/.test(ch))
 }
 
 function freqMap(arr) {
-  const m = new Map();
-  for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
-  return m;
+  const m = new Map()
+  for (const x of arr) m.set(x, (m.get(x) || 0) + 1)
+  return m
 }
 
-function hasDuplicates(arr) {
-  return new Set(arr).size !== arr.length;
+function normalizeText(s) {
+  return s.toLowerCase().replace(/\s+/g, '')
 }
 
-function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
-  if (userAnswer == null || correctAnswer == null) return false;
-  if (!isDigitSequence(String(userAnswer)) || !isDigitSequence(String(correctAnswer))) return false;
-
-  const correctElems = splitNumericElements(correctAnswer);
-  const userElems = splitNumericElements(userAnswer);
-
-  // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
-  if (!options.allowExtra && userElems.length > correctElems.length) return false;
-
-  // Если в эталоне есть дубликаты и длины равны => считаем, что порядок важен => сравниваем по позициям
-  if (hasDuplicates(correctElems) && userElems.length === correctElems.length) {
-    let matches = 0;
-    for (let i = 0; i < correctElems.length; i++) {
-      if (userElems[i] === correctElems[i]) matches++;
-    }
-    const mistakes = correctElems.length - matches;
-    if (mistakes === 0) return true;                  // полный
-    if (maxPoints === 2 && mistakes === 1) return true; // одна позиция не совпала -> частично
-    return false;                                     // иначе 0
-  }
-
-  // В остальных случаях — мультисет-логика (как раньше)
-  const fc = freqMap(correctElems);
-  const fu = freqMap(userElems);
-
-  let matched = 0;
-  for (const [k, cnt] of fc.entries()) {
-    if (fu.has(k)) matched += Math.min(cnt, fu.get(k));
-  }
-
-  const mistakes = correctElems.length - matched;
-
-  if (mistakes === 0) return true;            // полностью совпадает
-  if (maxPoints === 2 && mistakes === 1) return true; // одна ошибка => частично
-  return false;
-}
-
-
-function normalizeText(str) {
-  return String(str || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-// Возвращает массив вариантов (не нормализованных), разделённых "/" или "или" (в любом регистре)
-function splitAnswerVariantsRaw(correctAnswerRaw) {
-  if (correctAnswerRaw == null) return [];
-  return String(correctAnswerRaw)
-    .split(/\/|или/i)
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-// Возвращает { score, isCorrect, isPartiallyCorrect }
-function checkAnswer(userAnswerRaw, correctAnswerRaw, points) {
-  const userRaw = userAnswerRaw == null ? "" : String(userAnswerRaw).trim();
-
+// === проверка ответа ===
+function checkAnswer(userAnswerRaw, correctAnswerRaw, points, shortSubject, taskNumberRaw, taskId = null) {
+  const userRaw = userAnswerRaw == null ? '' : String(userAnswerRaw).trim()
   if (!userRaw) {
-    return { score: 0, isCorrect: false, isPartiallyCorrect: false };
+    return { score: 0, isCorrect: false, isPartiallyCorrect: false }
   }
 
-  const variants = splitAnswerVariantsRaw(correctAnswerRaw);
+  const variants = splitAnswerVariantsRaw(correctAnswerRaw)
+  let anyCorrect = false
+  let anyPartial = false
 
-  let anyCorrect = false;
-  let anyPartial = false;
+  const taskNum = normalizeTaskNumber(taskNumberRaw)
+  let orderMatters = false
+  if (points === 2 && shortSubject && taskNum != null) {
+    orderMatters = ORDERED_TASKS[shortSubject]?.includes(taskNum) || false
+  }
 
   for (const variant of variants) {
-    // Если оба — цифровые последовательности, используем цифровую логику
     if (isDigitSequence(variant) && isDigitSequence(userRaw)) {
-      // нормализованные строки для строгого сравнения
-      const normV = splitNumericElements(variant).join('');
-      const normU = splitNumericElements(userRaw).join('');
-      if (normU === normV) {
+      const userElems = splitNumericElements(userRaw)
+      const correctElems = splitNumericElements(variant)
+
+      if (orderMatters) {
+        let matches = 0
+        for (let i = 0; i < correctElems.length; i++) {
+          if (userElems[i] === correctElems[i]) matches++
+        }
+        const mistakes = correctElems.length - matches
+        if (mistakes === 0) {
+          anyCorrect = true
+          break
+        }
+        if (points === 2 && mistakes === 1) anyPartial = true
+      } else {
+        let matches = 0;
+        if (points === 1 && correctElems.length === userElems.length) {
+            for (let i = 0; i < correctElems.length; i++) {
+                if (userElems[i] === correctElems[i]) matches++
+            }
+            const mistakes = correctElems.length - matches
+            if (mistakes === 0) {
+                anyCorrect = true
+                break
+            }
+        }
+
+if (points === 2) {
+    // Считаем количество совпадающих элементов (без учета порядка)
+    let matches = 0;
+    for (let i = 0; i < userElems.length; i++) {
+        if (correctElems.includes(userElems[i])) {
+            matches++;
+        }
+    }
+    
+    // Преобразуем оба массива в числа для сравнения
+    const numCorrect = correctElems.map(Number);
+    const numUser = userElems.map(Number);
+    
+    // Сортируем и сравниваем
+    const sortedCorrect = [...numCorrect].sort();
+    const sortedUser = [...numUser].sort();
+    
+    if (sortedCorrect.join(',') === sortedUser.join(',')) {
         anyCorrect = true;
-        break;
-      } else if (points === 2 && checkPartialMatch(userRaw, variant, points)) {
+    }
+    if (
+               ((matches === userElems.length || matches === correctElems.length) &&
+               Math.abs(correctElems.length - userElems.length) === 1) || 
+              (Math.abs(matches-correctElems.length) === 1)
+            ) {
+        // Частичное совпадение: либо все элементы одного массива есть в другом,
+        // либо разница в длине всего 1 элемент
         anyPartial = true;
-        // не прерываем — вдруг есть полностью корректный вариант дальше
+    }
+    
+    break;
+}
       }
     } else {
-      // текстовый вариант — сравним в нижнем регистре после нормализации
       if (normalizeText(userRaw) === normalizeText(variant)) {
-        anyCorrect = true;
-        break;
+        anyCorrect = true
+        break
       }
     }
   }
 
-  const isCorrect = anyCorrect;
-  const isPartiallyCorrect = !isCorrect && anyPartial;
-  const score = isCorrect ? points : isPartiallyCorrect ? 1 : 0;
-  return { score, isCorrect, isPartiallyCorrect };
+  const isCorrect = anyCorrect
+  const isPartiallyCorrect = !isCorrect && anyPartial
+  const score = isCorrect ? points : isPartiallyCorrect ? 1 : 0
+
+
+
+  return { score, isCorrect, isPartiallyCorrect }
 }
 
-// ========== ВСПОМОГАТЕЛЬНЫЕ ==========
+// === основная функция ===
+async function recheckSubjectProgress(subject, supabase) {
+  const progressTable = `${subject}_progress`
+  const taskBank = `${subject}_task_bank`
+  const shortSubject = shortSubjectFromProgressTable(progressTable)
 
-async function findExistingTable(possibleNames = []) {
-  for (const name of possibleNames) {
-    // пробуем сделать простой селект
-    const { data, error } = await supabase.from(name).select('1').limit(1);
-    if (!error) {
-      // таблица существует (даже если пустая)
-      return name;
-    }
-    // если ошибка - пропускаем, попробуем следующую
-  }
-  return null;
-}
+  console.log(`\n=== Перепроверка ${subject} ===`)
 
-function isValidTaskId(taskId) {
-  if (taskId == null) return false;
-  if (typeof taskId === 'number' && Number.isInteger(taskId)) return true;
-  if (typeof taskId === 'string') {
-    // строка из цифр?
-    return /^\d+$/.test(taskId.trim());
-  }
-  return false;
-}
-
-// ========== ПЕРЕПРОВЕРКА ПРЕДМЕТА ==========
-
-async function recheckSubjectProgress(subject) {
-  // пробуем найти таблицу прогресса (варианты)
-  const progressTable = `${subject}_ege_progress`;
-    const taskBankTable = `${subject}_ege_task_bank`;
-  if (!progressTable) {
-    console.warn(`Таблица прогресса не найдена для "${subject}" (ожидали ${subject}_progress или ${subject}_ege_progress). Пропускаем.`);
-    return;
-  }
-
-  if (!taskBankTable) {
-    console.warn(`Таблица заданий не найдена для "${subject}" (ожидали ${subject}_ege_task_bank или ${subject}_task_bank). Пропускаем.`);
-    return;
-  }
-
-  console.log(`\n=== Перепроверка ${subject} (progress=${progressTable}, taskBank=${taskBankTable}) ===`);
-
-  // Выбираем строки прогресса — ограничение безопасности, можно увеличить если нужно
-  const { data: rows, error } = await supabase
+  const { data: progresses, error: progError } = await supabase
     .from(progressTable)
-    .select('user_id, task_id, user_answer, score')
-    .limit(20000);
+    .select('id, user_id, task_id, is_completed, score, user_answer')
 
-  if (error) {
-    console.error(`Ошибка выборки из ${progressTable}:`, error);
-    return;
+  if (progError) {
+    console.error(`Ошибка выборки из ${progressTable}:`, progError)
+    return
   }
 
-  let updated = 0;
-  let skippedInvalidTaskId = 0;
-  let missingTask = 0;
+  for (const prog of progresses) {
+    const { data: taskRows, error: taskError } = await supabase
+      .from(taskBank)
+      .select('id, answer, points, number')
+      .eq('id', prog.task_id)
+      .maybeSingle()
 
-  for (const row of rows) {
-    // защита: возможна ситуация, когда row.task_id = 'null' (строка) или другой мусор — пропускаем такие
-    if (!isValidTaskId(row.task_id)) {
-      console.warn(`Пропущено: user_id=${row.user_id}, task_id=${String(row.task_id)} — invalid task_id`);
-      skippedInvalidTaskId++;
-      continue;
-    }
+    if (taskError || !taskRows) continue
+    const task = taskRows
 
-    const parsedTaskId = typeof row.task_id === 'number' ? row.task_id : parseInt(String(row.task_id).trim(), 10);
+    const result = checkAnswer(
+      prog.user_answer,
+      task.answer,
+      task.points,
+      shortSubject,
+      task.number,
+      prog.task_id
+    )
 
-    // получаем эталон задания
-    const { data: task, error: taskErr } = await supabase
-      .from(taskBankTable)
-      .select('answer, points')
-      .eq('id', parsedTaskId)
-      .single();
+    if (result.score !== prog.score || result.isCorrect !== prog.is_completed) {
+      console.log(
+        `LOG: user_id=${prog.user_id}, task_id=${prog.task_id}, number=${task.number}, старый=${prog.score} → новый=${result.score}`
+      )
+      console.log(`       user_answer="${prog.user_answer}", correct_answer="${task.answer}"`)
 
-    if (taskErr || !task) {
-      console.warn(`Задание не найдено: task_id=${parsedTaskId} (user_id=${row.user_id})`);
-      missingTask++;
-      continue;
-    }
-
-    const result = checkAnswer(row.user_answer, task.answer, task.points);
-
-    if (result.score !== row.score) {
-      // строго в запрошенном формате
-      console.log(`user_id=${row.user_id}, task_id=${parsedTaskId}: старый=${row.score} → новый=${result.score}`);
-
-      const { error: updErr } = await supabase
+      const { error: updateError } = await supabase
         .from(progressTable)
         .update({
           score: result.score,
-          is_completed: result.isCorrect || result.isPartiallyCorrect,
+          is_completed: result.isCorrect,
           last_updated: new Date().toISOString()
         })
-        .eq('user_id', row.user_id)
-        .eq('task_id', parsedTaskId);
+        .eq('id', prog.id)
 
-      if (updErr) {
-        console.error(`Ошибка обновления (${row.user_id}, ${parsedTaskId}):`, updErr);
-      } else {
-        updated++;
+      if (updateError) {
+        console.error('Ошибка обновления:', updateError)
       }
     }
   }
 
-  console.log(`Итого для ${subject}: обновлено=${updated}, пропущено_invalid_task_id=${skippedInvalidTaskId}, missing_task=${missingTask}`);
+  console.log(`\n✅ Перепроверка ${subject} завершена`)
 }
 
-// ========== MAIN ==========
+// === запуск ===
+const subjects = ['biology_ege']
 
-async function main() {
-  try {
-    const subjects = ['chemistry', 'biology'];
-    for (const s of subjects) {
-      await recheckSubjectProgress(s);
-    }
-    console.log('\n✅ Перепроверка завершена');
-  } catch (err) {
-    console.error('Неожиданная ошибка в main:', err);
-  }
+for (const subj of subjects) {
+  await recheckSubjectProgress(subj, supabase)
 }
-
-main();

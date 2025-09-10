@@ -81,7 +81,25 @@
                   </div>
 
                   <div class="answer-section">
-                    <div v-if="!task.userAnswer && !isViewMode && !isCompleted">
+                    <!-- Режим редактирования -->
+                    <div v-if="task.isEditing" class="edit-mode">
+                      <div class="answer-input-container">
+                        <input 
+                          v-model="task.editAnswerInput" 
+                          type="text" 
+                          :placeholder="`Введите ответ (${task.points} балла)`" 
+                          class="answer-input"
+                          @keyup.enter="saveEditedAnswer(task)"
+                          ref="editInput"
+                        >
+                        <button @click="saveEditedAnswer(task)" class="submit-button">Сохранить</button>
+                        <button @click="cancelEdit(task)" class="cancel-button">Отмена</button>
+                      </div>
+                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
+                    </div>
+                    
+                    <!-- Режим ввода нового ответа -->
+                    <div v-else-if="!task.userAnswer && !isViewMode && !isCompleted">
                       <div class="answer-input-container">
                         <input 
                           v-model="task.userAnswerInput" 
@@ -96,7 +114,7 @@
                     </div>
                     
                     <!-- Отображаем ответы только после завершения работы -->
-                    <div v-if="(isCompleted || task.userAnswer) && showAnswers" class="answer-result">
+                    <div v-else-if="(isCompleted || task.userAnswer) && showAnswers" class="answer-result">
                       <div class="answer-feedback" :class="getFeedbackClass(task)">
                         <div class="feedback-content">
                           <span v-if="task.isCorrect" class="correct-icon">✓</span>
@@ -114,12 +132,30 @@
                             <strong>Правильный ответ:</strong> {{ task.answer }}
                             ({{ task.awardedPoints }}/{{ task.points }} балла)
                           </span>
+                          
+                          <!-- Кнопка редактирования (только если не завершено) -->
+                          <button 
+                            v-if="!isCompleted" 
+                            @click="startEdit(task)" 
+                            class="edit-answer-btn"
+                            title="Редактировать ответ"
+                          >
+                            ✏️
+                          </button>
                         </div>
                       </div>
                     </div>
                     
+                    <!-- Ответ сохранен, но домашнее задание не завершено -->
                     <div v-else-if="task.userAnswer && !showAnswers" class="answer-saved">
                       <span class="saved-icon">✓</span> Ответ сохранен
+                      <button 
+                        @click="startEdit(task)" 
+                        class="edit-answer-btn"
+                        title="Редактировать ответ"
+                      >
+                        ✏️
+                      </button>
                     </div>
                     
                   </div>
@@ -159,7 +195,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { supabase } from './supabase.js'
 import DOMPurify from 'dompurify'
 
@@ -183,6 +219,7 @@ export default {
     const showAnswers = ref(false)
     const subject = ref('')
     const homeworkId = ref('')
+    const editInput = ref(null)
 
     // Получаем параметры из URL
     const getUrlParams = () => {
@@ -275,13 +312,14 @@ export default {
     }
 
     // Санитизация HTML
-const sanitizeHtml = (html) => {
-  if (!html) return ''
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
-    ALLOWED_ATTR: ['style', 'class']
-  })
-}
+    const sanitizeHtml = (html) => {
+      if (!html) return ''
+      return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
+        ALLOWED_ATTR: ['style', 'class']
+      })
+    }
+
     // Получение URL изображения
     const getImageUrl = (imagePath) => {
       if (!imagePath) return ''
@@ -300,30 +338,78 @@ const sanitizeHtml = (html) => {
     }
 
     // Удаление таблиц из текста задания
-// Функция для обработки текста с абзацами
-const formatTextWithParagraphs = (text) => {
-  if (!text) return ''
-  
-  // Заменяем двойные переносы на параграфы
-  let formattedText = text
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-  
-  // Оборачиваем в параграф, если нужно
-  if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
-    formattedText = `<p>${formattedText}</p>`
-  }
-  
-  return formattedText
-}
+    // Функция для обработки текста с абзацами
+    const formatTextWithParagraphs = (text) => {
+      if (!text) return ''
+      
+      // Заменяем двойные переносы на параграфы
+      let formattedText = text
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>')
+      
+      // Оборачиваем в параграф, если нужно
+      if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
+        formattedText = `<p>${formattedText}</p>`
+      }
+      
+      return formattedText
+    }
 
-// Обновите функцию получения текста задания
-const getTaskTextWithoutTables = (task) => {
-  if (!task.text) return '';
-  const textWithoutTables = task.has_table ? task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : task.text;
-  return formatTextWithParagraphs(textWithoutTables);
-}
+    // Обновите функцию получения текста задания
+    const getTaskTextWithoutTables = (task) => {
+      if (!task.text) return '';
+      const textWithoutTables = task.has_table ? task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : task.text;
+      return formatTextWithParagraphs(textWithoutTables);
+    }
 
+    // Начать редактирование ответа
+    const startEdit = (task) => {
+      task.isEditing = true;
+      task.editAnswerInput = task.userAnswer || '';
+      
+      // Фокусируемся на поле ввода после обновления DOM
+      nextTick(() => {
+        const input = document.querySelector(`.task-item[data-task-id="${task.task_id}"] .answer-input`);
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      });
+    }
+
+    // Отменить редактирование
+    const cancelEdit = (task) => {
+      task.isEditing = false;
+      task.editAnswerInput = '';
+    }
+
+    // Сохранение отредактированного ответа
+    const saveEditedAnswer = async (task) => {
+      if (!task.editAnswerInput.trim()) {
+        alert('Пожалуйста, введите ответ');
+        return;
+      }
+
+      try {
+        task.saving = true;
+        const userAnswer = task.editAnswerInput.trim();
+        
+        // Обновляем данные задачи
+        task.userAnswer = userAnswer;
+        task.userAnswerInput = userAnswer;
+        task.isEditing = false;
+        
+        // Сохраняем в базу данных
+        await saveTaskProgress(task, false);
+        
+        task.saving = false;
+        
+      } catch (err) {
+        console.error('Ошибка сохранения отредактированного ответа:', err);
+        task.saving = false;
+        error.value = 'Ошибка при сохранении ответа: ' + err.message;
+      }
+    }
 
     // Сохранение ответа
     const saveAnswer = async (task) => {
@@ -350,317 +436,317 @@ const getTaskTextWithoutTables = (task) => {
     }
 
     // Сохранение прогресса выполнения задания
-// ================== УТИЛИТЫ ==================
+    // ================== УТИЛИТЫ ==================
 
-// Проверка: строка состоит из цифр/разделителей
-function isDigitSequence(s) {
-  return typeof s === 'string' && /^[0-9\s,;]+$/.test(s.trim());
-}
-
-// Разбиваем числовую строку на элементы
-function splitNumericElements(s) {
-  s = String(s || '').trim();
-  if (!s) return [];
-  // Если есть разделители (пробел, запятая и т.п.) — это могут быть многозначные числа
-  if (/[^0-9]/.test(s)) {
-    const tokens = s.split(/[^0-9]+/).filter(Boolean);
-    if (tokens.length > 0) return tokens;
-  }
-  // Иначе — строка из цифр без разделителей ("345" -> ["3","4","5"])
-  return s.split('');
-}
-
-function freqMap(arr) {
-  const m = new Map();
-  for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
-  return m;
-}
-
-/**
- * Частичная проверка для числовых ответов по правилам ЕГЭ
- */
-function hasDuplicates(arr) {
-  return new Set(arr).size !== arr.length;
-}
-
-function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
-  if (userAnswer == null || correctAnswer == null) return false;
-  if (!isDigitSequence(String(userAnswer)) || !isDigitSequence(String(correctAnswer))) return false;
-
-  const correctElems = splitNumericElements(correctAnswer);
-  const userElems = splitNumericElements(userAnswer);
-
-  // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
-  if (!options.allowExtra && userElems.length > correctElems.length) return false;
-
-  // Если в эталоне есть дубликаты и длины равны => считаем, что порядок важен => сравниваем по позициям
-  if (hasDuplicates(correctElems) && userElems.length === correctElems.length) {
-    let matches = 0;
-    for (let i = 0; i < correctElems.length; i++) {
-      if (userElems[i] === correctElems[i]) matches++;
+    // Проверка: строка состоит из цифр/разделителей
+    function isDigitSequence(s) {
+      return typeof s === 'string' && /^[0-9\s,;]+$/.test(s.trim());
     }
-    const mistakes = correctElems.length - matches;
-    if (mistakes === 0) return true;                  // полный
-    if (maxPoints === 2 && mistakes === 1) return true; // одна позиция не совпала -> частично
-    return false;                                     // иначе 0
-  }
 
-  // В остальных случаях — мультисет-логика (как раньше)
-  const fc = freqMap(correctElems);
-  const fu = freqMap(userElems);
+    // Разбиваем числовую строку на элементы
+    function splitNumericElements(s) {
+      s = String(s || '').trim();
+      if (!s) return [];
+      // Если есть разделители (пробел, запятая и т.п.) — это могут быть многозначные числа
+      if (/[^0-9]/.test(s)) {
+        const tokens = s.split(/[^0-9]+/).filter(Boolean);
+        if (tokens.length > 0) return tokens;
+      }
+      // Иначе — строка из цифр без разделителей ("345" -> ["3","4","5"])
+      return s.split('');
+    }
 
-  let matched = 0;
-  for (const [k, cnt] of fc.entries()) {
-    if (fu.has(k)) matched += Math.min(cnt, fu.get(k));
-  }
+    function freqMap(arr) {
+      const m = new Map();
+      for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
+      return m;
+    }
 
-  const mistakes = correctElems.length - matched;
+    /**
+     * Частичная проверка для числовых ответов по правилам ЕГЭ
+     */
+    function hasDuplicates(arr) {
+      return new Set(arr).size !== arr.length;
+    }
 
-  if (mistakes === 0) return true;            // полностью совпадает
-  if (maxPoints === 2 && mistakes === 1) return true; // одна ошибка => частично
-  return false;
-}
+    function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
+      if (userAnswer == null || correctAnswer == null) return false;
+      if (!isDigitSequence(String(userAnswer)) || !isDigitSequence(String(correctAnswer))) return false;
 
+      const correctElems = splitNumericElements(correctAnswer);
+      const userElems = splitNumericElements(userAnswer);
 
-// ================== ТЕКСТОВЫЕ ОТВЕТЫ ==================
+      // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
+      if (!options.allowExtra && userElems.length > correctElems.length) return false;
 
-function normalizeText(str) {
-  return String(str || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-function splitVariants(correctAnswer) {
-  return correctAnswer
-    .split(/\/|или/i) // разделители: "/" или "или"
-    .map(v => normalizeText(v))
-    .filter(Boolean);
-}
-
-function checkTextAnswer(userAnswer, correctAnswer) {
-  if (!userAnswer || !correctAnswer) return false;
-  const normalizedUser = normalizeText(userAnswer);
-  const variants = splitVariants(correctAnswer);
-  return variants.includes(normalizedUser);
-}
-
-// ================== ГЛАВНАЯ ФУНКЦИЯ ==================
-
-const saveTaskProgress = async (task, checkCorrectness = false) => {
-  if (!user_id.value) return;
-
-  let score = 0;
-  let is_completed = false;
-
-  if (checkCorrectness) {
-    const correctRaw = String(task.answer || '').trim();
-    const userRaw = String(task.userAnswer || '').trim();
-
-    const numericCheck = isDigitSequence(correctRaw) && isDigitSequence(userRaw);
-
-    let isCorrect = false;
-    let isPartiallyCorrect = false;
-
-    if (numericCheck) {
-      // ===== ЧИСЛОВЫЕ ОТВЕТЫ =====
-      const normalizeForEquality = (s) => {
-        if (isDigitSequence(s)) {
-          return splitNumericElements(s).join('');
+      // Если в эталоне есть дубликаты и длины равны => считаем, что порядок важен => сравниваем по позициям
+      if (hasDuplicates(correctElems) && userElems.length === correctElems.length) {
+        let matches = 0;
+        for (let i = 0; i < correctElems.length; i++) {
+          if (userElems[i] === correctElems[i]) matches++;
         }
-        return s.trim().toLowerCase();
-      };
-
-      const normalizedCorrect = normalizeForEquality(correctRaw);
-      const normalizedUser = normalizeForEquality(userRaw);
-
-      isCorrect = normalizedUser === normalizedCorrect;
-
-      if (!isCorrect && task.points === 2) {
-        isPartiallyCorrect = checkPartialMatch(userRaw, correctRaw, task.points);
+        const mistakes = correctElems.length - matches;
+        if (mistakes === 0) return true;                  // полный
+        if (maxPoints === 2 && mistakes === 1) return true; // одна позиция не совпала -> частично
+        return false;                                     // иначе 0
       }
 
-    } else {
-      // ===== ТЕКСТОВЫЕ ОТВЕТЫ =====
-      isCorrect = checkTextAnswer(userRaw, correctRaw);
-    }
+      // В остальных случаях — мультисет-логика (как раньше)
+      const fc = freqMap(correctElems);
+      const fu = freqMap(userElems);
 
-    score = isCorrect ? task.points
-          : isPartiallyCorrect ? 1
-          : 0;
-
-    is_completed = isCorrect || isPartiallyCorrect;
-
-    task.isCorrect = isCorrect;
-    task.isPartiallyCorrect = isPartiallyCorrect;
-    task.awardedPoints = score;
-  }
-
-  try {
-    const progressTable = `${subject.value}_progress`;
-    const { error } = await supabase
-      .from(progressTable)
-      .upsert({
-        user_id: user_id.value,
-        task_id: task.task_id,
-        is_completed: is_completed,
-        score: score,
-        user_answer: task.userAnswer,
-        last_updated: new Date().toISOString()
-      }, {
-        onConflict: 'user_id,task_id'
-      });
-
-    if (error) throw error;
-
-  } catch (err) {
-    console.error('Ошибка сохранения прогресса:', err);
-    throw err;
-  }
-};
-
-    // Завершение домашнего задания
-// Завершение домашнего задания
-const completeHomework = async () => {
-  try {
-    error.value = null;
-    
-    // Пересчитываем общий балл перед завершением
-    updateTotalScore();
-
-    // Проверяем и сохраняем все ответы с определением правильности
-    for (const task of tasks.value) {
-      if (task.userAnswer) {
-        await saveTaskProgress(task, true);
+      let matched = 0;
+      for (const [k, cnt] of fc.entries()) {
+        if (fu.has(k)) matched += Math.min(cnt, fu.get(k));
       }
+
+      const mistakes = correctElems.length - matched;
+
+      if (mistakes === 0) return true;            // полностью совпадает
+      if (maxPoints === 2 && mistakes === 1) return true; // одна ошибка => частично
+      return false;
     }
 
-    // Обновляем общий балл после проверки всех заданий
-    updateTotalScore();
+    // ================== ТЕКСТОВЫЕ ОТВЕТЫ ==================
 
-    // Сохраняем завершение домашнего задания
-    const completionData = {
-      homework_id: parseInt(homeworkId.value), // Убедимся, что это число
-      user_id: user_id.value,
-      is_completed: true,
-      score: totalScore.value,
-      completed_at: new Date().toISOString()
+    function normalizeText(str) {
+      return String(str || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+    }
+
+    function splitVariants(correctAnswer) {
+      return correctAnswer
+        .split(/\/|или/i) // разделители: "/" или "или"
+        .map(v => normalizeText(v))
+        .filter(Boolean);
+    }
+
+    function checkTextAnswer(userAnswer, correctAnswer) {
+      if (!userAnswer || !correctAnswer) return false;
+      const normalizedUser = normalizeText(userAnswer);
+      const variants = splitVariants(correctAnswer);
+      return variants.includes(normalizedUser);
+    }
+
+    // ================== ГЛАВНАЯ ФУНКЦИЯ ==================
+
+    const saveTaskProgress = async (task, checkCorrectness = false) => {
+      if (!user_id.value) return;
+
+      let score = 0;
+      let is_completed = false;
+
+      if (checkCorrectness) {
+        const correctRaw = String(task.answer || '').trim();
+        const userRaw = String(task.userAnswer || '').trim();
+
+        const numericCheck = isDigitSequence(correctRaw) && isDigitSequence(userRaw);
+
+        let isCorrect = false;
+        let isPartiallyCorrect = false;
+
+        if (numericCheck) {
+          // ===== ЧИСЛОВЫЕ ОТВЕТЫ =====
+          const normalizeForEquality = (s) => {
+            if (isDigitSequence(s)) {
+              return splitNumericElements(s).join('');
+            }
+            return s.trim().toLowerCase();
+          };
+
+          const normalizedCorrect = normalizeForEquality(correctRaw);
+          const normalizedUser = normalizeForEquality(userRaw);
+
+          isCorrect = normalizedUser === normalizedCorrect;
+
+          if (!isCorrect && task.points === 2) {
+            isPartiallyCorrect = checkPartialMatch(userRaw, correctRaw, task.points);
+          }
+
+        } else {
+          // ===== ТЕКСТОВЫЕ ОТВЕТЫ =====
+          isCorrect = checkTextAnswer(userRaw, correctRaw);
+        }
+
+        score = isCorrect ? task.points
+              : isPartiallyCorrect ? 1
+              : 0;
+
+        is_completed = isCorrect || isPartiallyCorrect;
+
+        task.isCorrect = isCorrect;
+        task.isPartiallyCorrect = isPartiallyCorrect;
+        task.awardedPoints = score;
+      }
+
+      try {
+        const progressTable = `${subject.value}_progress`;
+        const { error } = await supabase
+          .from(progressTable)
+          .upsert({
+            user_id: user_id.value,
+            task_id: task.task_id,
+            is_completed: is_completed,
+            score: score,
+            user_answer: task.userAnswer,
+            last_updated: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,task_id'
+          });
+
+        if (error) throw error;
+
+      } catch (err) {
+        console.error('Ошибка сохранения прогресса:', err);
+        throw err;
+      }
     };
 
-    console.log('Отправляемые данные:', completionData);
+    // Завершение домашнего задания
+    const completeHomework = async () => {
+      try {
+        error.value = null;
+        
+        // Пересчитываем общий балл перед завершением
+        updateTotalScore();
 
-    const { error: completionError } = await supabase
-      .from(`${subject.value}_homework_completed`)
-      .upsert(completionData, {
-        onConflict: 'user_id,homework_id'
-      });
+        // Проверяем и сохраняем все ответы с определением правильности
+        for (const task of tasks.value) {
+          if (task.userAnswer) {
+            await saveTaskProgress(task, true);
+          }
+        }
 
-    if (completionError) {
-      console.error('Ошибка Supabase:', completionError);
-      throw new Error(completionError.message);
+        // Обновляем общий балл после проверки всех заданий
+        updateTotalScore();
+
+        // Сохраняем завершение домашнего задания
+        const completionData = {
+          homework_id: parseInt(homeworkId.value), // Убедимся, что это число
+          user_id: user_id.value,
+          is_completed: true,
+          score: totalScore.value,
+          completed_at: new Date().toISOString()
+        };
+
+        console.log('Отправляемые данные:', completionData);
+
+        const { error: completionError } = await supabase
+          .from(`${subject.value}_homework_completed`)
+          .upsert(completionData, {
+            onConflict: 'user_id,homework_id'
+          });
+
+        if (completionError) {
+          console.error('Ошибка Supabase:', completionError);
+          throw new Error(completionError.message);
+        }
+
+        isCompleted.value = true;
+        showAnswers.value = true;
+        
+        alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value);
+
+      } catch (err) {
+        error.value = err.message;
+        console.error('Полная ошибка завершения домашнего задания:', err);
+        alert('Ошибка: ' + err.message);
+      }
     }
-
-    isCompleted.value = true;
-    showAnswers.value = true;
-    
-    alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value);
-
-  } catch (err) {
-    error.value = err.message;
-    console.error('Полная ошибка завершения домашнего задания:', err);
-    alert('Ошибка: ' + err.message);
-  }
-}
 
     // Загрузка заданий домашнего задания
-const fetchHomeworkTasks = async () => {
-  try {
-    loading.value = true
-    error.value = null
-    user_id.value = await getCurrentUserId()
+    const fetchHomeworkTasks = async () => {
+      try {
+        loading.value = true
+        error.value = null
+        user_id.value = await getCurrentUserId()
 
-    if (!user_id.value) {
-      throw new Error('Пользователь не авторизован')
-    }
+        if (!user_id.value) {
+          throw new Error('Пользователь не авторизован')
+        }
 
-    if (!subject.value || !homeworkId.value) {
-      throw new Error('Не указаны параметры домашнего задания')
-    }
+        if (!subject.value || !homeworkId.value) {
+          throw new Error('Не указаны параметры домашнего задания')
+        }
 
-    // Загрузка информации о домашнем задании
-    const { data: homeworkInfo, error: homeworkInfoError } = await supabase
-      .from(`${subject.value}_homework_list`)
-      .select('deadline, homework_name, lesson_number, lesson_name')
-      .eq('homework_id', homeworkId.value)
-      .single()
+        // Загрузка информации о домашнем задании
+        const { data: homeworkInfo, error: homeworkInfoError } = await supabase
+          .from(`${subject.value}_homework_list`)
+          .select('deadline, homework_name, lesson_number, lesson_name')
+          .eq('homework_id', homeworkId.value)
+          .single()
 
-    if (homeworkInfoError) {
-      console.error('Ошибка загрузки информации о домашнем задании:', homeworkInfoError)
-    } else if (homeworkInfo) {
-      homeworkData.value = {
-        ...homeworkData.value,
-        deadline: homeworkInfo.deadline,
-        homework_name: homeworkInfo.homework_name || homeworkData.value.homework_name,
-        lesson_number: homeworkInfo.lesson_number || homeworkData.value.lesson_number,
-        lesson_name: homeworkInfo.lesson_name || homeworkData.value.lesson_name
+        if (homeworkInfoError) {
+          console.error('Ошибка загрузки информации о домашнем задании:', homeworkInfoError)
+        } else if (homeworkInfo) {
+          homeworkData.value = {
+            ...homeworkData.value,
+            deadline: homeworkInfo.deadline,
+            homework_name: homeworkInfo.homework_name || homeworkData.value.homework_name,
+            lesson_number: homeworkInfo.lesson_number || homeworkData.value.lesson_number,
+            lesson_name: homeworkInfo.lesson_name || homeworkData.value.lesson_name
+          }
+        }
+
+        // Загружаем задания домашнего задания с правильным номером
+        const { data: homeworkTasks, error: homeworkError } = await supabase
+          .from(`${subject.value}_homework_tasks`)
+          .select('*')
+          .eq('homework_id', homeworkId.value)
+          .order('number', { ascending: true }) // Сортируем по номеру
+
+        if (homeworkError) {
+          throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
+        }
+
+        if (!homeworkTasks || homeworkTasks.length === 0) {
+          throw new Error('Задания для этого домашнего задания не найдены')
+        }
+
+        // Загружаем детали заданий из банка задач
+        const taskIds = homeworkTasks.map(task => task.task_id)
+        const { data: taskDetails, error: taskError } = await supabase
+          .from(`${subject.value}_task_bank`)
+          .select('*')
+          .in('id', taskIds)
+
+        if (taskError) {
+          throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
+        }
+
+        // Объединяем данные, сохраняя номер из homework_tasks
+        tasks.value = homeworkTasks.map(homeworkTask => {
+          const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
+          return {
+            ...homeworkTask, // Это важно - homeworkTask должен быть первым
+            ...taskDetail,
+            number: homeworkTask.number, // Сохраняем номер из homework_tasks
+            userAnswerInput: '',
+            userAnswer: null,
+            isCorrect: false,
+            isPartiallyCorrect: false,
+            awardedPoints: 0,
+            saving: false,
+            isEditing: false,
+            editAnswerInput: ''
+          }
+        })
+
+        // Загружаем прогресс выполнения
+        await loadTasksProgress()
+
+        // Проверяем статус выполнения домашнего задания
+        await checkHomeworkCompletion()
+
+      } catch (err) {
+        error.value = err.message
+        console.error('Ошибка загрузки заданий:', err)
+      } finally {
+        loading.value = false
       }
     }
-
-    // Загружаем задания домашнего задания с правильным номером
-    const { data: homeworkTasks, error: homeworkError } = await supabase
-      .from(`${subject.value}_homework_tasks`)
-      .select('*')
-      .eq('homework_id', homeworkId.value)
-      .order('number', { ascending: true }) // Сортируем по номеру
-
-    if (homeworkError) {
-      throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
-    }
-
-    if (!homeworkTasks || homeworkTasks.length === 0) {
-      throw new Error('Задания для этого домашнего задания не найдены')
-    }
-
-    // Загружаем детали заданий из банка задач
-    const taskIds = homeworkTasks.map(task => task.task_id)
-    const { data: taskDetails, error: taskError } = await supabase
-      .from(`${subject.value}_task_bank`)
-      .select('*')
-      .in('id', taskIds)
-
-    if (taskError) {
-      throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
-    }
-
-    // Объединяем данные, сохраняя номер из homework_tasks
-    tasks.value = homeworkTasks.map(homeworkTask => {
-      const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
-      return {
-        ...homeworkTask, // Это важно - homeworkTask должен быть первым
-        ...taskDetail,
-        number: homeworkTask.number, // Сохраняем номер из homework_tasks
-        userAnswerInput: '',
-        userAnswer: null,
-        isCorrect: false,
-        isPartiallyCorrect: false,
-        awardedPoints: 0,
-        saving: false
-      }
-    })
-
-    // Загружаем прогресс выполнения
-    await loadTasksProgress()
-
-    // Проверяем статус выполнения домашнего задания
-    await checkHomeworkCompletion()
-
-  } catch (err) {
-    error.value = err.message
-    console.error('Ошибка загрузки заданий:', err)
-  } finally {
-    loading.value = false
-  }
-}
 
     // Загрузка прогресса выполнения заданий
     const loadTasksProgress = async () => {
@@ -711,7 +797,7 @@ const fetchHomeworkTasks = async () => {
       }
     }
 
-    // Проверка статуса выполнения домашнего задания
+    // Проверка статус выполнения домашнего задания
     const checkHomeworkCompletion = async () => {
       if (!user_id.value) return
 
@@ -843,20 +929,20 @@ const fetchHomeworkTasks = async () => {
       }
 
         // Блокировка контекстного меню
-  document.addEventListener('contextmenu', (e) => {
-    if (e.target.closest('.task-text')) {
-      e.preventDefault()
-      return false
-    }
-  })
-  
-  // Блокировка выделения текста (опционально)
-  document.addEventListener('selectstart', (e) => {
-    if (e.target.closest('.task-text')) {
-      e.preventDefault()
-      return false
-    }
-  })
+      document.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('.task-text')) {
+          e.preventDefault()
+          return false
+        }
+      })
+      
+      // Блокировка выделения текста (опционально)
+      document.addEventListener('selectstart', (e) => {
+        if (e.target.closest('.task-text')) {
+          e.preventDefault()
+          return false
+        }
+      })
     })
 
     // Обновляем общий балл при изменениях
@@ -891,13 +977,14 @@ const fetchHomeworkTasks = async () => {
       closeImageModal,
       hasAnswers,
       redirectToMenu, 
-      isViewMode
+      isViewMode,
+      startEdit,
+      cancelEdit,
+      saveEditedAnswer
     }
   }
 }
 </script>
-
-
 
 <style scoped>
 .homework-content {
@@ -1731,5 +1818,76 @@ a {
   bottom: 0;
   z-index: 1;
   pointer-events: none;
+}
+
+
+/* Добавляем новые стили для функциональности редактирования */
+
+.edit-mode {
+  margin-top: 1rem;
+}
+
+.saved-answer-content {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.8rem;
+  background-color: #f8f9fa;
+  border-radius: 0.4rem;
+  border-left: 3px solid #b241d1;
+}
+
+.answer-text {
+  flex: 1;
+  font-weight: 500;
+  color: #333;
+}
+
+.edit-answer-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: 0.3rem;
+  font-size: 1.1rem;
+  transition: background-color 0.2s;
+}
+
+.edit-answer-btn:hover {
+  background-color: rgba(178, 65, 209, 0.1);
+}
+
+.cancel-button {
+  padding: 0.8rem 1.2rem;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+  min-width: fit-content;
+  white-space: nowrap;
+}
+
+.cancel-button:hover {
+  background-color: #5a6268;
+}
+
+/* Адаптивность для кнопок редактирования */
+@media (max-width: 480px) {
+  .answer-input-container {
+    flex-direction: column;
+  }
+  
+  .saved-answer-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .edit-answer-btn {
+    align-self: flex-end;
+  }
 }
 </style>

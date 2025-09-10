@@ -267,7 +267,7 @@ const handleTelegramLogin = async () => {
   <div class="bottominfo">
     <div class="logo_and_privacy">
       <img src="/src/assets/logovector.svg" class="logoicon">
-      <div class="privacy_policy">Политика конфиденциальности</div>
+      <div class="privacy_policy"><a href="https://purto.tilda.ws/privacy" class="black_text_href">Политика конфиденциальности</a></div>
     </div>
     <div class="contact">
       <div class="phone">
@@ -580,6 +580,9 @@ gap: 20%;
 .icon{
     height: 60%;
     width: 60%;
+}
+.black_text_href{
+  color: black;
 }
 .logoicon{
   height: 10vh;

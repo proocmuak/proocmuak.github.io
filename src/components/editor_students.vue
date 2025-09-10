@@ -36,6 +36,7 @@
               <th class="tariff-column">Тариф</th>
               <th class="date-column">Оплата до</th>
               <th class="tutor-column">Наставник</th>
+              <th class="access-column">Доступ</th>
             </tr>
           </thead>
           <tbody>
@@ -46,25 +47,27 @@
               <!-- Предмет 1 -->
               <td class="subject-column">
                 <CustomDropdown
-                  v-model="student.subject1"
+                  :modelValue="findOptionByValue(ChemistryOption, student.subject1)"
                   :options="ChemistryOption"
                   placeholder="Предмет"
-                  @change="updateStudent(student)"
+                  @update:modelValue="(value) => handleSubjectChange(student, 'subject1', value)"
                 />
               </td>
               <td class="tariff-column">
                 <CustomDropdown
-                  v-model="student.subject1_tariff"
+                  :modelValue="findOptionByValue(tariffOptions, student.subject1_tariff)"
                   :options="tariffOptions"
                   placeholder="Тариф"
-                  @change="updateStudent(student)"
+                  :disabled="!student.subject1"
+                  @update:modelValue="(value) => handleTariffChange(student, 'subject1_tariff', value)"
                 />
               </td>
               <td class="date-column">
                 <input
                   type="date"
-                  v-model="student.subject1_payment_date"
-                  @change="updateStudent(student)"
+                  :value="student.subject1_payment_date"
+                  :disabled="!student.subject1"
+                  @change="(e) => handleDateChange(student, 'subject1_payment_date', e.target.value)"
                   class="date-input"
                 />
               </td>
@@ -72,25 +75,27 @@
               <!-- Предмет 2 -->
               <td class="subject-column">
                 <CustomDropdown
-                  v-model="student.subject2"
+                  :modelValue="findOptionByValue(BiologyOption, student.subject2)"
                   :options="BiologyOption"
                   placeholder="Предмет"
-                  @change="updateStudent(student)"
+                  @update:modelValue="(value) => handleSubjectChange(student, 'subject2', value)"
                 />
               </td>
               <td class="tariff-column">
                 <CustomDropdown
-                  v-model="student.subject2_tariff"
+                  :modelValue="findOptionByValue(tariffOptions, student.subject2_tariff)"
                   :options="tariffOptions"
                   placeholder="Тариф"
-                  @change="updateStudent(student)"
+                  :disabled="!student.subject2"
+                  @update:modelValue="(value) => handleTariffChange(student, 'subject2_tariff', value)"
                 />
               </td>
               <td class="date-column">
                 <input
                   type="date"
-                  v-model="student.subject2_payment_date"
-                  @change="updateStudent(student)"
+                  :value="student.subject2_payment_date"
+                  :disabled="!student.subject2"
+                  @change="(e) => handleDateChange(student, 'subject2_payment_date', e.target.value)"
                   class="date-input"
                 />
               </td>
@@ -98,11 +103,21 @@
               <!-- Наставник -->
               <td class="tutor-column">
                 <CustomDropdown
-                  v-model="student.tutor"
+                  :modelValue="findOptionByValue(tutorOptionsWithNone, student.tutor)"
                   :options="tutorOptionsWithNone"
                   placeholder="Наставник"
                   searchable
-                  @change="updateStudent(student)"
+                  @update:modelValue="(value) => handleTutorChange(student, value)"
+                />
+              </td>
+
+              <!-- Доступ -->
+              <td class="access-column">
+                <CustomDropdown
+                  :modelValue="findOptionByValue(accessOptions, student.access)"
+                  :options="accessOptions"
+                  placeholder="Доступ"
+                  @update:modelValue="(value) => handleAccessChange(student, value)"
                 />
               </td>
             </tr>
@@ -140,19 +155,33 @@ const tariffOptions = [
   { value: 'основной', label: 'Основной' }
 ];
 
+// Опции для доступа
+const accessOptions = [
+  { value: true, label: 'Разрешен' },
+  { value: false, label: 'Запрещен' }
+];
+
 // Опции для предметов
 const ChemistryOption = [
   { value: null, label: 'Нет' },
-  
   { value: 'Химия ЕГЭ', label: 'Химия ЕГЭ' },
   { value: 'Химия ОГЭ', label: 'Химия ОГЭ' },
 ];
+
 const BiologyOption = [
-  { value: null, label: 'Нет'  }, 
-  {value:'Нет',label:null},
+  { value: null, label: 'Нет' },
   { value: 'Биология ЕГЭ', label: 'Биология ЕГЭ' },
   { value: 'Биология ОГЭ', label: 'Биология ОГЭ' }
-]
+];
+
+// Функция для поиска опции по значению
+const findOptionByValue = (options, value) => {
+  if (value === null || value === undefined) {
+    return null; // Возвращаем null вместо объекта с value: null
+  }
+  return options.find(opt => opt.value === value) || null;
+};
+
 // Загрузка наставников
 const fetchTutors = async () => {
   const { data, error } = await supabase
@@ -211,7 +240,8 @@ const fetchStudents = async () => {
   students.value = (data || []).map(student => ({
     ...student,
     subject1_payment_date: student.subject1_payment_date ? formatDateForInput(student.subject1_payment_date) : '',
-    subject2_payment_date: student.subject2_payment_date ? formatDateForInput(student.subject2_payment_date) : ''
+    subject2_payment_date: student.subject2_payment_date ? formatDateForInput(student.subject2_payment_date) : '',
+    access: student.access !== undefined ? Boolean(student.access) : true
   }));
   
   totalCount.value = count || 0;
@@ -223,29 +253,78 @@ const formatDateForInput = (dateString) => {
   return date.toISOString().split('T')[0];
 };
 
+// Обработчики изменений
+const handleSubjectChange = (student, subjectField, value) => {
+  // Извлекаем значение из объекта если нужно
+  const actualValue = value?.value !== undefined ? value.value : value;
+  
+  student[subjectField] = actualValue;
+  
+  // Если выбран "Нет" (null), очищаем связанные поля
+  if (actualValue === null) {
+    if (subjectField === 'subject1') {
+      student.subject1_tariff = null;
+      student.subject1_payment_date = '';
+    } else if (subjectField === 'subject2') {
+      student.subject2_tariff = null;
+      student.subject2_payment_date = '';
+    }
+  }
+  
+  updateStudent(student);
+};
+
+const handleTariffChange = (student, tariffField, value) => {
+  student[tariffField] = value?.value !== undefined ? value.value : value;
+  updateStudent(student);
+};
+
+const handleDateChange = (student, dateField, value) => {
+  student[dateField] = value;
+  updateStudent(student);
+};
+
+const handleTutorChange = (student, value) => {
+  student.tutor = value?.value !== undefined ? value.value : value;
+  updateStudent(student);
+};
+
+const handleAccessChange = (student, value) => {
+  student.access = value?.value !== undefined ? value.value : value;
+  updateStudent(student);
+};
+
 // Обновление данных студента
 const updateStudent = async (student) => {
   // Подготавливаем данные для сохранения
   const updateData = {
     subject1: student.subject1,
     subject2: student.subject2,
-    subject1_tariff: student.subject1_tariff,
-    subject2_tariff: student.subject2_tariff,
-    subject1_payment_date: student.subject1_payment_date || null,
-    subject2_payment_date: student.subject2_payment_date || null,
-    tutor: student.tutor
+    subject1_tariff: student.subject1 ? student.subject1_tariff : null,
+    subject2_tariff: student.subject2 ? student.subject2_tariff : null,
+    subject1_payment_date: student.subject1 && student.subject1_payment_date ? student.subject1_payment_date : null,
+    subject2_payment_date: student.subject2 && student.subject2_payment_date ? student.subject2_payment_date : null,
+    tutor: student.tutor,
+    access: student.access
   };
 
-  const { error } = await supabase
-    .from('students')
-    .update(updateData)
-    .eq('user_id', student.user_id);
+  console.log('Отправляемые данные:', updateData);
 
-  if (error) {
-    console.error('Ошибка обновления:', error);
+  try {
+    const { error } = await supabase
+      .from('students')
+      .update(updateData)
+      .eq('user_id', student.user_id);
+
+    if (error) {
+      console.error('Ошибка обновления:', error);
+      alert('Не удалось сохранить изменения! Ошибка: ' + error.message);
+    } else {
+      console.log('Данные студента обновлены:', student);
+    }
+  } catch (error) {
+    console.error('Неожиданная ошибка:', error);
     alert('Не удалось сохранить изменения!');
-  } else {
-    console.log('Данные студента обновлены:', student);
   }
 };
 
@@ -300,7 +379,7 @@ onMounted(async () => {
   flex-direction: column;
   max-width: 95vw;
   max-height: 95vh;
-  width: 81.25rem; /* 1300px */
+  width: 87.5rem;
   overflow: hidden;
 }
 
@@ -333,7 +412,7 @@ onMounted(async () => {
   justify-content: center;
   border-radius: 50%;
   transition: background-color 0.2s;
-  z-index: 1001; /* Добавляем z-index для кнопки */
+  z-index: 1001;
 }
 
 .close-button:hover {
@@ -452,6 +531,11 @@ onMounted(async () => {
   min-width: 8.75rem;
 }
 
+.access-column {
+  width: 7.5rem;
+  min-width: 7.5rem;
+}
+
 .date-input {
   padding: 0.375rem;
   border: 1px solid #ddd;
@@ -460,6 +544,12 @@ onMounted(async () => {
   font-size: 0.8125rem;
   box-sizing: border-box;
   height: 2rem;
+}
+
+.date-input:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
 }
 
 .date-input:focus {
@@ -499,7 +589,7 @@ onMounted(async () => {
 }
 
 /* Адаптивность */
-@media (max-width: 87.5rem) { /* 1400px */
+@media (max-width: 90rem) {
   .admin-students-modal {
     width: 95vw;
   }
@@ -509,9 +599,10 @@ onMounted(async () => {
   .tariff-column { width: 6.25rem; min-width: 6.25rem; }
   .date-column { width: 6.875rem; min-width: 6.875rem; }
   .tutor-column { width: 8.125rem; min-width: 8.125rem; }
+  .access-column { width: 6.875rem; min-width: 6.875rem; }
 }
 
-@media (max-width: 48rem) { /* 768px */
+@media (max-width: 48rem) {
   .modal-header {
     padding: 1rem;
   }
