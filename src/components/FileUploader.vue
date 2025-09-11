@@ -5,33 +5,23 @@
       :accept="accept"
       @change="handleFilesUpload"
       class="file-input"
-      :id="'file-input-' + fileType"
+      :id="uniqueId"
       :multiple="multiple"
+      ref="fileInput"
     />
-    <label :for="'file-input-' + fileType" class="file-label">
+    <label :for="uniqueId" class="file-label">
       {{ currentFiles.length > 0 ? 'Добавить ещё файлы' : 'Выбрать файлы' }}
       <span v-if="multiple">(можно несколько)</span>
     </label>
     
     <div v-if="uploading" class="upload-status">
       Загрузка... {{ uploadProgress }}%
-      <div v-if="uploadingCount > 0" class="upload-stats">
-        Загружено: {{ completedCount }} из {{ uploadingCount }}
-      </div>
     </div>
     
     <div v-if="error" class="error-message">
       {{ error }}
     </div>
 
-    <!-- Прогресс-бар -->
-    <div v-if="uploading" class="progress-container">
-      <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
-      </div>
-    </div>
-
-    <!-- Список загружаемых файлов -->
     <div v-if="filesQueue.length > 0" class="files-queue">
       <div v-for="(file, index) in filesQueue" :key="index" class="file-item">
         <span class="file-name">{{ file.name }}</span>
@@ -39,23 +29,14 @@
         <span v-if="file.status === 'uploading'" class="file-status">⏳ {{ file.progress }}%</span>
         <span v-else-if="file.status === 'completed'" class="file-status">✅</span>
         <span v-else-if="file.status === 'error'" class="file-status">❌</span>
-        <button v-if="file.status !== 'uploading'" @click="removeFromQueue(index)" class="remove-btn">×</button>
-      </div>
-    </div>
-
-    <!-- Список уже загруженных файлов -->
-    <div v-if="currentFiles.length > 0" class="uploaded-files">
-      <h4>Загруженные файлы:</h4>
-      <div v-for="(url, index) in currentFiles" :key="index" class="uploaded-file">
-        <a :href="url" target="_blank" class="file-link">{{ getFileName(url) }}</a>
-        <button @click="copyUrl(url)" class="copy-btn" title="Копировать ссылку">📋</button>
+        <button @click="removeFromQueue(index)" class="remove-btn">×</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase.js'
 
 const props = defineProps({
@@ -78,6 +59,10 @@ const props = defineProps({
   multiple: {
     type: Boolean,
     default: true
+  },
+  rowId: {
+    type: [String, Number],
+    default: null
   }
 })
 
@@ -86,17 +71,12 @@ const emit = defineEmits(['files-uploaded'])
 const uploading = ref(false)
 const uploadProgress = ref(0)
 const error = ref('')
-const uploadingCount = ref(0)
-const completedCount = ref(0)
 const filesQueue = ref([])
+const fileInput = ref(null)
 
-const fileTypeLabel = computed(() => {
-  const types = {
-    'workbook': 'рабочие тетради',
-    'practice': 'практические задания', 
-    'file': 'файлы'
-  }
-  return types[props.fileType] || 'файлы'
+// Генерируем уникальный ID
+const uniqueId = computed(() => {
+  return `file-input-${props.fileType}-${props.rowId}-${Math.random().toString(36).substr(2, 9)}`
 })
 
 const formatFileSize = (bytes) => {
@@ -105,17 +85,6 @@ const formatFileSize = (bytes) => {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-const getFileName = (url) => {
-  if (!url) return ''
-  const parts = url.split('/')
-  return parts[parts.length - 1]
-}
-
-const copyUrl = (url) => {
-  navigator.clipboard.writeText(url)
-  alert('Ссылка скопирована в буфер обмена')
 }
 
 const removeFromQueue = (index) => {
@@ -129,11 +98,8 @@ const handleFilesUpload = async (event) => {
   try {
     uploading.value = true
     error.value = ''
-    uploadingCount.value = files.length
-    completedCount.value = 0
     uploadProgress.value = 0
 
-    // Добавляем файлы в очередь с начальным статусом
     filesQueue.value = files.map(file => ({
       file,
       name: file.name,
@@ -144,7 +110,6 @@ const handleFilesUpload = async (event) => {
 
     const uploadedUrls = []
 
-    // Загружаем файлы последовательно
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       const queueItem = filesQueue.value[i]
@@ -152,42 +117,41 @@ const handleFilesUpload = async (event) => {
       try {
         queueItem.status = 'uploading'
         
-        // Генерируем уникальное имя файла
         const fileExt = file.name.split('.').pop()
-        const fileName = `${props.fileType}_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`
+        const randomSuffix = Math.random().toString(36).substr(2, 9)
+        
+        // Используем rowId для именования файлов
+        const fileName = props.rowId 
+          ? `${props.fileType}_${props.rowId}_${Date.now()}_${i}_${randomSuffix}.${fileExt}`
+          : `${props.fileType}_${Date.now()}_${i}_${randomSuffix}.${fileExt}`
+        
         const filePath = `material/${fileName}`
 
-        // Загружаем файл в Supabase Storage
         const { data, error: uploadError } = await supabase.storage
           .from('material')
           .upload(filePath, file, {
             cacheControl: '3600',
-            upsert: false,
-            onUploadProgress: (progress) => {
-              const progressPercent = Math.round((progress.loaded / progress.total) * 100)
-              queueItem.progress = progressPercent
-              uploadProgress.value = ((completedCount.value + (progressPercent / 100)) / uploadingCount.value) * 100
-            }
+            upsert: false
           })
 
         if (uploadError) throw uploadError
 
-        // Получаем публичную ссылку
         const { data: { publicUrl } } = supabase.storage
           .from('material')
           .getPublicUrl(filePath)
 
-        console.log('Файл успешно загружен:', publicUrl)
         uploadedUrls.push(publicUrl)
-        
         queueItem.status = 'completed'
-        completedCount.value++
+        queueItem.progress = 100
+        
+        // Обновляем общий прогресс
+        const completed = filesQueue.value.filter(f => f.status === 'completed').length
+        uploadProgress.value = (completed / files.length) * 100
 
       } catch (err) {
         console.error('Ошибка загрузки файла:', file.name, err)
         queueItem.status = 'error'
         error.value = `Ошибка загрузки ${file.name}: ${err.message}`
-        completedCount.value++
       }
     }
 
@@ -200,15 +164,12 @@ const handleFilesUpload = async (event) => {
     error.value = err.message
   } finally {
     uploading.value = false
-    uploadProgress.value = 0
-    uploadingCount.value = 0
-    completedCount.value = 0
-    // Очищаем очередь через секунду после завершения
     setTimeout(() => {
       filesQueue.value = []
+      if (fileInput.value) {
+        fileInput.value.value = '' // Сбрасываем input
+      }
     }, 2000)
-    // Сбрасываем input
-    event.target.value = ''
   }
 }
 </script>

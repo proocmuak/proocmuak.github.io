@@ -15,7 +15,6 @@ function normalizeTaskNumber(taskNumber) {
   const n = parseInt(m[0], 10)
   return Number.isNaN(n) ? null : n
 }
-
 // === короткий subject из названия таблицы ===
 function shortSubjectFromProgressTable(progressTableName) {
   const s = String(progressTableName).toLowerCase()
@@ -97,7 +96,7 @@ function checkAnswer(userAnswerRaw, correctAnswerRaw, points, shortSubject, task
             }
         }
 
-if (points === 2) {
+      if (points === 2) {
     // Считаем количество совпадающих элементов (без учета порядка)
     let matches = 0;
     for (let i = 0; i < userElems.length; i++) {
@@ -114,10 +113,13 @@ if (points === 2) {
     const sortedCorrect = [...numCorrect].sort();
     const sortedUser = [...numUser].sort();
     
-    if (sortedCorrect.join(',') === sortedUser.join(',')) {
+    // console.log('sortedUser: ', JSON.stringify(sortedUser) , ' sortedCorrect ', JSON.stringify(sortedCorrect), ' value: ', JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect))
+
+    if ( JSON.stringify(sortedCorrect) === JSON.stringify(sortedUser)) {
         anyCorrect = true;
+        break;
     }
-    if (
+    else if (
                ((matches === userElems.length || matches === correctElems.length) &&
                Math.abs(correctElems.length - userElems.length) === 1) || 
               (Math.abs(matches-correctElems.length) === 1)
@@ -126,8 +128,6 @@ if (points === 2) {
         // либо разница в длине всего 1 элемент
         anyPartial = true;
     }
-    
-    break;
 }
       }
     } else {
@@ -141,8 +141,6 @@ if (points === 2) {
   const isCorrect = anyCorrect
   const isPartiallyCorrect = !isCorrect && anyPartial
   const score = isCorrect ? points : isPartiallyCorrect ? 1 : 0
-
-
 
   return { score, isCorrect, isPartiallyCorrect }
 }

@@ -81,6 +81,7 @@
             <FileUploader 
               @files-uploaded="handleWorkbooksUploaded"
               file-type="workbook"
+              :row-id="nextId" 
               accept=".pdf,.doc,.docx,.xls,.xlsx"
               multiple
             />
@@ -101,6 +102,7 @@
             <FileUploader 
               @files-uploaded="handlePracticesUploaded"
               file-type="practice"
+              :row-id="nextId" 
               accept=".pdf,.doc,.docx,.xls,.xlsx"
               multiple
             />
@@ -185,6 +187,7 @@
                     @files-uploaded="(urls) => updateRowFiles(row, 'workbook', urls)"
                     :current-files="row.workbook || []"
                     file-type="workbook"
+                    :row-id="row[primaryKey]"
                     compact
                     multiple
                   />
@@ -192,6 +195,7 @@
                     <div v-for="(url, index) in row.workbook" :key="index" class="file-item-compact">
                       <a :href="url" target="_blank" class="file-link">📘</a>
                       <span class="file-tooltip">Тетрадь {{ index + 1 }}</span>
+                      <button @click="removeWorkbookFromRow(row, index)" class="btn-remove-small">×</button>
                     </div>
                   </div>
                 </td>
@@ -202,6 +206,7 @@
                     @files-uploaded="(urls) => updateRowFiles(row, 'practice', urls)"
                     :current-files="row.practice || []"
                     file-type="practice"
+                    :row-id="row[primaryKey]"
                     compact
                     multiple
                   />
@@ -209,6 +214,7 @@
                     <div v-for="(url, index) in row.practice" :key="index" class="file-item-compact">
                       <a :href="url" target="_blank" class="file-link">📝</a>
                       <span class="file-tooltip">Задание {{ index + 1 }}</span>
+                      <button @click="removePracticeFromRow(row, index)" class="btn-remove-small">×</button>
                     </div>
                   </div>
                 </td>
@@ -294,7 +300,6 @@ const getDefaultValue = (fieldType) => {
 const extractIframesFromText = (text) => {
   if (!text) return []
   
-  // Разделяем текст по пустым строкам или явным разделителям
   const blocks = text.split(/\n\s*\n/).filter(block => block.trim())
   
   const iframes = []
@@ -302,16 +307,12 @@ const extractIframesFromText = (text) => {
   blocks.forEach(block => {
     const trimmedBlock = block.trim()
     
-    // Ищем iframe в блоке
     const iframeMatch = trimmedBlock.match(/<iframe[^>]*>.*?<\/iframe>/i)
     if (iframeMatch) {
-      // Найден iframe - добавляем его
       iframes.push(iframeMatch[0])
     } else if (trimmedBlock.startsWith('<iframe') && !trimmedBlock.includes('</iframe>')) {
-      // Если iframe не закрыт, пытаемся восстановить
       iframes.push(trimmedBlock + '</iframe>')
     } else if (trimmedBlock) {
-      // Если это не iframe, но есть текст, создаем iframe из ссылки
       const urlMatch = trimmedBlock.match(/(https?:\/\/[^\s]+)/)
       if (urlMatch) {
         iframes.push(`<iframe src="${urlMatch[1]}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`)
@@ -334,7 +335,6 @@ const initNewRow = () => {
     return obj
   }, {})
   
-  // Инициализируем массивы для файлов
   initialData.video = []
   initialData.workbook = []
   initialData.practice = []
@@ -360,7 +360,6 @@ const handlePracticesUploaded = (urls) => {
 
 const removeVideo = (index) => {
   newRow.value.video.splice(index, 1)
-  // Обновляем текстовое поле
   videoTextInput.value = iframesToText(newRow.value.video)
 }
 
@@ -398,7 +397,6 @@ const fetchRows = async () => {
     
     if (error) throw error
     
-    // Преобразуем данные в массивы
     rows.value = data.map(row => ({
       ...row,
       video: convertToArray(row.video),
@@ -413,17 +411,14 @@ const fetchRows = async () => {
   }
 }
 
-// Функция для преобразования данных в массив
 const convertToArray = (value) => {
   if (!value) return []
   if (Array.isArray(value)) return value
   if (typeof value === 'string') {
     try {
-      // Пробуем распарсить JSON
       const parsed = JSON.parse(value)
       return Array.isArray(parsed) ? parsed : [parsed]
     } catch {
-      // Если не JSON, возвращаем как массив из одного элемента
       return [value]
     }
   }
@@ -433,14 +428,12 @@ const convertToArray = (value) => {
 const prepareDataForDb = (data) => {
   const cleaned = { ...data }
   
-  // Обрабатываем поля с датами
   props.fields.forEach(field => {
     if (field.type === 'date' && (cleaned[field.name] === '' || cleaned[field.name] === null)) {
       cleaned[field.name] = null
     }
   })
   
-  // Преобразуем массивы в JSON строки для Supabase
   cleaned.video = JSON.stringify(Array.isArray(cleaned.video) ? cleaned.video : [])
   cleaned.workbook = JSON.stringify(Array.isArray(cleaned.workbook) ? cleaned.workbook : [])
   cleaned.practice = JSON.stringify(Array.isArray(cleaned.practice) ? cleaned.practice : [])
@@ -456,8 +449,6 @@ const addNewRow = async () => {
       ...newRow.value,
       [props.primaryKey]: nextId.value
     })
-
-    console.log('Данные для вставки:', rowToInsert)
 
     const { error } = await supabase
       .from(props.tableName)
@@ -510,15 +501,20 @@ const removeRowVideo = (row, index) => {
   updateRow(row)
 }
 
+// Функции для работы с файлами в существующих записях
 const updateRowFiles = async (row, fieldName, urls) => {
   try {
-    // Обновляем локально
+    // Создаем копию текущего массива файлов и добавляем новые
+    const currentFiles = Array.isArray(row[fieldName]) ? [...row[fieldName]] : []
+    const updatedFiles = [...currentFiles, ...urls]
+    
+    // Обновляем локальное состояние
     const updatedRow = {
       ...row,
-      [fieldName]: [...convertToArray(row[fieldName]), ...urls]
+      [fieldName]: updatedFiles
     }
     
-    // Обновляем в базе
+    // Обновляем в базе данных
     const cleanedData = prepareDataForDb(updatedRow)
     const { error } = await supabase
       .from(props.tableName)
@@ -527,7 +523,7 @@ const updateRowFiles = async (row, fieldName, urls) => {
 
     if (error) throw error
     
-    // Обновляем локальные данные
+    // Обновляем локальный массив rows
     const index = rows.value.findIndex(r => r[props.primaryKey] === row[props.primaryKey])
     if (index !== -1) {
       rows.value[index] = updatedRow
@@ -536,6 +532,64 @@ const updateRowFiles = async (row, fieldName, urls) => {
   } catch (error) {
     console.error('Ошибка при обновлении файлов:', error)
     alert('Ошибка обновления файлов: ' + error.message)
+  }
+}
+
+const removeWorkbookFromRow = async (row, index) => {
+  try {
+    const updatedWorkbooks = [...row.workbook]
+    updatedWorkbooks.splice(index, 1)
+    
+    const updatedRow = {
+      ...row,
+      workbook: updatedWorkbooks
+    }
+    
+    const cleanedData = prepareDataForDb(updatedRow)
+    const { error } = await supabase
+      .from(props.tableName)
+      .update(cleanedData)
+      .eq(props.primaryKey, row[props.primaryKey])
+
+    if (error) throw error
+    
+    const rowIndex = rows.value.findIndex(r => r[props.primaryKey] === row[props.primaryKey])
+    if (rowIndex !== -1) {
+      rows.value[rowIndex] = updatedRow
+    }
+    
+  } catch (error) {
+    console.error('Ошибка при удалении тетради:', error)
+    alert('Ошибка удаления тетради: ' + error.message)
+  }
+}
+
+const removePracticeFromRow = async (row, index) => {
+  try {
+    const updatedPractices = [...row.practice]
+    updatedPractices.splice(index, 1)
+    
+    const updatedRow = {
+      ...row,
+      practice: updatedPractices
+    }
+    
+    const cleanedData = prepareDataForDb(updatedRow)
+    const { error } = await supabase
+      .from(props.tableName)
+      .update(cleanedData)
+      .eq(props.primaryKey, row[props.primaryKey])
+
+    if (error) throw error
+    
+    const rowIndex = rows.value.findIndex(r => r[props.primaryKey] === row[props.primaryKey])
+    if (rowIndex !== -1) {
+      rows.value[rowIndex] = updatedRow
+    }
+    
+  } catch (error) {
+    console.error('Ошибка при удалении задания:', error)
+    alert('Ошибка удаления задания: ' + error.message)
   }
 }
 
@@ -570,7 +624,6 @@ const GoBackToEditPage = () => {
   emit('back-to-edit')
 }
 </script>
-
 <style scoped>
 .editor-container {
   position: absolute;
