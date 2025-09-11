@@ -161,13 +161,13 @@
                 <td class="table-cell">
                   <div class="video-management">
                     <div class="video-text-input">
-                      <textarea
-                        :value="getVideoTextForRow(row)"
-                        @input="(e) => updateRowVideosFromText(row, e.target.value)"
-                        placeholder="Вставьте iframe коды, разделяя пустой строкой"
-                        rows="3"
-                        class="table-textarea"
-                      ></textarea>
+        <textarea
+          :value="getVideoTextForRow(row)"
+          @input="(e) => updateRowVideosFromText(row, e.target.value)"
+          placeholder="Вставьте iframe коды, разделяя пустой строкой"
+          rows="4"
+          class="table-textarea video-textarea"
+        ></textarea>
                     </div>
                     <div v-if="row.video && row.video.length > 0" class="files-list-compact">
                       <div class="video-count">Видео: {{ row.video.length }}</div>
@@ -300,6 +300,7 @@ const getDefaultValue = (fieldType) => {
 const extractIframesFromText = (text) => {
   if (!text) return []
   
+  // Разделяем на блоки по пустым строкам
   const blocks = text.split(/\n\s*\n/).filter(block => block.trim())
   
   const iframes = []
@@ -307,12 +308,18 @@ const extractIframesFromText = (text) => {
   blocks.forEach(block => {
     const trimmedBlock = block.trim()
     
-    const iframeMatch = trimmedBlock.match(/<iframe[^>]*>.*?<\/iframe>/i)
-    if (iframeMatch) {
-      iframes.push(iframeMatch[0])
+    // Ищем iframe теги в блоке
+    const iframeRegex = /<iframe[\s\S]*?<\/iframe>/gi
+    const foundIframes = trimmedBlock.match(iframeRegex)
+    
+    if (foundIframes && foundIframes.length > 0) {
+      // Добавляем все найденные iframe
+      iframes.push(...foundIframes)
     } else if (trimmedBlock.startsWith('<iframe') && !trimmedBlock.includes('</iframe>')) {
+      // Если iframe не закрыт, добавляем закрывающий тег
       iframes.push(trimmedBlock + '</iframe>')
     } else if (trimmedBlock) {
+      // Если это просто URL, создаем iframe
       const urlMatch = trimmedBlock.match(/(https?:\/\/[^\s]+)/)
       if (urlMatch) {
         iframes.push(`<iframe src="${urlMatch[1]}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`)
@@ -327,6 +334,7 @@ const iframesToText = (iframes) => {
   if (!iframes || !Array.isArray(iframes)) return ''
   return iframes.join('\n\n')
 }
+
 
 // Инициализация
 const initNewRow = () => {
@@ -485,15 +493,23 @@ const updateRow = async (row) => {
   }
 }
 
-// Функции для работы с видео в существующих записях
 const getVideoTextForRow = (row) => {
   return iframesToText(row.video || [])
 }
 
+
+// Функции для работы с видео в существующих записях
+let updateTimeout = null
+
 const updateRowVideosFromText = (row, text) => {
   const iframes = extractIframesFromText(text)
   row.video = iframes
-  updateRow(row)
+  
+  // Используем debounce для избежания слишком частых обновлений
+  if (updateTimeout) clearTimeout(updateTimeout)
+  updateTimeout = setTimeout(() => {
+    updateRow(row)
+  }, 1000) // Обновляем через 1 секунду после последнего изменения
 }
 
 const removeRowVideo = (row, index) => {
@@ -879,6 +895,11 @@ label {
 .table-textarea {
   min-height: 60px;
   resize: vertical;
+}
+.video-textarea {
+  font-family: monospace;
+  font-size: 12px;
+  min-height: 120px;
 }
 
 .video-management {
