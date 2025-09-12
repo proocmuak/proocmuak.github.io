@@ -809,6 +809,202 @@ export default {
 }
 </script>
 
+<template>
+  <div class="allpage">
+    <div class="topmenu">
+      <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
+      <div class="rightparttopmenu">
+        <div class="redirect_menu" @click="redirectToMenu">На главную</div>
+        <div class="go_back"><a href="index.html">Выйти</a></div>
+      </div>
+    </div> 
+    
+    <div class="centerpartpage">
+      <div class="homework-content">
+        <!-- Заголовок домашнего задания -->
+        <div class="homework-header">
+          <h1>{{ homeworkName }}</h1>
+          <div class="homework-meta">
+            <span class="lesson-info">Урок {{ homeworkData.lesson_number || 'Н/Д' }}: {{ homeworkData.lesson_name || 'Н/Д' }}</span>
+            <span class="deadline" :class="deadlineStatus">
+              Дедлайн: {{ formatDate(homeworkData.deadline) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Список заданий -->
+        <div class="tasks-container">
+          <div v-if="loading" class="loading">Загрузка заданий...</div>
+          <div v-else-if="error" class="error">{{ error }}</div>
+          
+          <div v-else class="tasks-list">
+            <div 
+              v-for="task in sortedTasks" 
+              :key="task.task_id"
+              class="task-item"
+            >
+              <div class="task-card">
+                <div class="task-header">
+                  <div class="task-meta">
+                    <span class="task-topic">Тема: {{ task.topic }}</span>
+                    <span class="task-id">#{{ task.number }}</span>
+                  </div>
+                  <div class="task-status" :class="getTaskStatusClass(task)">
+                    {{ getTaskStatusText(task) }}
+                  </div>
+                </div>
+
+                <div class="task-content">
+                  <div 
+                  class="task-text" 
+                  v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
+                  @copy.prevent
+                  @cut.prevent
+                  @dragstart.prevent
+                  ></div>
+                  
+                  <div v-if="task.has_table && task.table_data" class="task-table-container">
+                    <table :class="{ 'with-borders': task.table_data.borders }">
+                      <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
+                        <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
+                          <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+                  
+                  <div class="task-images" v-if="task.images && task.images.length">
+                    <div class="image-grid">
+                      <div 
+                        class="image-container" 
+                        v-for="(image, index) in task.images" 
+                        :key="index"
+                      >
+                        <img 
+                          :src="getImageUrl(image)" 
+                          :alt="'Изображение задания ' + task.number" 
+                          class="task-image"
+                          @click="openImageModal(getImageUrl(image))"
+                          loading="lazy"
+                        >
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="answer-section">
+                    <!-- Режим редактирования -->
+                    <div v-if="task.isEditing" class="edit-mode">
+                      <div class="answer-input-container">
+                        <input 
+                          v-model="task.editAnswerInput" 
+                          type="text" 
+                          :placeholder="`Введите ответ (${task.points} балла)`" 
+                          class="answer-input"
+                          @keyup.enter="saveEditedAnswer(task)"
+                          ref="editInput"
+                        >
+                        <button @click="saveEditedAnswer(task)" class="submit-button">Сохранить</button>
+                        <button @click="cancelEdit(task)" class="cancel-button">Отмена</button>
+                      </div>
+                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
+                    </div>
+                    
+                    <!-- Режим ввода нового ответа -->
+                    <div v-else-if="!task.userAnswer && !isViewMode && !isCompleted">
+                      <div class="answer-input-container">
+                        <input 
+                          v-model="task.userAnswerInput" 
+                          type="text" 
+                          :placeholder="`Введите ответ (${task.points} балла)`" 
+                          class="answer-input"
+                          @keyup.enter="saveAnswer(task)"
+                        >
+                        <button @click="saveAnswer(task)" class="submit-button">Сохранить</button>
+                      </div>
+                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
+                    </div>
+                    
+                    <!-- Отображаем ответы только после завершения работы -->
+                    <div v-else-if="(isCompleted || task.userAnswer) && showAnswers" class="answer-result">
+                      <div class="answer-feedback" :class="getFeedbackClass(task)">
+                        <div class="feedback-content">
+                          <span v-if="task.isCorrect" class="correct-icon">✓</span>
+                          <span v-else-if="task.isPartiallyCorrect" class="partial-icon">±</span>
+                          <span v-else class="incorrect-icon">✗</span>
+                          
+                          <span class="user-answer-text">
+                            <strong>Ваш ответ:</strong> {{ task.userAnswer }} - 
+                            <span v-if="task.isCorrect">верно!</span>
+                            <span v-else-if="task.isPartiallyCorrect">частично верно!</span>
+                            <span v-else>неверно.</span>
+                          </span>
+                          
+                          <span class="correct-answer-text">
+                            <strong>Правильный ответ:</strong> {{ task.answer }}
+                            ({{ task.awardedPoints }}/{{ task.points }} балла)
+                          </span>
+                          
+                          <!-- Кнопка редактирования (только если не завершено) -->
+                          <button 
+                            v-if="!isCompleted" 
+                            @click="startEdit(task)" 
+                            class="edit-answer-btn"
+                            title="Редактировать ответ"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- Ответ сохранен, но домашнее задание не завершено -->
+                    <div v-else-if="task.userAnswer && !showAnswers" class="answer-saved">
+                      <span class="saved-icon">✓</span> Ответ сохранен
+                      <button 
+                        @click="startEdit(task)" 
+                        class="edit-answer-btn"
+                        title="Редактировать ответ"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                    
+                  </div>
+                </div>
+
+                <div v-if="task.userAnswer && task.explanation && showAnswers" class="explanation-section">
+                  <div class="explanation-title">Пояснение:</div>
+                  <div class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Кнопка завершения -->
+        <div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
+          <button @click="completeHomework" class="complete-btn">
+            Завершить домашнее задание
+          </button>
+        </div>
+
+        <div v-if="isCompleted" class="completion-result">
+          <h3>Домашнее задание завершено!</h3>
+          <p>Набрано баллов: {{ totalScore }}/{{ maxScore }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Модальное окно для изображений -->
+    <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
+      <div class="modal-content">
+        <img :src="selectedImage" class="modal-image">
+        <button class="close-modal" @click="closeImageModal">×</button>
+      </div>
+    </div>
+  </div>
+</template>
+
 <style scoped>
 /* Все стили остаются без изменений */
 .homework-content {

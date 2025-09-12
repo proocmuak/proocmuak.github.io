@@ -32,6 +32,12 @@
         </div>
         <div class="notification-actions">
           <button 
+            @click="openHomework(notification)"
+            class="view-homework-btn"
+          >
+            📝 Открыть домашку
+          </button>
+          <button 
             v-if="!notification.is_read" 
             @click="markAsRead(notification.id)"
             class="mark-read-btn"
@@ -43,7 +49,16 @@
     </div>
 
     <!-- Отладочная информация -->
-
+    <div class="debug-info" v-if="false"> <!-- Установите в true для отладки -->
+      <h3>Отладочная информация</h3>
+      <p><strong>Текущий куратор:</strong> {{ currentTutorName }}</p>
+      <p><strong>Варианты поиска:</strong> {{ searchNames.join(', ') }}</p>
+      <div class="debug-actions">
+        <button @click="loadNotifications" class="refresh-btn">🔄 Обновить</button>
+        <button @click="testDatabaseQuery" class="test-btn">🧪 Тест запроса</button>
+        <button @click="checkAllNotifications" class="check-btn">👀 Все уведомления</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -104,72 +119,97 @@ export default {
     }
 
     // Функция для загрузки уведомлений
-    const loadNotifications = async () => {
-      try {
-        loading.value = true
-        // Получаем имя текущего куратора
-        const tutorName = await getCurrentTutorName()
-        currentTutorName.value = tutorName
-        
-        if (!tutorName) {
-          console.log('Имя куратора не найдено')
-          return
-        }
-
-        // Генерируем варианты для поиска
-        const namesToSearch = generateSearchNames(tutorName)
-        searchNames.value = namesToSearch
-        console.log('Варианты для поиска:', namesToSearch)
-
-        // Создаем запросы для каждого варианта имени
-        const promises = namesToSearch.map(name => 
-          supabase
-            .from('homework_notifications')
-            .select(`
-              id,
-              student_id,
-              homework_id,
-              subject,
-              completed_at,
-              score,
-              is_read,
-              tutor_name,
-              students:student_id (first_name, last_name)
-            `)
-            .eq('tutor_name', name)
-            .order('completed_at', { ascending: false })
-        )
-
-        // Выполняем все запросы параллельно
-        const results = await Promise.all(promises)
-        
-        // Объединяем результаты и убираем дубликаты
-        const allNotifications = results.flatMap(result => result.data || [])
-        const uniqueNotifications = allNotifications.filter((notification, index, array) => 
-          index === array.findIndex(n => n.id === notification.id)
-        )
-
-        console.log('Все найденные уведомления:', uniqueNotifications)
-
-        // Форматируем данные для отображения
-        notifications.value = uniqueNotifications.map(notification => ({
-          id: notification.id,
-          student_id: notification.student_id,
-          homework_id: notification.homework_id,
-          subject: notification.subject,
-          completed_at: notification.completed_at,
-          score: notification.score,
-          is_read: notification.is_read,
-          tutor_name: notification.tutor_name,
-          student_first_name: notification.students?.first_name || 'Неизвестный',
-          student_last_name: notification.students?.last_name || 'ученик'
-        }))
-      } catch (error) {
-        console.error('Ошибка:', error)
-      } finally {
-        loading.value = false
-      }
+const loadNotifications = async () => {
+  try {
+    loading.value = true
+    const tutorName = await getCurrentTutorName()
+    currentTutorName.value = tutorName
+    
+    if (!tutorName) {
+      console.log('Имя куратора не найдено')
+      return
     }
+
+    // Получаем только имя (первую часть)
+    const firstName = tutorName.split(' ')[0] || tutorName
+    
+    // Более гибкие варианты поиска
+    searchNames.value = [
+      firstName, // "Милана"
+      firstName + ' ', // "Милана " (с пробелом)
+      ' ' + firstName,
+      tutorName, // Полное имя
+      tutorName + ' ', // Полное имя с пробелом
+      firstName.toLowerCase(), // "милана"
+      firstName.toUpperCase(), // "МИЛАНА"
+    ]
+
+    console.log('Ищем уведомления для:', searchNames.value)
+
+    // Используем ILIKE для регистронезависимого поиска
+    const { data, error } = await supabase
+      .from('homework_notifications')
+      .select(`
+        id,
+        student_id,
+        homework_id,
+        subject,
+        completed_at,
+        score,
+        is_read,
+        tutor_name,
+        students:student_id (first_name, last_name)
+      `)
+      .in('tutor_name', searchNames.value) // Ищем по всем вариантам
+      .order('completed_at', { ascending: false })
+
+    if (error) {
+      console.error('Ошибка загрузки уведомлений:', error)
+      return
+    }
+
+    console.log('Найденные уведомления:', data)
+    
+    notifications.value = data.map(notification => ({
+      id: notification.id,
+      student_id: notification.student_id,
+      homework_id: notification.homework_id,
+      subject: notification.subject,
+      completed_at: notification.completed_at,
+      score: notification.score,
+      is_read: notification.is_read,
+      tutor_name: notification.tutor_name,
+      student_first_name: notification.students?.first_name || 'Неизвестный',
+      student_last_name: notification.students?.last_name || 'ученик'
+    }))
+  } catch (error) {
+    console.error('Ошибка:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+    // Функция для открытия домашнего задания
+    const openHomework = (notification) => {
+      try {
+        // Разбираем subject на компоненты (например: "biology_ege")
+        const [subject, examType] = notification.subject.split('_');
+        
+        const params = new URLSearchParams({
+          subject: notification.subject,
+          homework_id: notification.homework_id,
+          view_mode: 'tutor',
+          student_id: notification.student_id
+        });
+        
+        // Открываем в новом окне/вкладке
+        window.open(`/homework.html?${params.toString()}`, '_blank');
+        
+      } catch (error) {
+        console.error('Ошибка открытия домашнего задания:', error);
+        alert('Не удалось открыть домашнее задание.');
+      }
+    };
 
     // Альтернативный метод с использованием ILIKE и OR
     const loadNotificationsAlternative = async () => {
@@ -338,6 +378,7 @@ export default {
       const subjects = {
         'biology_ege': 'Биология',
         'chemistry_ege': 'Химия'
+        // Добавьте другие предметы по мере необходимости
       }
       return subjects[subjectCode] || subjectCode
     }
@@ -363,6 +404,7 @@ export default {
       loading,
       currentTutorName,
       searchNames,
+      openHomework,
       markAsRead,
       formatDate,
       getSubjectName,
@@ -375,7 +417,6 @@ export default {
 </script>
 
 <style scoped>
-/* Стили остаются такими же как в предыдущем варианте */
 .tutor-notifications {
   max-width: 900px;
   margin: 0 auto;
@@ -447,14 +488,31 @@ export default {
 .notification-actions {
   display: flex;
   gap: 8px;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
-.mark-read-btn {
+.view-homework-btn {
   padding: 8px 12px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9em;
+  background-color: #b241d1;
+  color: white;
+  transition: background-color 0.3s ease;
+}
+
+.view-homework-btn:hover {
+  background-color: #9a30b8;
+}
+
+.mark-read-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8em;
   background-color: #e8f5e8;
   color: #2e7d32;
 }
@@ -504,5 +562,23 @@ export default {
 .check-btn {
   background-color: #fff3e0;
   border-color: #ffe0b2;
+}
+
+@media (max-width: 768px) {
+  .notification-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .notification-content {
+    margin-right: 0;
+    margin-bottom: 15px;
+  }
+  
+  .notification-actions {
+    flex-direction: row;
+    align-self: stretch;
+    justify-content: space-between;
+  }
 }
 </style>
