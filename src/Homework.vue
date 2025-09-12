@@ -1,203 +1,147 @@
-<template>
-  <div class="allpage">
-    <div class="topmenu">
-      <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
-      <div class="rightparttopmenu">
-        <div class="redirect_menu" @click="redirectToMenu">На главную</div>
-        <div class="go_back"><a href="index.html">Выйти</a></div>
-      </div>
-    </div> 
-    
-    <div class="centerpartpage">
-      <div class="homework-content">
-        <!-- Заголовок домашнего задания -->
-        <div class="homework-header">
-          <h1>{{ homeworkName }}</h1>
-          <div class="homework-meta">
-            <span class="lesson-info">Урок {{ homeworkData.lesson_number || 'Н/Д' }}: {{ homeworkData.lesson_name || 'Н/Д' }}</span>
-            <span class="deadline" :class="deadlineStatus">
-              Дедлайн: {{ formatDate(homeworkData.deadline) }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Список заданий -->
-        <div class="tasks-container">
-          <div v-if="loading" class="loading">Загрузка заданий...</div>
-          <div v-else-if="error" class="error">{{ error }}</div>
-          
-          <div v-else class="tasks-list">
-            <div 
-              v-for="task in sortedTasks" 
-              :key="task.task_id"
-              class="task-item"
-            >
-              <div class="task-card">
-                <div class="task-header">
-                  <div class="task-meta">
-                    <span class="task-topic">Тема: {{ task.topic }}</span>
-                    <span class="task-id">#{{ task.number }}</span>
-                  </div>
-                  <div class="task-status" :class="getTaskStatusClass(task)">
-                    {{ getTaskStatusText(task) }}
-                  </div>
-                </div>
-
-                <div class="task-content">
-                  <div 
-                  class="task-text" 
-                  v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
-                  @copy.prevent
-                  @cut.prevent
-                  @dragstart.prevent
-                  ></div>
-                  
-                  <div v-if="task.has_table && task.table_data" class="task-table-container">
-                    <table :class="{ 'with-borders': task.table_data.borders }">
-                      <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
-                        <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
-                          <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
-                        </td>
-                      </tr>
-                    </table>
-                  </div>
-                  
-                  <div class="task-images" v-if="task.images && task.images.length">
-                    <div class="image-grid">
-                      <div 
-                        class="image-container" 
-                        v-for="(image, index) in task.images" 
-                        :key="index"
-                      >
-                        <img 
-                          :src="getImageUrl(image)" 
-                          :alt="'Изображение задания ' + task.number" 
-                          class="task-image"
-                          @click="openImageModal(getImageUrl(image))"
-                          loading="lazy"
-                        >
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="answer-section">
-                    <!-- Режим редактирования -->
-                    <div v-if="task.isEditing" class="edit-mode">
-                      <div class="answer-input-container">
-                        <input 
-                          v-model="task.editAnswerInput" 
-                          type="text" 
-                          :placeholder="`Введите ответ (${task.points} балла)`" 
-                          class="answer-input"
-                          @keyup.enter="saveEditedAnswer(task)"
-                          ref="editInput"
-                        >
-                        <button @click="saveEditedAnswer(task)" class="submit-button">Сохранить</button>
-                        <button @click="cancelEdit(task)" class="cancel-button">Отмена</button>
-                      </div>
-                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
-                    </div>
-                    
-                    <!-- Режим ввода нового ответа -->
-                    <div v-else-if="!task.userAnswer && !isViewMode && !isCompleted">
-                      <div class="answer-input-container">
-                        <input 
-                          v-model="task.userAnswerInput" 
-                          type="text" 
-                          :placeholder="`Введите ответ (${task.points} балла)`" 
-                          class="answer-input"
-                          @keyup.enter="saveAnswer(task)"
-                        >
-                        <button @click="saveAnswer(task)" class="submit-button">Сохранить</button>
-                      </div>
-                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
-                    </div>
-                    
-                    <!-- Отображаем ответы только после завершения работы -->
-                    <div v-else-if="(isCompleted || task.userAnswer) && showAnswers" class="answer-result">
-                      <div class="answer-feedback" :class="getFeedbackClass(task)">
-                        <div class="feedback-content">
-                          <span v-if="task.isCorrect" class="correct-icon">✓</span>
-                          <span v-else-if="task.isPartiallyCorrect" class="partial-icon">±</span>
-                          <span v-else class="incorrect-icon">✗</span>
-                          
-                          <span class="user-answer-text">
-                            <strong>Ваш ответ:</strong> {{ task.userAnswer }} - 
-                            <span v-if="task.isCorrect">верно!</span>
-                            <span v-else-if="task.isPartiallyCorrect">частично верно!</span>
-                            <span v-else>неверно.</span>
-                          </span>
-                          
-                          <span class="correct-answer-text">
-                            <strong>Правильный ответ:</strong> {{ task.answer }}
-                            ({{ task.awardedPoints }}/{{ task.points }} балла)
-                          </span>
-                          
-                          <!-- Кнопка редактирования (только если не завершено) -->
-                          <button 
-                            v-if="!isCompleted" 
-                            @click="startEdit(task)" 
-                            class="edit-answer-btn"
-                            title="Редактировать ответ"
-                          >
-                            ✏️
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <!-- Ответ сохранен, но домашнее задание не завершено -->
-                    <div v-else-if="task.userAnswer && !showAnswers" class="answer-saved">
-                      <span class="saved-icon">✓</span> Ответ сохранен
-                      <button 
-                        @click="startEdit(task)" 
-                        class="edit-answer-btn"
-                        title="Редактировать ответ"
-                      >
-                        ✏️
-                      </button>
-                    </div>
-                    
-                  </div>
-                </div>
-
-                <div v-if="task.userAnswer && task.explanation && showAnswers" class="explanation-section">
-                  <div class="explanation-title">Пояснение:</div>
-                  <div class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Кнопка завершения -->
-        <div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
-          <button @click="completeHomework" class="complete-btn">
-            Завершить домашнее задание
-          </button>
-        </div>
-
-        <div v-if="isCompleted" class="completion-result">
-          <h3>Домашнее задание завершено!</h3>
-          <p>Набрано баллов: {{ totalScore }}/{{ maxScore }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Модальное окно для изображений -->
-    <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
-      <div class="modal-content">
-        <img :src="selectedImage" class="modal-image">
-        <button class="close-modal" @click="closeImageModal">×</button>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script>
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { supabase } from './supabase.js'
 import DOMPurify from 'dompurify'
+
+// === список заданий с учётом порядка ===
+const ORDERED_TASKS = {
+  chemistry: [6, 7, 8, 14, 15, 22, 23, 24],
+  biology: [2, 6, 8, 10, 12, 14, 16, 19, 20]
+};
+
+// === нормализация номера ===
+function normalizeTaskNumber(taskNumber) {
+  if (taskNumber == null) return null;
+  const s = String(taskNumber).trim();
+  const m = s.match(/\d+/);
+  if (!m) return null;
+  const n = parseInt(m[0], 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+// === короткий subject из названия таблицы ===
+function shortSubjectFromProgressTable(progressTableName) {
+  const s = String(progressTableName).toLowerCase();
+  if (s.includes('chemistry')) return 'chemistry';
+  if (s.includes('biology')) return 'biology';
+  return null;
+}
+
+// === вспомогательные функции ===
+function splitAnswerVariantsRaw(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(/[/]|ИЛИ/i)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function isDigitSequence(s) {
+  return /^[0-9]+$/.test(s);
+}
+
+function splitNumericElements(s) {
+  return s.split('').filter(ch => /\d/.test(ch));
+}
+
+function normalizeText(s) {
+  return s.toLowerCase().replace(/\s+/g, '');
+}
+
+// === проверка числовых ответов ===
+function checkNumericAnswer(userRaw, variant, points, orderMatters) {
+  const userElems = splitNumericElements(userRaw);
+  const correctElems = splitNumericElements(variant);
+
+  if (orderMatters) {
+    // порядок обязателен
+    let matches = 0;
+    for (let i = 0; i < correctElems.length; i++) {
+      if (userElems[i] === correctElems[i]) matches++;
+    }
+    const mistakes = correctElems.length - matches;
+    if (mistakes === 0) {
+      return { correct: true, partial: false };
+    }
+    if (points === 2 && mistakes === 1) {
+      return { correct: false, partial: true };
+    }
+  } else {
+    if (points === 1 && correctElems.length === userElems.length) {
+      let matches = 0;
+      for (let i = 0; i < correctElems.length; i++) {
+        if (userElems[i] === correctElems[i]) matches++;
+      }
+      if (matches === correctElems.length) {
+        return { correct: true, partial: false };
+      }
+    }
+
+    if (points === 2) {
+      // порядок НЕ важен
+      const sortedCorrect = [...correctElems].sort();
+      const sortedUser = [...userElems].sort();
+
+      if (JSON.stringify(sortedCorrect) === JSON.stringify(sortedUser)) {
+        return { correct: true, partial: false };
+      }
+
+      // частичное совпадение
+      const matches = userElems.filter(e => correctElems.includes(e)).length;
+      if (
+        ((matches === userElems.length || matches === correctElems.length) &&
+          Math.abs(correctElems.length - userElems.length) === 1) ||
+        Math.abs(matches - correctElems.length) === 1
+      ) {
+        return { correct: false, partial: true };
+      }
+    }
+  }
+
+  return { correct: false, partial: false };
+}
+
+// === проверка ответа (адаптированная для компонента) ===
+function checkAnswerComponent(userAnswerRaw, correctAnswerRaw, points, shortSubject, taskNumberRaw) {
+  const userRaw = userAnswerRaw == null ? '' : String(userAnswerRaw).trim();
+  if (!userRaw) {
+    return { score: 0, isCorrect: false, isPartiallyCorrect: false };
+  }
+
+  const variants = splitAnswerVariantsRaw(correctAnswerRaw);
+  let anyCorrect = false;
+  let anyPartial = false;
+
+  const taskNum = normalizeTaskNumber(taskNumberRaw);
+  let orderMatters = false;
+  if (points === 2 && shortSubject && taskNum != null) {
+    orderMatters = ORDERED_TASKS[shortSubject]?.includes(taskNum) || false;
+  }
+
+  for (const variant of variants) {
+    if (isDigitSequence(variant) && isDigitSequence(userRaw)) {
+      const { correct, partial } = checkNumericAnswer(userRaw, variant, points, orderMatters);
+      if (correct) {
+        anyCorrect = true;
+        break;
+      }
+      if (partial) {
+        anyPartial = true;
+      }
+    } else {
+      if (normalizeText(userRaw) === normalizeText(variant)) {
+        anyCorrect = true;
+        break;
+      }
+    }
+  }
+
+  const isCorrect = anyCorrect;
+  const isPartiallyCorrect = !isCorrect && anyPartial;
+  const score = isCorrect ? points : isPartiallyCorrect ? 1 : 0;
+
+  return { score, isCorrect, isPartiallyCorrect };
+}
 
 export default {
   name: 'Homework',
@@ -436,102 +380,6 @@ export default {
     }
 
     // Сохранение прогресса выполнения задания
-    // ================== УТИЛИТЫ ==================
-
-    // Проверка: строка состоит из цифр/разделителей
-    function isDigitSequence(s) {
-      return typeof s === 'string' && /^[0-9\s,;]+$/.test(s.trim());
-    }
-
-    // Разбиваем числовую строку на элементы
-    function splitNumericElements(s) {
-      s = String(s || '').trim();
-      if (!s) return [];
-      // Если есть разделители (пробел, запятая и т.п.) — это могут быть многозначные числа
-      if (/[^0-9]/.test(s)) {
-        const tokens = s.split(/[^0-9]+/).filter(Boolean);
-        if (tokens.length > 0) return tokens;
-      }
-      // Иначе — строка из цифр без разделителей ("345" -> ["3","4","5"])
-      return s.split('');
-    }
-
-    function freqMap(arr) {
-      const m = new Map();
-      for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
-      return m;
-    }
-
-    /**
-     * Частичная проверка для числовых ответов по правилам ЕГЭ
-     */
-    function hasDuplicates(arr) {
-      return new Set(arr).size !== arr.length;
-    }
-
-    function checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
-      if (userAnswer == null || correctAnswer == null) return false;
-      if (!isDigitSequence(String(userAnswer)) || !isDigitSequence(String(correctAnswer))) return false;
-
-      const correctElems = splitNumericElements(correctAnswer);
-      const userElems = splitNumericElements(userAnswer);
-
-      // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
-      if (!options.allowExtra && userElems.length > correctElems.length) return false;
-
-      // Если в эталоне есть дубликаты и длины равны => считаем, что порядок важен => сравниваем по позициям
-      if (hasDuplicates(correctElems) && userElems.length === correctElems.length) {
-        let matches = 0;
-        for (let i = 0; i < correctElems.length; i++) {
-          if (userElems[i] === correctElems[i]) matches++;
-        }
-        const mistakes = correctElems.length - matches;
-        if (mistakes === 0) return true;                  // полный
-        if (maxPoints === 2 && mistakes === 1) return true; // одна позиция не совпала -> частично
-        return false;                                     // иначе 0
-      }
-
-      // В остальных случаях — мультисет-логика (как раньше)
-      const fc = freqMap(correctElems);
-      const fu = freqMap(userElems);
-
-      let matched = 0;
-      for (const [k, cnt] of fc.entries()) {
-        if (fu.has(k)) matched += Math.min(cnt, fu.get(k));
-      }
-
-      const mistakes = correctElems.length - matched;
-
-      if (mistakes === 0) return true;            // полностью совпадает
-      if (maxPoints === 2 && mistakes === 1) return true; // одна ошибка => частично
-      return false;
-    }
-
-    // ================== ТЕКСТОВЫЕ ОТВЕТЫ ==================
-
-    function normalizeText(str) {
-      return String(str || "")
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, " ");
-    }
-
-    function splitVariants(correctAnswer) {
-      return correctAnswer
-        .split(/\/|или/i) // разделители: "/" или "или"
-        .map(v => normalizeText(v))
-        .filter(Boolean);
-    }
-
-    function checkTextAnswer(userAnswer, correctAnswer) {
-      if (!userAnswer || !correctAnswer) return false;
-      const normalizedUser = normalizeText(userAnswer);
-      const variants = splitVariants(correctAnswer);
-      return variants.includes(normalizedUser);
-    }
-
-    // ================== ГЛАВНАЯ ФУНКЦИЯ ==================
-
     const saveTaskProgress = async (task, checkCorrectness = false) => {
       if (!user_id.value) return;
 
@@ -539,45 +387,20 @@ export default {
       let is_completed = false;
 
       if (checkCorrectness) {
-        const correctRaw = String(task.answer || '').trim();
-        const userRaw = String(task.userAnswer || '').trim();
+        // Используем новый алгоритм проверки
+        const result = checkAnswerComponent(
+          task.userAnswer,
+          task.answer,
+          task.points,
+          subject.value,
+          task.number
+        );
 
-        const numericCheck = isDigitSequence(correctRaw) && isDigitSequence(userRaw);
+        score = result.score;
+        is_completed = result.isCorrect || result.isPartiallyCorrect;
 
-        let isCorrect = false;
-        let isPartiallyCorrect = false;
-
-        if (numericCheck) {
-          // ===== ЧИСЛОВЫЕ ОТВЕТЫ =====
-          const normalizeForEquality = (s) => {
-            if (isDigitSequence(s)) {
-              return splitNumericElements(s).join('');
-            }
-            return s.trim().toLowerCase();
-          };
-
-          const normalizedCorrect = normalizeForEquality(correctRaw);
-          const normalizedUser = normalizeForEquality(userRaw);
-
-          isCorrect = normalizedUser === normalizedCorrect;
-
-          if (!isCorrect && task.points === 2) {
-            isPartiallyCorrect = checkPartialMatch(userRaw, correctRaw, task.points);
-          }
-
-        } else {
-          // ===== ТЕКСТОВЫЕ ОТВЕТЫ =====
-          isCorrect = checkTextAnswer(userRaw, correctRaw);
-        }
-
-        score = isCorrect ? task.points
-              : isPartiallyCorrect ? 1
-              : 0;
-
-        is_completed = isCorrect || isPartiallyCorrect;
-
-        task.isCorrect = isCorrect;
-        task.isPartiallyCorrect = isPartiallyCorrect;
+        task.isCorrect = result.isCorrect;
+        task.isPartiallyCorrect = result.isPartiallyCorrect;
         task.awardedPoints = score;
       }
 
@@ -945,7 +768,7 @@ export default {
       })
     })
 
-    // Обновляем общий балл при изменениях
+    // Обновляем общий балл при измененияз
     watch(() => tasks.value.map(t => t.awardedPoints), () => {
       updateTotalScore()
     }, { deep: true })
@@ -987,6 +810,7 @@ export default {
 </script>
 
 <style scoped>
+/* Все стили остаются без изменений */
 .homework-content {
   max-width: 1000px;
   margin: 0 auto;

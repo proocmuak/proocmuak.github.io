@@ -28,67 +28,89 @@ export default {
         ? 'chemistry_rating' 
         : 'biology_rating';
     },
-    // Фильтруем студентов, оставляем только role=student
     filteredStudents() {
-      return this.allStudents.filter(student => student.role === 'student');
+      return this.allStudents;
     }
   },
   methods: {
     async fetchAllStudents() {
       this.loading = true;
       this.error = null;
+      this.allStudents = [];
       
       try {
-        // Сначала получаем данные из рейтинговой таблицы
+        console.log('Загрузка данных для таблицы:', this.ratingTable);
+        
+        // 1. Сначала получаем данные из рейтинговой таблицы
         const { data: ratingData, error: ratingError } = await supabase
           .from(this.ratingTable)
           .select('user_id, total_score')
           .order('total_score', { ascending: false });
         
-        if (ratingError) throw ratingError;
+        if (ratingError) {
+          console.error('Ошибка рейтинга:', ratingError);
+          throw ratingError;
+        }
+        
+        console.log('Данные рейтинга:', ratingData);
         
         if (!ratingData || ratingData.length === 0) {
-          this.allStudents = [];
+          console.log('Нет данных в таблице рейтинга');
           return;
         }
         
-        // Получаем ID пользователей для запроса к таблице personalities
-        const userIds = ratingData.map(item => item.user_id);
+        // 2. Получаем ID пользователей
+        const userIds = ratingData.map(item => item.user_id).filter(id => id);
+        console.log('User IDs:', userIds);
         
-        // Получаем данные пользователей
-        const { data: usersData, error: usersError } = await supabase
-          .from('personalities')
-          .select('user_id, email, first_name, last_name, role')
+        if (userIds.length === 0) {
+          console.log('Нет user_id в данных рейтинга');
+          return;
+        }
+        
+        // 3. Получаем данные пользователей из таблицы students
+        const { data: studentsData, error: studentsError } = await supabase
+          .from('students')
+          .select('user_id, email, first_name, last_name')
           .in('user_id', userIds);
         
-        if (usersError) throw usersError;
+        if (studentsError) {
+          console.error('Ошибка студентов:', studentsError);
+          throw studentsError;
+        }
         
-        // Объединяем данные и фильтруем только студентов
-        this.allStudents = ratingData.map(ratingItem => {
-          const userData = usersData.find(user => user.id === ratingItem.user_id);
+        console.log('Данные студентов:', studentsData);
+        
+        // 4. Объединяем данные
+        const mergedData = ratingData.map(ratingItem => {
+          const studentData = studentsData.find(student => student.user_id === ratingItem.user_id);
           return {
             user_id: ratingItem.user_id,
-            email: userData?.email,
-            first_name: userData?.first_name,
-            last_name: userData?.last_name,
-            role: userData?.role,
+            email: studentData?.email || 'Не указан',
+            first_name: studentData?.first_name || '',
+            last_name: studentData?.last_name || '',
             total_score: ratingItem.total_score || 0
           };
-        }).filter(student => student.role === 'student');
-          
+        });
+        
+        console.log('Объединенные данные:', mergedData);
+        this.allStudents = mergedData;
+        
       } catch (err) {
-        console.error('Ошибка загрузки рейтинга:', err);
+        console.error('Полная ошибка загрузки:', err);
         this.error = err.message || 'Ошибка при загрузке данных';
       } finally {
         this.loading = false;
       }
     },
+    
     formatFullName(student) {
       if (student.first_name && student.last_name) {
         return `${student.last_name} ${student.first_name}`;
       }
       return student.email || 'Аноним';
     },
+    
     handleSubjectChange(subject) {
       this.selectedSubject = subject;
       this.fetchAllStudents();
@@ -96,6 +118,11 @@ export default {
   },
   mounted() {
     this.fetchAllStudents();
+  },
+  watch: {
+    ratingTable() {
+      this.fetchAllStudents();
+    }
   }
 };
 </script>
@@ -118,13 +145,12 @@ export default {
       <div v-if="loading" class="loading-indicator">Загрузка рейтинга...</div>
       <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
       
-      <div v-else class="table-wrapper">
+      <div v-if="!loading && !error" class="table-wrapper">
         <table class="rating-table">
           <thead>
             <tr>
               <th>Место</th>
               <th>ФИО</th>
-              <th>Email</th>
               <th>Баллы</th>
             </tr>
           </thead>
@@ -132,7 +158,6 @@ export default {
             <tr v-for="(student, index) in filteredStudents" :key="student.user_id || index">
               <td>{{ index + 1 }}</td>
               <td>{{ formatFullName(student) }}</td>
-              <td>{{ student.email || 'Не указан' }}</td>
               <td>{{ student.total_score }}</td>
             </tr>
             
@@ -219,6 +244,7 @@ export default {
   text-align: center;
   color: #888;
   padding: 1rem;
+  font-style: italic;
 }
 
 .loading-indicator,

@@ -2,6 +2,146 @@
 import { supabase } from '../supabase';
 import DOMPurify from 'dompurify';
 
+// === список заданий с учётом порядка ===
+const ORDERED_TASKS = {
+  chemistry: [6, 7, 8, 14, 15, 22, 23, 24],
+  biology: [2, 6, 8, 10, 12, 14, 16, 19, 20]
+};
+
+// === нормализация номера ===
+function normalizeTaskNumber(taskNumber) {
+  if (taskNumber == null) return null;
+  const s = String(taskNumber).trim();
+  const m = s.match(/\d+/);
+  if (!m) return null;
+  const n = parseInt(m[0], 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+// === короткий subject из названия таблицы ===
+function shortSubjectFromProgressTable(progressTableName) {
+  const s = String(progressTableName).toLowerCase();
+  if (s.includes('chemistry')) return 'chemistry';
+  if (s.includes('biology')) return 'biology';
+  return null;
+}
+
+// === вспомогательные функции ===
+function splitAnswerVariantsRaw(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(/[/]|ИЛИ/i)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function isDigitSequence(s) {
+  return /^[0-9]+$/.test(s);
+}
+
+function splitNumericElements(s) {
+  return s.split('').filter(ch => /\d/.test(ch));
+}
+
+function normalizeText(s) {
+  return s.toLowerCase().replace(/\s+/g, '');
+}
+
+// === проверка числовых ответов ===
+function checkNumericAnswer(userRaw, variant, points, orderMatters) {
+  const userElems = splitNumericElements(userRaw);
+  const correctElems = splitNumericElements(variant);
+
+  if (orderMatters) {
+    // порядок обязателен
+    let matches = 0;
+    for (let i = 0; i < correctElems.length; i++) {
+      if (userElems[i] === correctElems[i]) matches++;
+    }
+    const mistakes = correctElems.length - matches;
+    if (mistakes === 0) {
+      return { correct: true, partial: false };
+    }
+    if (points === 2 && mistakes === 1) {
+      return { correct: false, partial: true };
+    }
+  } else {
+    if (points === 1 && correctElems.length === userElems.length) {
+      let matches = 0;
+      for (let i = 0; i < correctElems.length; i++) {
+        if (userElems[i] === correctElems[i]) matches++;
+      }
+      if (matches === correctElems.length) {
+        return { correct: true, partial: false };
+      }
+    }
+
+    if (points === 2) {
+      // порядок НЕ важен
+      const sortedCorrect = [...correctElems].sort();
+      const sortedUser = [...userElems].sort();
+
+      if (JSON.stringify(sortedCorrect) === JSON.stringify(sortedUser)) {
+        return { correct: true, partial: false };
+      }
+
+      // частичное совпадение
+      const matches = userElems.filter(e => correctElems.includes(e)).length;
+      if (
+        ((matches === userElems.length || matches === correctElems.length) &&
+          Math.abs(correctElems.length - userElems.length) === 1) ||
+        Math.abs(matches - correctElems.length) === 1
+      ) {
+        return { correct: false, partial: true };
+      }
+    }
+  }
+
+  return { correct: false, partial: false };
+}
+
+// === проверка ответа (адаптированная для компонента) ===
+function checkAnswerComponent(userAnswerRaw, correctAnswerRaw, points, shortSubject, taskNumberRaw) {
+  const userRaw = userAnswerRaw == null ? '' : String(userAnswerRaw).trim();
+  if (!userRaw) {
+    return { score: 0, isCorrect: false, isPartiallyCorrect: false };
+  }
+
+  const variants = splitAnswerVariantsRaw(correctAnswerRaw);
+  let anyCorrect = false;
+  let anyPartial = false;
+
+  const taskNum = normalizeTaskNumber(taskNumberRaw);
+  let orderMatters = false;
+  if (points === 2 && shortSubject && taskNum != null) {
+    orderMatters = ORDERED_TASKS[shortSubject]?.includes(taskNum) || false;
+  }
+
+  for (const variant of variants) {
+    if (isDigitSequence(variant) && isDigitSequence(userRaw)) {
+      const { correct, partial } = checkNumericAnswer(userRaw, variant, points, orderMatters);
+      if (correct) {
+        anyCorrect = true;
+        break;
+      }
+      if (partial) {
+        anyPartial = true;
+      }
+    } else {
+      if (normalizeText(userRaw) === normalizeText(variant)) {
+        anyCorrect = true;
+        break;
+      }
+    }
+  }
+
+  const isCorrect = anyCorrect;
+  const isPartiallyCorrect = !isCorrect && anyPartial;
+  const score = isCorrect ? points : isPartiallyCorrect ? 1 : 0;
+
+  return { score, isCorrect, isPartiallyCorrect };
+}
+
 export default {
   name: 'TaskCard',
   props: {
@@ -91,101 +231,17 @@ export default {
     },
     canShowExplanation() {
       return this.answerChecked && (this.task.explanation || this.hasExplanationImages);
+    },
+    shortSubject() {
+      return this.task.subject.includes('Химия') ? 'chemistry' : 'biology';
     }
   },
   methods: {
-    // ================== НОВЫЕ ФУНКЦИИ ПРОВЕРКИ ==================
-    isDigitSequence(s) {
-      return typeof s === 'string' && /^[0-9\s,;]+$/.test(s.trim());
-    },
-
-    splitNumericElements(s) {
-      s = String(s || '').trim();
-      if (!s) return [];
-      // Если есть разделители (пробел, запятая и т.п.) — это могут быть многозначные числа
-      if (/[^0-9]/.test(s)) {
-        const tokens = s.split(/[^0-9]+/).filter(Boolean);
-        if (tokens.length > 0) return tokens;
-      }
-      // Иначе — строка из цифр без разделителей ("345" -> ["3","4","5"])
-      return s.split('');
-    },
-
-    freqMap(arr) {
-      const m = new Map();
-      for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
-      return m;
-    },
-
-    hasDuplicates(arr) {
-      return new Set(arr).size !== arr.length;
-    },
-
-    checkPartialMatch(userAnswer, correctAnswer, maxPoints = 2, options = { allowExtra: false }) {
-      if (userAnswer == null || correctAnswer == null) return false;
-      if (!this.isDigitSequence(String(userAnswer)) || !this.isDigitSequence(String(correctAnswer))) return false;
-
-      const correctElems = this.splitNumericElements(correctAnswer);
-      const userElems = this.splitNumericElements(userAnswer);
-
-      // Если пользователь дал больше элементов, чем в эталоне → чаще всего 0 баллов
-      if (!options.allowExtra && userElems.length > correctElems.length) return false;
-
-      // Если в эталоне есть дубликаты и длины равны => считаем, что порядок важен => сравниваем по позициям
-      if (this.hasDuplicates(correctElems) && userElems.length === correctElems.length) {
-        let matches = 0;
-        for (let i = 0; i < correctElems.length; i++) {
-          if (userElems[i] === correctElems[i]) matches++;
-        }
-        const mistakes = correctElems.length - matches;
-        if (mistakes === 0) return true;                  // полный
-        if (maxPoints === 2 && mistakes === 1) return true; // одна позиция не совпала -> частично
-        return false;                                     // иначе 0
-      }
-
-      // В остальных случаях — мультисет-логика
-      const fc = this.freqMap(correctElems);
-      const fu = this.freqMap(userElems);
-
-      let matched = 0;
-      for (const [k, cnt] of fc.entries()) {
-        if (fu.has(k)) matched += Math.min(cnt, fu.get(k));
-      }
-
-      const mistakes = correctElems.length - matched;
-
-      if (mistakes === 0) return true;            // полностью совпадает
-      if (maxPoints === 2 && mistakes === 1) return true; // одна ошибка => частично
-      return false;
-    },
-
-    normalizeText(str) {
-      return String(str || "")
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, " ");
-    },
-
-    splitVariants(correctAnswer) {
-      return correctAnswer
-        .split(/\/|или/i) // разделители: "/" или "или"
-        .map(v => this.normalizeText(v))
-        .filter(Boolean);
-    },
-
-    checkTextAnswer(userAnswer, correctAnswer) {
-      if (!userAnswer || !correctAnswer) return false;
-      const normalizedUser = this.normalizeText(userAnswer);
-      const variants = this.splitVariants(correctAnswer);
-      return variants.includes(normalizedUser);
-    },
-
-    // ================== СУЩЕСТВУЮЩИЕ МЕТОДЫ ==================
     sanitizeHtml(html) {
       return DOMPurify.sanitize(html, {
         ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
         ALLOWED_ATTR: ['style', 'class']
-      })
+      });
     },
 
     formatTextWithParagraphs(text) {
@@ -242,41 +298,21 @@ export default {
       }
 
       const userAnswer = this.userAnswer.trim();
-      const correctAnswer = this.task.answer.toString().trim();
       
       this.answerChecked = true;
       
-      // Используем новую логику проверки
-      const numericCheck = this.isDigitSequence(correctAnswer) && this.isDigitSequence(userAnswer);
+      // Используем новый алгоритм проверки
+      const result = checkAnswerComponent(
+        userAnswer,
+        this.task.answer,
+        this.task.points,
+        this.shortSubject,
+        this.task.number
+      );
 
-      if (numericCheck) {
-        // Числовые ответы
-        const normalizeForEquality = (s) => {
-          if (this.isDigitSequence(s)) {
-            return this.splitNumericElements(s).join('');
-          }
-          return s.trim().toLowerCase();
-        };
-
-        const normalizedCorrect = normalizeForEquality(correctAnswer);
-        const normalizedUser = normalizeForEquality(userAnswer);
-
-        this.isFullyCorrect = normalizedUser === normalizedCorrect;
-
-        if (!this.isFullyCorrect && this.task.points === 2) {
-          this.isPartiallyCorrect = this.checkPartialMatch(userAnswer, correctAnswer, this.task.points);
-        } else {
-          this.isPartiallyCorrect = false;
-        }
-      } else {
-        // Текстовые ответы
-        this.isFullyCorrect = this.checkTextAnswer(userAnswer, correctAnswer);
-        this.isPartiallyCorrect = false;
-      }
-
-      this.awardedPoints = this.isFullyCorrect ? this.task.points
-            : this.isPartiallyCorrect ? 1
-            : 0;
+      this.isFullyCorrect = result.isCorrect;
+      this.isPartiallyCorrect = result.isPartiallyCorrect;
+      this.awardedPoints = result.score;
 
       await this.saveTaskProgress();
       
@@ -510,36 +546,36 @@ export default {
           <button @click="showAnswer" class="show-answer-button">Показать ответ</button>
         </div>
         
-<div v-if="answerChecked && isFirstPart" class="answer-feedback" :class="{
-  'correct-feedback': isFullyCorrect,
-  'partial-feedback': isPartiallyCorrect,
-  'incorrect-feedback': !isFullyCorrect && !this.isPartiallyCorrect
-}">
-  <transition name="fade" mode="out-in">
-    <div v-if="isFullyCorrect" key="correct" class="feedback-content">
-      <span class="correct-icon">✓</span> 
-      <strong>Ваш ответ:</strong> {{ userAnswer }} - верно! 
-      <strong>Правильный ответ:</strong> {{ task.answer }} 
-      ({{ awardedPoints }}/{{ task.points }} балла)
-    </div>
-    <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
-      <span class="partial-icon">±</span> 
-      <strong>Ваш ответ:</strong> {{ userAnswer }} - частично верно! 
-      <strong>Правильный ответ:</strong> {{ task.answer }} 
-      ({{ awardedPoints }}/{{ task.points }} балла)
-    </div>
-    <div v-else key="incorrect" class="feedback-content">
-      <span class="incorrect-icon">✗</span> 
-      <strong>Ваш ответ:</strong> {{ userAnswer }} - неверно. 
-      <strong>Правильный ответ:</strong> {{ task.answer }} 
-      (0/{{ task.points }} балла)
-    </div>
-  </transition>
-</div>
+        <div v-if="answerChecked && isFirstPart" class="answer-feedback" :class="{
+          'correct-feedback': isFullyCorrect,
+          'partial-feedback': isPartiallyCorrect,
+          'incorrect-feedback': !isFullyCorrect && !this.isPartiallyCorrect
+        }">
+          <transition name="fade" mode="out-in">
+            <div v-if="isFullyCorrect" key="correct" class="feedback-content">
+              <span class="correct-icon">✓</span> 
+              <strong>Ваш ответ:</strong> {{ userAnswer }} - верно! 
+              <strong>Правильный ответ:</strong> {{ task.answer }} 
+              ({{ awardedPoints }}/{{ task.points }} балла)
+            </div>
+            <div v-else-if="isPartiallyCorrect" key="partial" class="feedback-content">
+              <span class="partial-icon">±</span> 
+              <strong>Ваш ответ:</strong> {{ userAnswer }} - частично верно! 
+              <strong>Правильный ответ:</strong> {{ task.answer }} 
+              ({{ awardedPoints }}/{{ task.points }} балла)
+            </div>
+            <div v-else key="incorrect" class="feedback-content">
+              <span class="incorrect-icon">✗</span> 
+              <strong>Ваш ответ:</strong> {{ userAnswer }} - неверно. 
+              <strong>Правильный ответ:</strong> {{ task.answer }} 
+              (0/{{ task.points }} балла)
+            </div>
+          </transition>
+        </div>
         
         <div v-if="showAnswerOnly" class="correct-answer">
-            <strong>Правильный ответ:</strong> 
-  <span v-html="sanitizeHtml(formattedAnswer)"></span>
+          <strong>Правильный ответ:</strong> 
+          <span v-html="sanitizeHtml(formattedAnswer)"></span>
           
           <!-- Изображения ответа -->
           <div v-if="hasAnswerImages" class="answer-images">
@@ -564,44 +600,42 @@ export default {
     </div>
 
     <!-- Блок пояснения с изображениями -->
-<!-- Блок пояснения с изображениями -->
-<div v-if="canShowExplanation" class="explanation-section">
-  <div class="explanation-header" @click="toggleExplanation" style="cursor: pointer;">
-    <div class="explanation-title">
-      Пояснение: 
-      <span class="explanation-toggle">
-        {{ showExplanation ? '▲' : '▼' }}
-      </span>
-    </div>
-  </div>
-  
-  <transition name="slide">
-    <div v-if="showExplanation" class="explanation-content-container">
-      <!-- УБИРАЕМ повторный показ правильного ответа -->
- <div v-if="task.explanation" class="explanation-content">
-  <span v-html="sanitizeHtml(formattedExplanation)"></span>
- </div>      
-      <!-- Изображения пояснения -->
-      <div v-if="hasExplanationImages" class="explanation-images">
-        <div class="image-grid">
-          <div 
-            class="image-container" 
-            v-for="(image, index) in task.image_explanation" 
-            :key="'explanation-'+index"
-          >
-            <img 
-              :src="getImageUrl(image)" 
-              :alt="'Изображение пояснения ' + task.id" 
-              class="task-image"
-              @click="openImageModal(getImageUrl(image))"
-              loading="lazy"
-            >
-          </div>
+    <div v-if="canShowExplanation" class="explanation-section">
+      <div class="explanation-header" @click="toggleExplanation" style="cursor: pointer;">
+        <div class="explanation-title">
+          Пояснение: 
+          <span class="explanation-toggle">
+            {{ showExplanation ? '▲' : '▼' }}
+          </span>
         </div>
       </div>
+      
+      <transition name="slide">
+        <div v-if="showExplanation" class="explanation-content-container">
+          <div v-if="task.explanation" class="explanation-content">
+            <span v-html="sanitizeHtml(formattedExplanation)"></span>
+          </div>      
+          <!-- Изображения пояснения -->
+          <div v-if="hasExplanationImages" class="explanation-images">
+            <div class="image-grid">
+              <div 
+                class="image-container" 
+                v-for="(image, index) in task.image_explanation" 
+                :key="'explanation-'+index"
+              >
+                <img 
+                  :src="getImageUrl(image)" 
+                  :alt="'Изображение пояснения ' + task.id" 
+                  class="task-image"
+                  @click="openImageModal(getImageUrl(image))"
+                  loading="lazy"
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
     </div>
-  </transition>
-</div>
 
     <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
       <div class="modal-content">
@@ -613,6 +647,7 @@ export default {
 </template>
 
 <style scoped>
+/* Все стили остаются без изменений */
 *{
   font-family: Evolventa;
 }
@@ -638,7 +673,6 @@ export default {
   gap: 0.6rem;
   position: relative;
 }
-
 
 .task-topic {
   font-weight: 500;
@@ -690,7 +724,6 @@ export default {
   background: #ffebee;
   color: #c62828;
 }
-/* Добавьте стили для кнопки показа ответа */
 .show-answer-container {
   margin-bottom: 0.6rem;
 }
@@ -768,7 +801,6 @@ export default {
   color: #c62828;
 }
 
-/* Анимации */
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.5s ease;
 }
@@ -787,7 +819,6 @@ export default {
   animation: pulse 0.5s ease;
 }
 
-/* Остальные стили остаются без изменений */
 .task-content {
   margin-bottom: 0.9rem;
   width: 100%;
@@ -893,7 +924,7 @@ export default {
 .task-image:hover {
   transform: scale(1.03);
 }
-/* Стили для форматированных ответов и пояснений */
+
 .feedback-content span[v-html],
 .correct-answer span[v-html],
 .explanation-content {
@@ -952,7 +983,6 @@ export default {
   margin-bottom: 0.3rem;
 }
 
-/* Улучшенное отображение для ответов */
 .correct-answer :deep(p) {
   color: #2e7d32;
   margin: 0.5rem 0;
@@ -1002,7 +1032,7 @@ export default {
   flex: 1 1 30%;
   min-width: fit-content;
 }
-/* Добавьте стили для выделения текста ответов */
+
 .feedback-content strong {
   font-weight: 600;
 }
@@ -1131,6 +1161,47 @@ export default {
   background: #9a36b8;
 }
 
+.answer-images,
+.explanation-images {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.answer-images .image-grid,
+.explanation-images .image-grid {
+  margin-top: 0.5rem;
+}
+
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.3s ease;
+  max-height: 1000px;
+  overflow: hidden;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+
+.explanation-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.explanation-toggle {
+  font-size: 0.8rem;
+  color: #b241d1;
+}
+
+.explanation-content-container {
+  margin-top: 0.5rem;
+}
+
 @media (max-width: 48rem) {
   .task-card {
     padding: 0.9rem;
@@ -1178,53 +1249,5 @@ export default {
     height: 2rem;
     font-size: 1.2rem;
   }
-}
-</style>
-
-
-<style scoped>
-/* Все существующие стили остаются без изменений */
-
-/* Добавляем новые стили для изображений ответа и пояснения */
-.answer-images,
-.explanation-images {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
-}
-
-.answer-images .image-grid,
-.explanation-images .image-grid {
-  margin-top: 0.5rem;
-}
-
-/* Стили для анимации раскрытия пояснения */
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.3s ease;
-  max-height: 1000px;
-  overflow: hidden;
-}
-
-.slide-enter-from,
-.slide-leave-to {
-  max-height: 0;
-  opacity: 0;
-}
-
-.explanation-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.explanation-toggle {
-  font-size: 0.8rem;
-  color: #b241d1;
-}
-
-.explanation-content-container {
-  margin-top: 0.5rem;
 }
 </style>

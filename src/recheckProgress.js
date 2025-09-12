@@ -140,6 +140,32 @@ function checkAnswer(userAnswerRaw, correctAnswerRaw, points, shortSubject, task
   return { score, isCorrect, isPartiallyCorrect }
 }
 
+// === утилита: выборка всех строк с пагинацией ===
+async function getAllProgressRows(progressTable) {
+  let allRows = []
+  let from = 0
+  const pageSize = 1000
+
+  while (true) {
+    const { data, error } = await supabase
+      .from(progressTable)
+      .select('id, user_id, task_id, is_completed, score, user_answer')
+      .range(from, from + pageSize - 1)
+
+    if (error) {
+      console.error(`Ошибка выборки из ${progressTable}:`, error)
+      break
+    }
+
+    if (!data || data.length === 0) break
+
+    allRows = allRows.concat(data)
+    from += pageSize
+  }
+
+  return allRows
+}
+
 // === основная функция перепроверки ===
 async function recheckSubjectProgress(subject, supabase) {
   const progressTable = `${subject}_progress`
@@ -148,14 +174,11 @@ async function recheckSubjectProgress(subject, supabase) {
 
   console.log(`\n=== Перепроверка ${subject} ===`)
 
-  const { data: progresses, error: progError } = await supabase
-    .from(progressTable)
-    .select('id, user_id, task_id, is_completed, score, user_answer')
+  const progresses = await getAllProgressRows(progressTable)
+  console.log(`Всего найдено ${progresses.length} записей в ${progressTable}`)
 
-  if (progError) {
-    console.error(`Ошибка выборки из ${progressTable}:`, progError)
-    return
-  }
+  let updatedCount = 0
+  let unchangedCount = 0
 
   for (const prog of progresses) {
     const { data: taskRows, error: taskError } = await supabase
@@ -167,19 +190,6 @@ async function recheckSubjectProgress(subject, supabase) {
     if (taskError || !taskRows) continue
     const task = taskRows
 
-    // DEBUG: вывод информации по каждой задаче
-    console.log('\nDEBUG Проверка задачи:', {
-      user_id: prog.user_id,
-      task_id: prog.task_id,
-      progress_id: prog.id,
-      user_answer: prog.user_answer,
-      correct_answer: task.answer,
-      points: task.points,
-      number: task.number,
-      old_score: prog.score,
-      old_is_completed: prog.is_completed
-    })
-
     const result = checkAnswer(
       prog.user_answer,
       task.answer,
@@ -189,13 +199,13 @@ async function recheckSubjectProgress(subject, supabase) {
       prog.task_id
     )
 
-    console.log('DEBUG Результат checkAnswer:', result)
-
     if (result.score !== prog.score || result.isCorrect !== prog.is_completed) {
+      updatedCount++
       console.log(
         `UPDATE: user_id=${prog.user_id}, task_id=${prog.task_id}, number=${task.number}, ` +
         `старый=${prog.score}/${prog.is_completed} → новый=${result.score}/${result.isCorrect}`
       )
+      console.log(`   user_answer="${prog.user_answer}", correct_answer="${task.answer}"`)
 
       const { data: updated, error: updateError } = await supabase
         .from(progressTable)
@@ -213,68 +223,15 @@ async function recheckSubjectProgress(subject, supabase) {
         console.log('DEBUG Обновлено:', updated)
       }
     } else {
-      console.log('DEBUG Нет изменений, запись остаётся прежней')
+      unchangedCount++
     }
   }
 
-  console.log(`\n✅ Перепроверка ${subject} завершена`)
+  console.log(`\n✅ Перепроверка ${subject} завершена. Изменено: ${updatedCount}, без изменений: ${unchangedCount}`)
 }
 
 // === запуск ===
-const subjects = ['biology_ege'] // можно расширить список предметов
+const subjects = ['biology_ege', 'chemistry_ege'] // можно расширить список предметов
 for (const subj of subjects) {
   await recheckSubjectProgress(subj, supabase)
 }
-
-// === Тесты ===
-// function runTests() {
-//   const tests = [
-//     {
-//       name: 'Простое совпадение текста',
-//       input: ['Да', 'да', 1, 'biology', 2],
-//       expected: { score: 1, isCorrect: true, isPartiallyCorrect: false }
-//     },
-//     {
-//       name: 'Совпадение чисел с порядком (ORDERED_TASKS)',
-//       input: ['123', '123', 2, 'chemistry', 6],
-//       expected: { score: 2, isCorrect: true, isPartiallyCorrect: false }
-//     },
-//     {
-//       name: 'Одна ошибка чисел с порядокм', 
-//       input: ['124', '123', 2, 'chemistry', 6],
-//       expected: { score: 2, isCorrect: false, isPartiallyCorrect: true }
-//     },
-//     {
-//       name: 'две ошибки чисел с порядокм', 
-//       input: ['135', '351', 2, 'chemistry', 6],
-//       expected: { score: 2, isCorrect: false, isPartiallyCorrect: false }
-//     },
-//     {
-//       name: 'Совпадение чисел без учёта порядка (вне ORDERED_TASKS)',
-//       input: ['154', '145', 2, 'biology', 3],
-//       expected: { score: 2, isCorrect: true, isPartiallyCorrect: false }
-//     },
-//     {
-//       name: 'Частично правильный ответ',
-//       input: ['12', '123', 2, 'biology', 3],
-//       expected: { score: 1, isCorrect: false, isPartiallyCorrect: true }
-//     },
-//     {
-//       name: 'Полностью неверный ответ',
-//       input: ['99', '123', 2, 'biology', 3],
-//       expected: { score: 0, isCorrect: false, isPartiallyCorrect: false }
-//     }
-//   ]
-
-//   for (const t of tests) {
-//     const res = checkAnswer(...t.input)
-//     const ok = JSON.stringify(res) === JSON.stringify(t.expected)
-//     console.log(`\n${t.name}: ${ok ? '✅' : '❌'}`)
-//     if (!ok) {
-//       console.log('Ожидаем:', t.expected)
-//       console.log('Получили:', res)
-//     }
-//   }
-// }
-
-// runTests()
