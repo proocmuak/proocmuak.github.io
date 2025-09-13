@@ -213,6 +213,10 @@ export default {
       return urlParams.view_mode === 'tutor';
     });
 
+    const isTutorMode = computed(() => {
+      return urlParams.view_mode === 'tutor';
+    });
+
     // Метод для перенаправления в меню
     async function redirectToMenu() {
       try {
@@ -427,6 +431,76 @@ export default {
       }
     };
 
+    // Функция для выставления баллов куратором
+    const setTutorScore = async (task, manualScore) => {
+      if (!isTutorMode.value || !user_id.value) return;
+      
+      try {
+        task.saving = true;
+        
+        // Обновляем баллы задачи
+        task.awardedPoints = manualScore;
+        task.isCorrect = manualScore === task.points;
+        task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points;
+        
+        // Сохраняем в прогресс
+        const progressTable = `${subject.value}_progress`;
+        const { error } = await supabase
+          .from(progressTable)
+          .upsert({
+            user_id: user_id.value,
+            task_id: task.task_id,
+            is_completed: manualScore > 0,
+            score: manualScore,
+            user_answer: task.userAnswer,
+            last_updated: new Date().toISOString(),
+            tutor_corrected: true // Помечаем, что баллы выставил куратор
+          }, {
+            onConflict: 'user_id,task_id'
+          });
+
+        if (error) throw error;
+        
+        // Обновляем общий балл домашнего задания
+        await updateHomeworkTotalScore();
+        
+      } catch (err) {
+        console.error('Ошибка сохранения баллов куратора:', err);
+        error.value = 'Ошибка при сохранении баллов: ' + err.message;
+      } finally {
+        task.saving = false;
+      }
+    };
+
+    // Обновление общего балла домашнего задания
+    const updateHomeworkTotalScore = async () => {
+      if (!user_id.value) return;
+      
+      const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
+      
+      try {
+        const { error } = await supabase
+          .from(`${subject.value}_homework_completed`)
+          .upsert({
+            homework_id: parseInt(homeworkId.value),
+            user_id: user_id.value,
+            is_completed: true,
+            score: newTotalScore,
+            completed_at: new Date().toISOString(),
+            tutor_corrected: true
+          }, {
+            onConflict: 'user_id,homework_id'
+          });
+
+        if (error) throw error;
+        
+        totalScore.value = newTotalScore;
+        
+      } catch (err) {
+        console.error('Ошибка обновления общего балла:', err);
+      }
+    };
+
     // Завершение домашнего задания
     const completeHomework = async () => {
       try {
@@ -553,7 +627,8 @@ export default {
             awardedPoints: 0,
             saving: false,
             isEditing: false,
-            editAnswerInput: ''
+            editAnswerInput: '',
+            manualScore: 0 // Для куратора
           }
         })
 
@@ -598,7 +673,7 @@ export default {
           .eq('user_id', user_id.value)
           .maybeSingle()
 
-        showAnswers.value = completionData?.is_completed || false;
+        showAnswers.value = completionData?.is_completed || isTutorMode.value;
 
         // Обновляем задачи
         tasks.value = tasks.value.map(task => {
@@ -609,7 +684,8 @@ export default {
               userAnswer: progress.user_answer,
               isCorrect: showAnswers.value ? progress.score === task.points : false,
               isPartiallyCorrect: showAnswers.value ? (progress.score > 0 && progress.score < task.points) : false,
-              awardedPoints: showAnswers.value ? progress.score : 0
+              awardedPoints: showAnswers.value ? progress.score : 0,
+              manualScore: progress.score || 0 // Для куратора
             }
           }
           return task
@@ -640,7 +716,7 @@ export default {
         if (completionData) {
           isCompleted.value = completionData.is_completed
           totalScore.value = completionData.score || 0
-          showAnswers.value = completionData.is_completed
+          showAnswers.value = completionData.is_completed || isTutorMode.value // Показываем ответы в режиме куратора
         }
 
       } catch (err) {
@@ -801,9 +877,12 @@ export default {
       hasAnswers,
       redirectToMenu, 
       isViewMode,
+      isTutorMode,
       startEdit,
       cancelEdit,
-      saveEditedAnswer
+      saveEditedAnswer,
+      setTutorScore,
+      updateHomeworkTotalScore
     }
   }
 }
@@ -824,6 +903,9 @@ export default {
         <!-- Заголовок домашнего задания -->
         <div class="homework-header">
           <h1>{{ homeworkName }}</h1>
+          <div v-if="isTutorMode" class="tutor-mode-banner">
+            📝 Режим проверки куратора
+          </div>
           <div class="homework-meta">
             <span class="lesson-info">Урок {{ homeworkData.lesson_number || 'Н/Д' }}: {{ homeworkData.lesson_name || 'Н/Д' }}</span>
             <span class="deadline" :class="deadlineStatus">
@@ -842,12 +924,13 @@ export default {
               v-for="task in sortedTasks" 
               :key="task.task_id"
               class="task-item"
+              :class="{ 'extended-task': task.points > 1 }"
             >
               <div class="task-card">
                 <div class="task-header">
                   <div class="task-meta">
                     <span class="task-topic">Тема: {{ task.topic }}</span>
-                    <span class="task-id">#{{ task.number }}</span>
+                    <span class="task-id">#{{ task.number }} ({{ task.points }} балла)</span>
                   </div>
                   <div class="task-status" :class="getTaskStatusClass(task)">
                     {{ getTaskStatusText(task) }}
@@ -933,20 +1016,36 @@ export default {
                           <span v-else class="incorrect-icon">✗</span>
                           
                           <span class="user-answer-text">
-                            <strong>Ваш ответ:</strong> {{ task.userAnswer }} - 
-                            <span v-if="task.isCorrect">верно!</span>
-                            <span v-else-if="task.isPartiallyCorrect">частично верно!</span>
-                            <span v-else>неверно.</span>
+                            <strong>Ответ студента:</strong> {{ task.userAnswer }}
                           </span>
                           
                           <span class="correct-answer-text">
                             <strong>Правильный ответ:</strong> {{ task.answer }}
-                            ({{ task.awardedPoints }}/{{ task.points }} балла)
+                          </span>
+                          
+                          <!-- Панель оценки куратора для заданий второй части -->
+                          <div v-if="isTutorMode && task.points > 1" class="tutor-scoring-panel">
+                            <span class="score-label">Оценка куратора:</span>
+                            <select 
+                              v-model="task.manualScore" 
+                              @change="setTutorScore(task, parseInt($event.target.value))"
+                              class="score-select"
+                              :disabled="task.saving"
+                            >
+                              <option v-for="n in task.points + 1" :value="n - 1" :key="n">
+                                {{ n - 1 }} баллов
+                              </option>
+                            </select>
+                            <span v-if="task.saving" class="saving-status">Сохранение...</span>
+                          </div>
+                          
+                          <span class="current-score" v-if="task.awardedPoints !== null">
+                            Набрано баллов: {{ task.awardedPoints }}/{{ task.points }}
                           </span>
                           
                           <!-- Кнопка редактирования (только если не завершено) -->
                           <button 
-                            v-if="!isCompleted" 
+                            v-if="!isCompleted && !isTutorMode" 
                             @click="startEdit(task)" 
                             class="edit-answer-btn"
                             title="Редактировать ответ"
@@ -978,6 +1077,19 @@ export default {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Блок итоговой оценки куратора -->
+        <div v-if="isTutorMode" class="tutor-final-assessment">
+          <h3>Итоговая оценка</h3>
+          <div class="final-score">
+            Общий балл: {{ totalScore }}/{{ maxScore }}
+          </div>
+          <div class="tutor-actions">
+            <button @click="updateHomeworkTotalScore" class="save-final-score-btn">
+              Сохранить итоговую оценку
+            </button>
           </div>
         </div>
 
@@ -1649,6 +1761,126 @@ export default {
   .answer-input-container {
     gap: 0.6rem;
   }
+}
+
+/* Добавляем новые стили для функциональности куратора */
+
+.tutor-mode-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.4rem;
+  margin: 0.5rem 0;
+  font-weight: bold;
+  text-align: center;
+}
+
+.extended-task {
+  border-left: 4px solid #667eea;
+  background-color: #f8f9ff;
+}
+
+.tutor-scoring-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+  padding: 0.8rem;
+  background-color: rgba(102, 126, 234, 0.1);
+  border-radius: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.score-label {
+  font-weight: 600;
+  color: #667eea;
+}
+
+.score-select {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #667eea;
+  border-radius: 0.3rem;
+  background: white;
+  color: #333;
+}
+
+.score-select:focus {
+  outline: none;
+  border-color: #5a67d8;
+  box-shadow: 0 0 0 2px rgba(90, 103, 216, 0.2);
+}
+
+.current-score {
+  font-weight: 600;
+  color: #4a5568;
+  margin-left: auto;
+}
+
+.tutor-final-assessment {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border-radius: 0.8rem;
+  text-align: center;
+}
+
+.tutor-final-assessment h3 {
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+}
+
+.final-score {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.save-final-score-btn {
+  padding: 0.8rem 1.5rem;
+  background: white;
+  color: #f5576c;
+  border: none;
+  border-radius: 0.4rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.save-final-score-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Адаптивность для панели куратора */
+@media (max-width: 768px) {
+  .tutor-scoring-panel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .current-score {
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
+  
+  .score-select {
+    width: 100%;
+  }
+}
+
+/* Улучшаем визуальное выделение заданий второй части */
+.extended-task .task-header {
+  background-color: rgba(102, 126, 234, 0.05);
+  padding: 1rem;
+  margin: -1rem -1rem 1rem -1rem;
+  border-radius: 0.8rem 0.8rem 0 0;
+}
+
+.extended-task .task-id {
+  color: #667eea;
+  font-weight: bold;
 }
 </style>
 

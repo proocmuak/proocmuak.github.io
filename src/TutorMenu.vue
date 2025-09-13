@@ -22,6 +22,7 @@ export default{
     return {
       currentComponent:         MyStudents, // Изначально ничего не отображается
       loading: true,
+      componentProps: {}, // Добавляем props
       isTutor: false,
       error: null
     }

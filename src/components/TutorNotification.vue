@@ -19,7 +19,12 @@
       >
         <div class="notification-content">
           <p>
-            Ученик <strong>{{ notification.student_first_name }} {{ notification.student_last_name }}</strong>
+            <span 
+              class="student-name-link"
+              @click="openStudentHomework(notification)"
+            >
+              <strong>{{ notification.student_first_name }} {{ notification.student_last_name }}</strong>
+            </span>
             сдал домашку по <strong>{{ getSubjectName(notification.subject) }}</strong>
           </p>
           <div class="notification-meta">
@@ -48,15 +53,26 @@
       </div>
     </div>
 
-    <!-- Отладочная информация -->
-    <div class="debug-info" v-if="false"> <!-- Установите в true для отладки -->
-      <h3>Отладочная информация</h3>
-      <p><strong>Текущий куратор:</strong> {{ currentTutorName }}</p>
-      <p><strong>Варианты поиска:</strong> {{ searchNames.join(', ') }}</p>
-      <div class="debug-actions">
-        <button @click="loadNotifications" class="refresh-btn">🔄 Обновить</button>
-        <button @click="testDatabaseQuery" class="test-btn">🧪 Тест запроса</button>
-        <button @click="checkAllNotifications" class="check-btn">👀 Все уведомления</button>
+    <!-- Модальное окно с домашними работами ученика -->
+    <div v-if="selectedStudent" class="modal-overlay" @click.self="closeStudentHomework">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h2>
+            Домашние работы ученика: 
+            <span class="student-name">{{ selectedStudent.first_name }} {{ selectedStudent.last_name }}</span>
+          </h2>
+          <button @click="closeStudentHomework" class="close-btn">
+            ✕
+          </button>
+        </div>
+        <div class="modal-content">
+          <StudentHomework 
+            :student="selectedStudent"
+            :subject="selectedSubject"
+            :exam-type="selectedExamType"
+            @back="closeStudentHomework"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -65,17 +81,24 @@
 <script>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { supabase } from '../supabase'
+import StudentHomework from './StudentHomework.vue'
 
 export default {
   name: 'TutorNotification',
+  components: {
+    StudentHomework
+  },
   setup() {
     const notifications = ref([])
     const loading = ref(true)
     let realtimeSubscription = null
     const currentTutorName = ref('')
     const searchNames = ref([])
+    
+    const selectedStudent = ref(null)
+    const selectedSubject = ref('')
+    const selectedExamType = ref('')
 
-    // Функция для получения имени текущего куратора
     const getCurrentTutorName = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser()
@@ -99,132 +122,30 @@ export default {
       }
     }
 
-    // Функция для генерации вариантов поиска
-    const generateSearchNames = (fullName) => {
-      const names = []
-      
-      // Извлекаем только имя (первое слово)
-      const firstName = fullName.split(' ')[0] || fullName
-      
-      // Добавляем варианты:
-      names.push(firstName) // "Ольга"
-      names.push(firstName + ' ') // "Ольга " (с пробелом)
-      
-      // Также добавляем полное имя на случай, если где-то оно используется
-      names.push(fullName)
-      names.push(fullName + ' ')
-      
-      // Убираем дубликаты
-      return [...new Set(names.filter(name => name && name.trim()))]
-    }
-
-    // Функция для загрузки уведомлений
-const loadNotifications = async () => {
-  try {
-    loading.value = true
-    const tutorName = await getCurrentTutorName()
-    currentTutorName.value = tutorName
-    
-    if (!tutorName) {
-      console.log('Имя куратора не найдено')
-      return
-    }
-
-    // Получаем только имя (первую часть)
-    const firstName = tutorName.split(' ')[0] || tutorName
-    
-    // Более гибкие варианты поиска
-    searchNames.value = [
-      firstName, // "Милана"
-      firstName + ' ', // "Милана " (с пробелом)
-      ' ' + firstName,
-      tutorName, // Полное имя
-      tutorName + ' ', // Полное имя с пробелом
-      firstName.toLowerCase(), // "милана"
-      firstName.toUpperCase(), // "МИЛАНА"
-    ]
-
-    console.log('Ищем уведомления для:', searchNames.value)
-
-    // Используем ILIKE для регистронезависимого поиска
-    const { data, error } = await supabase
-      .from('homework_notifications')
-      .select(`
-        id,
-        student_id,
-        homework_id,
-        subject,
-        completed_at,
-        score,
-        is_read,
-        tutor_name,
-        students:student_id (first_name, last_name)
-      `)
-      .in('tutor_name', searchNames.value) // Ищем по всем вариантам
-      .order('completed_at', { ascending: false })
-
-    if (error) {
-      console.error('Ошибка загрузки уведомлений:', error)
-      return
-    }
-
-    console.log('Найденные уведомления:', data)
-    
-    notifications.value = data.map(notification => ({
-      id: notification.id,
-      student_id: notification.student_id,
-      homework_id: notification.homework_id,
-      subject: notification.subject,
-      completed_at: notification.completed_at,
-      score: notification.score,
-      is_read: notification.is_read,
-      tutor_name: notification.tutor_name,
-      student_first_name: notification.students?.first_name || 'Неизвестный',
-      student_last_name: notification.students?.last_name || 'ученик'
-    }))
-  } catch (error) {
-    console.error('Ошибка:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-    // Функция для открытия домашнего задания
-    const openHomework = (notification) => {
-      try {
-        // Разбираем subject на компоненты (например: "biology_ege")
-        const [subject, examType] = notification.subject.split('_');
-        
-        const params = new URLSearchParams({
-          subject: notification.subject,
-          homework_id: notification.homework_id,
-          view_mode: 'tutor',
-          student_id: notification.student_id
-        });
-        
-        // Открываем в новом окне/вкладке
-        window.open(`/homework.html?${params.toString()}`, '_blank');
-        
-      } catch (error) {
-        console.error('Ошибка открытия домашнего задания:', error);
-        alert('Не удалось открыть домашнее задание.');
-      }
-    };
-
-    // Альтернативный метод с использованием ILIKE и OR
-    const loadNotificationsAlternative = async () => {
+    const loadNotifications = async () => {
       try {
         loading.value = true
         const tutorName = await getCurrentTutorName()
         currentTutorName.value = tutorName
         
-        if (!tutorName) return
+        if (!tutorName) {
+          console.log('Имя куратора не найдено')
+          return
+        }
 
         const firstName = tutorName.split(' ')[0] || tutorName
-        searchNames.value = [firstName, firstName + ' ', tutorName, tutorName + ' ']
         
-        // Создаем сложный запрос с OR условиями
-        let query = supabase
+        searchNames.value = [
+          firstName,
+          firstName + ' ',
+          ' ' + firstName,
+          tutorName,
+          tutorName + ' ',
+          firstName.toLowerCase(),
+          firstName.toUpperCase(),
+        ]
+
+        const { data, error } = await supabase
           .from('homework_notifications')
           .select(`
             id,
@@ -237,22 +158,13 @@ const loadNotifications = async () => {
             tutor_name,
             students:student_id (first_name, last_name)
           `)
-
-        // Добавляем условия OR для каждого варианта
-        searchNames.value.forEach(name => {
-          query = query.or(`tutor_name.eq.${name}`)
-        })
-
-        const { data, error } = await query
+          .in('tutor_name', searchNames.value)
           .order('completed_at', { ascending: false })
-          .limit(50)
 
         if (error) {
           console.error('Ошибка загрузки уведомлений:', error)
           return
         }
-
-        console.log('Уведомления (альтернативный метод):', data)
         
         notifications.value = data.map(notification => ({
           id: notification.id,
@@ -273,58 +185,6 @@ const loadNotifications = async () => {
       }
     }
 
-    // Тестовый запрос к базе данных
-    const testDatabaseQuery = async () => {
-      try {
-        console.log('Выполняем тестовый запрос...')
-        
-        // Получаем все уведомления чтобы посмотреть структуру данных
-        const { data, error } = await supabase
-          .from('homework_notifications')
-          .select('tutor_name')
-          .limit(20)
-
-        if (error) {
-          console.error('Ошибка тестового запроса:', error)
-          return
-        }
-
-        // Группируем по значениям tutor_name
-        const tutorNames = {}
-        data.forEach(item => {
-          const name = item.tutor_name || 'NULL'
-          tutorNames[name] = (tutorNames[name] || 0) + 1
-        })
-
-        console.log('Уникальные значения tutor_name:', tutorNames)
-        alert('Проверьте консоль для просмотра уникальных значений tutor_name')
-        
-      } catch (error) {
-        console.error('Ошибка:', error)
-      }
-    }
-
-    // Показать все уведомления (для отладки)
-    const checkAllNotifications = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('homework_notifications')
-          .select('*')
-          .limit(20)
-
-        if (error) {
-          console.error('Ошибка:', error)
-          return
-        }
-
-        console.log('Все уведомления:', data)
-        alert(`Всего уведомлений: ${data.length}\nПроверьте консоль для деталей`)
-      } catch (error) {
-        console.error('Ошибка:', error)
-      }
-    }
-
-    // Функция для подписки на реальные обновления
     const subscribeToRealtime = async () => {
       realtimeSubscription = supabase
         .channel('homework_notifications_changes')
@@ -335,17 +195,108 @@ const loadNotifications = async () => {
             table: 'homework_notifications'
           }, 
           (payload) => {
-            console.log('Получено реальное обновление:', payload.new.tutor_name)
-            // Перезагружаем уведомления при любом новом добавлении
             loadNotifications()
           }
         )
-        .subscribe((status) => {
-          console.log('Статус подписки:', status)
-        })
+        .subscribe()
     }
 
-    // Функция для отметки уведомления как прочитанного
+    const openHomework = (notification) => {
+      try {
+        const params = new URLSearchParams({
+          subject: notification.subject,
+          homework_id: notification.homework_id,
+          view_mode: 'tutor',
+          student_id: notification.student_id
+        });
+        
+        window.open(`/homework.html?${params.toString()}`, '_blank');
+      } catch (error) {
+        console.error('Ошибка открытия домашнего задания:', error);
+        alert('Не удалось открыть домашнее задание.');
+      }
+    };
+
+    const openStudentHomework = async (notification) => {
+      try {
+        console.log('Открываем домашние работы для студента:', notification.student_id);
+        
+        // Получаем полные данные о студенте
+        const { data: studentData, error: studentError } = await supabase
+          .from('personalities')
+          .select('first_name, last_name, email, phone')
+          .eq('user_id', notification.student_id)
+          .single();
+
+        if (studentError) {
+          console.error('Ошибка загрузки данных студента:', studentError);
+          return;
+        }
+
+        // Получаем баллы студента
+        const subjectKey = getSubjectKey(notification.subject);
+        let score = 0;
+        
+        if (subjectKey) {
+          const ratingTable = `${subjectKey}_rating`;
+          const { data: ratingData } = await supabase
+            .from(ratingTable)
+            .select('total_score')
+            .eq('user_id', notification.student_id)
+            .single();
+            
+          score = ratingData?.total_score || 0;
+        }
+
+        // Создаем объект студента
+        const student = {
+          user_id: notification.student_id,
+          first_name: studentData.first_name,
+          last_name: studentData.last_name,
+          email: studentData.email,
+          phone: studentData.phone,
+          score: score
+        };
+
+        console.log('Данные студента:', student);
+
+        // Получаем subject и examType из уведомления
+        const [subject, examType] = notification.subject.split('_');
+        
+        // Устанавливаем данные для отображения компонента StudentHomework
+        selectedStudent.value = student;
+        selectedSubject.value = subject;
+        selectedExamType.value = examType;
+
+        console.log('Параметры для StudentHomework:', {
+          subject: subject,
+          examType: examType,
+          student: student
+        });
+
+        // Блокируем прокрутку фона
+        document.body.style.overflow = 'hidden';
+
+      } catch (error) {
+        console.error('Ошибка открытия домашних работ студента:', error);
+        alert('Не удалось открыть домашние работы студента.');
+      }
+    };
+
+    const closeStudentHomework = () => {
+      selectedStudent.value = null;
+      selectedSubject.value = '';
+      selectedExamType.value = '';
+      // Восстанавливаем прокрутку фона
+      document.body.style.overflow = 'auto';
+    };
+
+    const getSubjectKey = (subjectName) => {
+      if (subjectName.includes('biology')) return 'biology';
+      if (subjectName.includes('chemistry')) return 'chemistry';
+      return '';
+    };
+
     const markAsRead = async (notificationId) => {
       try {
         const { error } = await supabase
@@ -358,7 +309,6 @@ const loadNotifications = async () => {
           return
         }
 
-        // Обновляем локальное состояние
         const notification = notifications.value.find(n => n.id === notificationId)
         if (notification) {
           notification.is_read = true
@@ -368,28 +318,22 @@ const loadNotifications = async () => {
       }
     }
 
-    // Форматирование даты
     const formatDate = (dateString) => {
       return new Date(dateString).toLocaleString('ru-RU')
     }
 
-    // Получение читаемого названия предмета
     const getSubjectName = (subjectCode) => {
       const subjects = {
-        'biology_ege': 'Биология',
-        'chemistry_ege': 'Химия'
-        // Добавьте другие предметы по мере необходимости
+        'biology_ege': 'Биология ЕГЭ',
+        'chemistry_ege': 'Химия ЕГЭ',
+        'biology_oge': 'Биология ОГЭ',
+        'chemistry_oge': 'Химия ОГЭ'
       }
       return subjects[subjectCode] || subjectCode
     }
 
     onMounted(async () => {
       await loadNotifications()
-      // Если не нашли уведомлений, пробуем альтернативный метод
-      if (notifications.value.length === 0) {
-        console.log('Пробуем альтернативный метод поиска...')
-        await loadNotificationsAlternative()
-      }
       await subscribeToRealtime()
     })
 
@@ -397,20 +341,22 @@ const loadNotifications = async () => {
       if (realtimeSubscription) {
         supabase.removeChannel(realtimeSubscription)
       }
+      // Восстанавливаем прокрутку при размонтировании
+      document.body.style.overflow = 'auto';
     })
 
     return {
       notifications,
       loading,
-      currentTutorName,
-      searchNames,
+      selectedStudent,
+      selectedSubject,
+      selectedExamType,
       openHomework,
+      openStudentHomework,
+      closeStudentHomework,
       markAsRead,
       formatDate,
-      getSubjectName,
-      loadNotifications,
-      testDatabaseQuery,
-      checkAllNotifications
+      getSubjectName
     }
   }
 }
@@ -421,6 +367,7 @@ const loadNotifications = async () => {
   max-width: 900px;
   margin: 0 auto;
   padding: 20px;
+  position: relative;
 }
 
 .loading, .no-notifications {
@@ -461,6 +408,19 @@ const loadNotifications = async () => {
 .notification-content p {
   margin: 0 0 8px 0;
   font-size: 1.1em;
+  line-height: 1.4;
+}
+
+.student-name-link {
+  color: #b241d1;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.3s ease;
+}
+
+.student-name-link:hover {
+  color: #9a30b8;
+  text-decoration: none;
 }
 
 .notification-meta {
@@ -521,50 +481,108 @@ const loadNotifications = async () => {
   background-color: #d4ecd4;
 }
 
-.debug-info {
-  margin-top: 30px;
-  padding: 15px;
-  border: 1px dashed #ccc;
-  border-radius: 8px;
-  background-color: #f9f9f9;
-}
-
-.debug-info h3 {
-  margin-top: 0;
-  color: #666;
-}
-
-.debug-actions {
+/* Стили для модального окна */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.8);
   display: flex;
-  gap: 10px;
-  margin-top: 10px;
-  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
 }
 
-.refresh-btn, .test-btn, .check-btn {
-  padding: 8px 16px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background-color: #f0f0f0;
+.modal-container {
+  background: white;
+  border-radius: 12px;
+  width: 95%;
+  height: 95%;
+  max-width: 1200px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  background: linear-gradient(135deg, #b241d1 0%, #9a30b8 100%);
+  color: white;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.5em;
+}
+
+.student-name {
+  color: #ffeb3b;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.5em;
   cursor: pointer;
-  font-size: 0.9em;
+  padding: 5px;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
 }
 
-.refresh-btn:hover, .test-btn:hover, .check-btn:hover {
-  background-color: #e0e0e0;
+.close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
-.test-btn {
-  background-color: #e3f2fd;
-  border-color: #bbdefb;
+.modal-content {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
 }
 
-.check-btn {
-  background-color: #fff3e0;
-  border-color: #ffe0b2;
+/* Стили для компонента StudentHomework внутри модального окна */
+.modal-content :deep(.homework-container) {
+  padding: 20px;
+  height: 100%;
+  overflow: auto;
+}
+
+.modal-content :deep(.student-info) {
+  margin-bottom: 20px;
 }
 
 @media (max-width: 768px) {
+  .modal-overlay {
+    padding: 10px;
+  }
+  
+  .modal-container {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+  
+  .modal-header {
+    padding: 15px;
+  }
+  
+  .modal-header h2 {
+    font-size: 1.2em;
+  }
+  
   .notification-item {
     flex-direction: column;
     align-items: flex-start;
