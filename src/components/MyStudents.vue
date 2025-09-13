@@ -17,6 +17,16 @@
             class="subject-filter"
             @change="onSubjectChange"
           />
+          <div class="search-container">
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Поиск по имени, фамилии или email..."
+              class="search-input"
+              @input="onSearch"
+            />
+            <span class="search-icon">🔍</span>
+          </div>
         </div>
       </div>
       
@@ -34,14 +44,21 @@
         Пожалуйста, выберите предмет для просмотра учеников
       </div>
       
-      <div v-if="students.length === 0 && selectedSubject && !loading" class="no-data">
+      <div v-if="students.length === 0 && selectedSubject && !loading && !searchQuery" class="no-data">
         У вас нет учеников по предмету {{ selectedSubject }}
+      </div>
+
+      <div v-if="students.length === 0 && selectedSubject && !loading && searchQuery" class="no-data">
+        По запросу "{{ searchQuery }}" учеников не найдено
       </div>
       
       <div v-if="students.length > 0" class="table-container">
         <div class="subject-header">
           <h3>Ученики по предмету: {{ selectedSubject }}</h3>
-          <div class="stats">Всего учеников: {{ students.length }}</div>
+          <div class="stats">
+            <span>Найдено: {{ students.length }}</span>
+            <span v-if="searchQuery"> по запросу "{{ searchQuery }}"</span>
+          </div>
         </div>
         
         <table class="students-table">
@@ -61,9 +78,18 @@
               @click="selectStudent(student)"
               class="student-row"
             >
-              <td>{{ student.first_name || 'Не указано' }}</td>
-              <td>{{ student.last_name || 'Не указано' }}</td>
-              <td>{{ student.email || 'Не указан' }}</td>
+              <td>
+                <span v-if="searchQuery && student.first_name" v-html="highlightText(student.first_name, searchQuery)"></span>
+                <span v-else>{{ student.first_name || 'Не указано' }}</span>
+              </td>
+              <td>
+                <span v-if="searchQuery && student.last_name" v-html="highlightText(student.last_name, searchQuery)"></span>
+                <span v-else>{{ student.last_name || 'Не указано' }}</span>
+              </td>
+              <td>
+                <span v-if="searchQuery && student.email" v-html="highlightText(student.email, searchQuery)"></span>
+                <span v-else>{{ student.email || 'Не указан' }}</span>
+              </td>
               <td>{{ student.phone || 'Не указан' }}</td>
               <td class="score-cell">{{ student.score || 0 }}</td>
             </tr>
@@ -97,11 +123,13 @@ export default {
   data() {
     return {
       students: [],
+      filteredStudents: [],
       loading: false,
       error: null,
       tutorFirstName: '',
       selectedSubject: '',
       selectedStudent: null,
+      searchQuery: '',
       subjectOptions: [
         { value: 'Химия ЕГЭ', label: 'Химия ЕГЭ' },
         { value: 'Химия ОГЭ', label: 'Химия ОГЭ' },
@@ -150,73 +178,73 @@ export default {
     },
 
     // Загружаем всех студентов куратора один раз
-async loadAllStudents() {
-  if (!this.tutorFirstName) return;
+    async loadAllStudents() {
+      if (!this.tutorFirstName) return;
 
-  this.loading = true;
-  this.error = null;
-  
-  try {
-    // ИСПРАВЛЕННЫЙ ЗАПРОС - используем ilike для поиска без учета регистра
-    const { data: students, error: studentsError } = await supabase
-      .from('students')
-      .select('*')
-      .ilike('tutor', `%${this.tutorFirstName}%`);
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        // ИСПРАВЛЕННЫЙ ЗАПРОС - используем ilike для поиска без учета регистра
+        const { data: students, error: studentsError } = await supabase
+          .from('students')
+          .select('*')
+          .ilike('tutor', `%${this.tutorFirstName}%`);
 
-    if (studentsError) throw studentsError;
+        if (studentsError) throw studentsError;
 
-    if (!students || students.length === 0) {
-      this.allStudents = [];
-      return;
-    }
-
-    // Остальной код без изменений...
-    const studentsWithDetails = await Promise.all(
-      students.map(async (student) => {
-        try {
-          const { data: personality, error: personalityError } = await supabase
-            .from('personalities')
-            .select('first_name, last_name, email, phone')
-            .eq('user_id', student.user_id)
-            .single();
-          
-          if (personalityError) {
-            console.error(`Ошибка загрузки данных пользователя ${student.user_id}:`, personalityError);
-            return null;
-          }
-          
-          return {
-            user_id: student.user_id,
-            first_name: personality?.first_name || '',
-            last_name: personality?.last_name || '',
-            email: personality?.email || '',
-            phone: personality?.phone || '',
-            subject1: student.subject1 || '',
-            subject2: student.subject2 || ''
-          };
-        } catch (error) {
-          console.error(`Ошибка обработки студента ${student.user_id}:`, error);
-          return null;
+        if (!students || students.length === 0) {
+          this.allStudents = [];
+          return;
         }
-      })
-    );
 
-    this.allStudents = studentsWithDetails.filter(
-      student => student !== null && (student.first_name || student.last_name)
-    );
+        const studentsWithDetails = await Promise.all(
+          students.map(async (student) => {
+            try {
+              const { data: personality, error: personalityError } = await supabase
+                .from('personalities')
+                .select('first_name, last_name, email, phone')
+                .eq('user_id', student.user_id)
+                .single();
+              
+              if (personalityError) {
+                console.error(`Ошибка загрузки данных пользователя ${student.user_id}:`, personalityError);
+                return null;
+              }
+              
+              return {
+                user_id: student.user_id,
+                first_name: personality?.first_name || '',
+                last_name: personality?.last_name || '',
+                email: personality?.email || '',
+                phone: personality?.phone || '',
+                subject1: student.subject1 || '',
+                subject2: student.subject2 || ''
+              };
+            } catch (error) {
+              console.error(`Ошибка обработки студента ${student.user_id}:`, error);
+              return null;
+            }
+          })
+        );
 
-  } catch (error) {
-    console.error('Ошибка загрузки студентов:', error);
-    this.error = 'Не удалось загрузить список учеников';
-  } finally {
-    this.loading = false;
-  }
-},
+        this.allStudents = studentsWithDetails.filter(
+          student => student !== null && (student.first_name || student.last_name)
+        );
+
+      } catch (error) {
+        console.error('Ошибка загрузки студентов:', error);
+        this.error = 'Не удалось загрузить список учеников';
+      } finally {
+        this.loading = false;
+      }
+    },
 
     // Фильтруем студентов по выбранному предмету и загружаем баллы
     async onSubjectChange() {
       if (!this.selectedSubject) {
         this.students = [];
+        this.filteredStudents = [];
         return;
       }
 
@@ -260,7 +288,8 @@ async loadAllStudents() {
           })
         );
 
-        this.students = studentsWithScores;
+        this.filteredStudents = studentsWithScores;
+        this.applySearchFilter();
 
       } catch (error) {
         console.error('Ошибка фильтрации студентов:', error);
@@ -268,6 +297,39 @@ async loadAllStudents() {
       } finally {
         this.loading = false;
       }
+    },
+
+    // Поиск по студентам
+    onSearch() {
+      this.applySearchFilter();
+    },
+
+    // Применяем фильтр поиска
+    applySearchFilter() {
+      if (!this.searchQuery.trim()) {
+        this.students = [...this.filteredStudents];
+        return;
+      }
+
+      const query = this.searchQuery.toLowerCase().trim();
+      this.students = this.filteredStudents.filter(student => 
+        (student.first_name && student.first_name.toLowerCase().includes(query)) ||
+        (student.last_name && student.last_name.toLowerCase().includes(query)) ||
+        (student.email && student.email.toLowerCase().includes(query))
+      );
+    },
+
+    // Подсветка текста в результатах поиска
+    highlightText(text, query) {
+      if (!text || !query) return text;
+      
+      const regex = new RegExp(`(${this.escapeRegExp(query)})`, 'gi');
+      return text.replace(regex, '<mark>$1</mark>');
+    },
+
+    // Экранирование специальных символов для RegExp
+    escapeRegExp(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     },
 
     // Получаем ключ предмета (biology/chemistry) для API
@@ -336,10 +398,40 @@ async loadAllStudents() {
   display: flex;
   gap: 0.9375rem;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .subject-filter {
   min-width: min(200px, 100%);
+}
+
+.search-container {
+  position: relative;
+  min-width: min(300px, 100%);
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.625rem 2.5rem 0.625rem 0.875rem;
+  border: 1px solid #ddd;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  transition: border-color 0.3s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.1);
+}
+
+.search-icon {
+  position: absolute;
+  right: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #888;
+  pointer-events: none;
 }
 
 .subject-header {
@@ -351,6 +443,8 @@ async loadAllStudents() {
   background: linear-gradient(135deg, #f9f3fc 0%, #f0e6f7 100%);
   border-radius: 0.75rem;
   border: 1px solid #e8d4f2;
+  flex-wrap: wrap;
+  gap: 0.625rem;
 }
 
 .subject-header h3 {
@@ -367,6 +461,9 @@ async loadAllStudents() {
   padding: 0.3125rem 0.75rem;
   border-radius: 1.25rem;
   font-size: clamp(0.875rem, 2vw, 1rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .table-container {
@@ -420,6 +517,14 @@ async loadAllStudents() {
 .score-cell {
   font-weight: 600;
   color: #b241d1;
+}
+
+/* Стили для подсветки найденного текста */
+mark {
+  background-color: #ffeb3b;
+  color: #333;
+  padding: 0.1em 0.2em;
+  border-radius: 0.2em;
 }
 
 .loading {
@@ -534,9 +639,11 @@ async loadAllStudents() {
   .filters {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
   }
   
-  .subject-filter {
+  .subject-filter,
+  .search-container {
     width: 100%;
   }
 }
@@ -568,6 +675,10 @@ async loadAllStudents() {
   .stats {
     font-size: 0.875rem;
   }
+  
+  .search-input {
+    font-size: 0.8125rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -587,6 +698,10 @@ async loadAllStudents() {
   .no-data {
     padding: 2rem 1rem;
   }
+  
+  .search-container {
+    min-width: 100%;
+  }
 }
 
 /* Для очень маленьких экранов */
@@ -603,5 +718,15 @@ async loadAllStudents() {
   .filters {
     gap: 0.5rem;
   }
+  
+  .search-input {
+    padding: 0.5rem 2rem 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+  
+  .search-icon {
+    right: 0.75rem;
+    font-size: 0.75rem;
+  }
 }
-</style> 
+</style>
