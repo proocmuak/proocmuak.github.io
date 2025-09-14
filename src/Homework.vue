@@ -454,7 +454,6 @@ export default {
             score: manualScore,
             user_answer: task.userAnswer,
             last_updated: new Date().toISOString(),
-            tutor_corrected: true // Помечаем, что баллы выставил куратор
           }, {
             onConflict: 'user_id,task_id'
           });
@@ -487,7 +486,6 @@ export default {
             is_completed: true,
             score: newTotalScore,
             completed_at: new Date().toISOString(),
-            tutor_corrected: true
           }, {
             onConflict: 'user_id,homework_id'
           });
