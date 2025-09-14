@@ -53,6 +53,13 @@ function checkNumericAnswer(userRaw, variant, points, orderMatters) {
   const userElems = splitNumericElements(userRaw);
   const correctElems = splitNumericElements(variant);
 
+  if (points === 1) {
+    if (userRaw === variant) {
+      return { correct: true, partial: false };
+    }
+    return { correct: false, partial: false };
+  }
+
   if (orderMatters) {
     // порядок обязателен
     let matches = 0;

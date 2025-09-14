@@ -231,7 +231,7 @@ async function recheckSubjectProgress(subject, supabase) {
 }
 
 // === запуск ===
-const subjects = ['biology_ege'] // можно расширить список предметов
+const subjects = ['biology_ege', 'chemistry_ege'] // можно расширить список предметов
 for (const subj of subjects) {
   await recheckSubjectProgress(subj, supabase)
 }
