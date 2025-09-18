@@ -80,11 +80,11 @@
             <i class="table-icon">📊</i>
           </button>
           <button @click="insertSubscript('text')" class="toolbar-button" title="Нижний индекс">
-  <span class="button-text">x<span class="subscript">2</span></span>
-</button>
-<button @click="insertSuperscript('text')" class="toolbar-button" title="Верхний индекс">
-  <span class="button-text">x<span class="superscript">2</span></span>
-</button>
+            <span class="button-text">x<span class="subscript">2</span></span>
+          </button>
+          <button @click="insertSuperscript('text')" class="toolbar-button" title="Верхний индекс">
+            <span class="button-text">x<span class="superscript">2</span></span>
+          </button>
         </div>
         <textarea 
           v-model="newTask.text" 
@@ -156,12 +156,12 @@
       <div class="text-editor" id="answer-editor">
         <label>Ответ:</label>
         <div class="editor-toolbar">
-          <button @click="insertSubscript('text')" class="toolbar-button" title="Нижний индекс">
-  <span class="button-text">x<span class="subscript">2</span></span>
-</button>
-<button @click="insertSuperscript('text')" class="toolbar-button" title="Верхний индекс">
-  <span class="button-text">x<span class="superscript">2</span></span>
-</button>
+          <button @click="insertSubscript('answer')" class="toolbar-button" title="Нижний индекс">
+            <span class="button-text">x<span class="subscript">2</span></span>
+          </button>
+          <button @click="insertSuperscript('answer')" class="toolbar-button" title="Верхний индекс">
+            <span class="button-text">x<span class="superscript">2</span></span>
+          </button>
         </div>
         <textarea 
           v-model="newTask.answer" 
@@ -175,12 +175,12 @@
       <div class="text-editor">
         <label>Пояснение к ответу:</label>
         <div class="editor-toolbar">
-          <button @click="insertSubscript('text')" class="toolbar-button" title="Нижний индекс">
-  <span class="button-text">x<span class="subscript">2</span></span>
-</button>
-<button @click="insertSuperscript('text')" class="toolbar-button" title="Верхний индекс">
-  <span class="button-text">x<span class="superscript">2</span></span>
-</button>
+          <button @click="insertSubscript('explanation')" class="toolbar-button" title="Нижний индекс">
+            <span class="button-text">x<span class="subscript">2</span></span>
+          </button>
+          <button @click="insertSuperscript('explanation')" class="toolbar-button" title="Верхний индекс">
+            <span class="button-text">x<span class="superscript">2</span></span>
+          </button>
         </div>
         <textarea 
           v-model="newTask.explanation" 
@@ -342,7 +342,7 @@ export default {
       activeCell: { row: 0, col: 0 },
       tableContent: this.initializeTableContent(2, 2),
       originalTableHtml: '',
-      currentTextarea: 'text' // Для отслеживания активного текстового поля
+      currentTextarea: 'text'
     };
   },
   computed: {
@@ -568,7 +568,7 @@ export default {
         ? `<sub>${selectedText}</sub>`
         : '<sub>индекс</sub>';
       
-      this.insertFormattedText(textToInsert, startPos, endPos, textarea);
+      this.insertFormattedText(textToInsert, startPos, endPos, textarea, textareaType);
     },
     insertSuperscript(textareaType) {
       this.currentTextarea = textareaType;
@@ -583,12 +583,12 @@ export default {
         ? `<sup>${selectedText}</sup>`
         : '<sup>степень</sup>';
       
-      this.insertFormattedText(textToInsert, startPos, endPos, textarea);
+      this.insertFormattedText(textToInsert, startPos, endPos, textarea, textareaType);
     },
-    insertFormattedText(textToInsert, startPos, endPos, textarea) {
-      const currentValue = this.newTask[this.currentTextarea] || '';
+    insertFormattedText(textToInsert, startPos, endPos, textarea, fieldName) {
+      const currentValue = this.newTask[fieldName] || '';
       
-      this.newTask[this.currentTextarea] = 
+      this.newTask[fieldName] = 
         currentValue.substring(0, startPos) + 
         textToInsert + 
         currentValue.substring(endPos);
@@ -698,93 +698,92 @@ export default {
         this.isUploading = false;
       }
     },
-// В методе saveTask() замените жестко заданные значения:
-async saveTask() {
-  try {
-    const imageUrls = await this.uploadImagesToStorage();
-    
-    const tableName = this.selectedSubject === 'Химия ЕГЭ' 
-      ? 'chemistry_ege_task_bank' 
-      : 'biology_ege_task_bank';
-    
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    
-    const { data, error } = await supabase
-      .from(tableName)
-      .insert([{
-        text: this.newTask.text,
-        answer: this.newTask.answer,
-        explanation: this.newTask.explanation || null,
-        section: this.newTask.section,
-        topic: this.newTask.topic,
-        part: this.newTask.part,
-        number: this.newTask.number,
-        points: this.newTask.points,
-        difficulty: parseInt(this.newTask.difficulty),
-        images: imageUrls.length ? imageUrls : null,
-        has_table: this.newTask.has_table,
-        table_data: this.newTask.table_data,
-      }])
-      .select();
+    async saveTask() {
+      try {
+        const imageUrls = await this.uploadImagesToStorage();
+        
+        const tableName = this.selectedSubject === 'Химия ЕГЭ' 
+          ? 'chemistry_ege_task_bank' 
+          : 'biology_ege_task_bank';
+        
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        
+        const { data, error } = await supabase
+          .from(tableName)
+          .insert([{
+            text: this.newTask.text,
+            answer: this.newTask.answer,
+            explanation: this.newTask.explanation || null,
+            section: this.newTask.section,
+            topic: this.newTask.topic,
+            part: this.newTask.part,
+            number: this.newTask.number,
+            points: this.newTask.points,
+            difficulty: parseInt(this.newTask.difficulty),
+            images: imageUrls.length ? imageUrls : null,
+            has_table: this.newTask.has_table,
+            table_data: this.newTask.table_data,
+          }])
+          .select();
 
-    if (error) throw error;
+        if (error) throw error;
 
-    if (data && data.length > 0) {
-      const taskId = data[0].id;
-      
-      const homeworkTableName = this.subject === 'biology' 
-        ? 'biology_ege_homework_tasks' 
-        : 'chemistry_ege_homework_tasks';
-      
-      // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ В ДОМАШНЕЙ РАБОТЕ
-      const { data: existingTasks, error: fetchError } = await supabase
-        .from(homeworkTableName)
-        .select('number')
-        .eq('homework_id', this.homeworkId);
-      
-      if (fetchError) {
-        console.error('Ошибка получения заданий:', fetchError);
-      }
-      
-      // Определяем следующий номер
-      let nextNumber = 1;
-      if (existingTasks && existingTasks.length > 0) {
-        const maxNumber = Math.max(...existingTasks.map(task => task.number || 0));
-        nextNumber = maxNumber + 1;
-      }
-      
-      // Добавляем задание с вычисленным номером
-      const { error: homeworkError } = await supabase
-        .from(homeworkTableName)
-        .insert([{
-          task_id: taskId,
-          homework_id: this.homeworkId,
-          homework_name: this.homeworkName,
-          number: nextNumber, // Добавляем вычисленный номер
-        }]);
+        if (data && data.length > 0) {
+          const taskId = data[0].id;
+          
+          const homeworkTableName = this.subject === 'biology' 
+            ? 'biology_ege_homework_tasks' 
+            : 'chemistry_ege_homework_tasks';
+          
+          // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ В ДОМАШНЕЙ РАБОТЕ
+          const { data: existingTasks, error: fetchError } = await supabase
+            .from(homeworkTableName)
+            .select('number')
+            .eq('homework_id', this.homeworkId);
+          
+          if (fetchError) {
+            console.error('Ошибка получения заданий:', fetchError);
+          }
+          
+          // Определяем следующий номер
+          let nextNumber = 1;
+          if (existingTasks && existingTasks.length > 0) {
+            const maxNumber = Math.max(...existingTasks.map(task => task.number || 0));
+            nextNumber = maxNumber + 1;
+          }
+          
+          // Добавляем задание с вычисленным номером
+          const { error: homeworkError } = await supabase
+            .from(homeworkTableName)
+            .insert([{
+              task_id: taskId,
+              homework_id: this.homeworkId,
+              homework_name: this.homeworkName,
+              number: nextNumber,
+            }]);
 
-      if (homeworkError) {
-        console.error('Ошибка при добавлении в homework_tasks:', homeworkError);
-      } else {
-        console.log(`Задание добавлено в домашнюю работу под номером ${nextNumber}`);
+          if (homeworkError) {
+            console.error('Ошибка при добавлении в homework_tasks:', homeworkError);
+          } else {
+            console.log(`Задание добавлено в домашнюю работу под номером ${nextNumber}`);
+          }
+        }
+
+        this.showSuccess = true;
+        this.uploadedImages = [];
+        this.uploadStatus = 'Файлы не выбраны';
+        
+        setTimeout(() => {
+          this.showSuccess = false;
+          this.resetForm();
+        }, 3000);
+
+      } catch (error) {
+        console.error('Ошибка при сохранении:', error);
+        alert(`Не удалось сохранить задание: ${error.message}`);
       }
     }
-
-    this.showSuccess = true;
-    this.uploadedImages = [];
-    this.uploadStatus = 'Файлы не выбраны';
-    
-    setTimeout(() => {
-      this.showSuccess = false;
-      this.resetForm();
-    }, 3000);
-
-  } catch (error) {
-    console.error('Ошибка при сохранении:', error);
-    alert(`Не удалось сохранить задание: ${error.message}`);
-  }
-}
   },
   watch: {
     tableRows(newVal, oldVal) {
@@ -802,7 +801,6 @@ async saveTask() {
 </script>
 
 <style scoped>
-/* Все стили остаются без изменений */
 .editor-container {
   width: 100%;
   min-height: 100%;
@@ -894,11 +892,13 @@ async saveTask() {
   resize: vertical;
   box-sizing: border-box;
 }
+
 .answer-textarea {
   min-height: 80px !important;
   height: 80px !important;
   resize: vertical;
 }
+
 .task-textarea:focus {
   outline: none;
   border-color: #b241d1;
@@ -995,6 +995,7 @@ async saveTask() {
   vertical-align: top;
   min-width: 100px;
 }
+
 .button-text {
   font-style: italic;
 }
@@ -1008,6 +1009,7 @@ async saveTask() {
   vertical-align: super;
   font-size: 0.7em;
 }
+
 .table-cell-input {
   width: 100%;
   height: 60px;
