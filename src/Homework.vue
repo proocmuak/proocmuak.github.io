@@ -267,13 +267,13 @@ export default {
     }
 
     // Санитизация HTML
-    const sanitizeHtml = (html) => {
-      if (!html) return ''
-      return DOMPurify.sanitize(html, {
-        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
-        ALLOWED_ATTR: ['style', 'class']
-      })
-    }
+const sanitizeHtml = (html) => {
+  if (!html) return ''
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
+    ALLOWED_ATTR: ['style', 'class']
+  })
+}
 
     // Получение URL изображения
     const getImageUrl = (imagePath) => {
@@ -311,11 +311,17 @@ export default {
     }
 
     // Обновите функцию получения текста задания
-    const getTaskTextWithoutTables = (task) => {
-      if (!task.text) return '';
-      const textWithoutTables = task.has_table ? task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : task.text;
-      return formatTextWithParagraphs(textWithoutTables);
-    }
+const getTaskTextWithoutTables = (task) => {
+  if (!task.text) return '';
+  
+  // Если есть табличные данные в отдельном поле, показываем текст без таблиц
+  if (task.has_table && task.table_data) {
+    return formatTextWithParagraphs(task.text.replace(/<table[\s\S]*?<\/table>/gi, ''));
+  }
+  
+  // Если это HTML-таблица в тексте (как в вашем примере), возвращаем весь текст
+  return formatTextWithParagraphs(task.text);
+}
 
     // Начать редактирование ответа
     const startEdit = (task) => {
@@ -943,23 +949,27 @@ export default {
                 </div>
 
                 <div class="task-content">
-                  <div 
-                  class="task-text" 
-                  v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
-                  @copy.prevent
-                  @cut.prevent
-                  @dragstart.prevent
-                  ></div>
-                  
-                  <div v-if="task.has_table && task.table_data" class="task-table-container">
-                    <table :class="{ 'with-borders': task.table_data.borders }">
-                      <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
-                        <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
-                          <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
-                        </td>
-                      </tr>
-                    </table>
-                  </div>
+  <div 
+    class="task-text" 
+    v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
+    @copy.prevent
+    @cut.prevent
+    @dragstart.prevent
+  ></div>
+  
+  <!-- Отображаем таблицу только если она в отдельном поле table_data -->
+  <div v-if="task.has_table && task.table_data" class="task-table-container">
+    <table :class="{ 'with-borders': task.table_data.borders }">
+      <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
+        <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
+          <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
+        </td>
+      </tr>
+    </table>
+  </div>
+  
+  <!-- Для HTML-таблиц, встроенных в текст, они уже будут в task-text -->
+
                   
                   <div class="task-images" v-if="task.images && task.images.length">
                     <div class="image-grid">
@@ -1280,24 +1290,41 @@ export default {
   width: 100%;
 }
 
-.task-text :deep(p) {
-  margin-bottom: 0.8rem;
+.task-text :deep(sub),
+.task-text :deep(sup) {
+  font-size: 0.75em;
+  line-height: 1;
+  position: relative;
+  vertical-align: baseline;
 }
 
-.task-text :deep(br) {
-  content: "";
-  display: block;
-  margin-bottom: 0.4rem;
+.task-text :deep(sub) {
+  bottom: -0.25em;
 }
 
-.task-text :deep(ul),
-.task-text :deep(ol) {
-  margin: 0.8rem 0;
-  padding-left: 1.5rem;
+.task-text :deep(sup) {
+  top: -0.5em;
 }
 
-.task-text :deep(li) {
-  margin-bottom: 0.4rem;
+/* Убедимся, что HTML-контент в таблицах отображается правильно */
+.task-text :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.task-text :deep(table td) {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  vertical-align: top;
+}
+
+.task-text :deep(strong) {
+  font-weight: 600;
+}
+
+.task-text :deep(em) {
+  font-style: italic;
 }
 /* Добавьте эти стили в секцию scoped */
 .answer-feedback {
@@ -1401,7 +1428,34 @@ export default {
   vertical-align: top;
   font-size: clamp(0.9rem, 2vw, 1rem);
 }
+.task-table-container :deep(sub),
+.task-table-container :deep(sup) {
+  font-size: 0.75em;
+  line-height: 1;
+  position: relative;
+  vertical-align: baseline;
+}
 
+.task-table-container :deep(sub) {
+  bottom: -0.25em;
+}
+
+.task-table-container :deep(sup) {
+  top: -0.5em;
+}
+
+/* Убедимся, что HTML-контент в таблицах отображается правильно */
+.task-table-container :deep(p) {
+  margin: 0;
+  padding: 0;
+}
+.task-table-container :deep(strong) {
+  font-weight: 600;
+}
+
+.task-table-container :deep(em) {
+  font-style: italic;
+}
 /* Улучшенные стили для изображений (перенесены из TaskCard) */
 .task-images {
   margin-bottom: 1.25rem;

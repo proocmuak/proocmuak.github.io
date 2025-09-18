@@ -58,7 +58,7 @@
         <div class="form-item">
           <label>Баллы за задание:</label>
           <select v-model="newTask.points" class="points-select">
-            <option v-for="n in 4" :value="n" :key="n">{{ n }}</option>
+            <option v-for="n in 5" :value="n" :key="n">{{ n }}</option>
           </select>
         </div>
 
@@ -181,6 +181,9 @@
           <button @click="insertSuperscript('explanation')" class="toolbar-button" title="Верхний индекс">
             <span class="button-text">x<span class="superscript">2</span></span>
           </button>
+          <button @click="triggerFileInput('explanation')" class="toolbar-button" title="Добавить изображение">
+            📷
+          </button>
         </div>
         <textarea 
           v-model="newTask.explanation" 
@@ -188,11 +191,21 @@
           class="task-textarea"
           ref="explanationTextarea"
         ></textarea>
+        
+        <!-- Препросмотр изображений пояснения -->
+        <div class="image-preview" v-if="explanationImages.length > 0">
+          <div v-for="(image, index) in explanationImages" :key="image.id" class="preview-item">
+            <img :src="image.preview" class="preview-image">
+            <button @click="removeExplanationImage(index)" class="remove-image-btn" :disabled="isUploading">
+              ×
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Загрузка изображений -->
+      <!-- Загрузка изображений для основного текста -->
       <div class="image-uploader">
-        <label>Изображения:</label>
+        <label>Изображения для текста задания:</label>
         <div class="upload-controls">
           <input 
             type="file" 
@@ -202,7 +215,7 @@
             accept="image/*" 
             style="display: none"
           >
-          <button @click="triggerFileInput" class="upload-button" :disabled="isUploading">
+          <button @click="triggerFileInput('text')" class="upload-button" :disabled="isUploading">
             {{ isUploading ? 'Загрузка...' : 'Выбрать файлы' }}
           </button>
           <span class="file-info">{{ uploadStatus }}</span>
@@ -330,7 +343,9 @@ export default {
         difficulty: '1',
       },
       uploadedImages: [],
+      explanationImages: [],
       uploadStatus: 'Файлы не выбраны',
+      currentUploadType: 'text',
       isUploading: false,
       showSuccess: false,
       showTableModal: false,
@@ -420,6 +435,7 @@ export default {
         difficulty: '1'
       };
       this.uploadedImages = [];
+      this.explanationImages = [];
       this.uploadStatus = 'Файлы не выбраны';
     },
     initializeTableContent(rows, cols) {
@@ -599,7 +615,8 @@ export default {
         textarea.setSelectionRange(newCursorPos, newCursorPos);
       }, 0);
     },
-    triggerFileInput() {
+    triggerFileInput(type = 'text') {
+      this.currentUploadType = type;
       this.$refs.fileInput.click();
     },
     async handleFileUpload(event) {
@@ -625,15 +642,22 @@ export default {
           
           const preview = await this.getImagePreview(file);
           
-          this.uploadedImages.push({
+          const imageData = {
             file,
             preview,
             name: file.name,
             id: uuidv4()
-          });
+          };
+          
+          // Добавляем изображение в соответствующий массив
+          if (this.currentUploadType === 'explanation') {
+            this.explanationImages.push(imageData);
+          } else {
+            this.uploadedImages.push(imageData);
+          }
         }
         
-        this.uploadStatus = `Выбрано ${this.uploadedImages.length} файла(ов)`;
+        this.updateUploadStatus();
       } catch (error) {
         console.error('Ошибка загрузки:', error);
         this.uploadStatus = 'Ошибка при загрузке файлов';
@@ -641,6 +665,13 @@ export default {
         this.isUploading = false;
         this.$refs.fileInput.value = '';
       }
+    },
+    
+    updateUploadStatus() {
+      const textCount = this.uploadedImages.length;
+      const explanationCount = this.explanationImages.length;
+      
+      this.uploadStatus = `Текст: ${textCount}, Пояснение: ${explanationCount}`;
     },
     getImagePreview(file) {
       return new Promise((resolve) => {
@@ -651,26 +682,28 @@ export default {
     },
     removeImage(index) {
       this.uploadedImages.splice(index, 1);
-      this.uploadStatus = this.uploadedImages.length 
-        ? `Выбрано ${this.uploadedImages.length} файла(ов)`
-        : 'Файлы не выбраны';
+      this.updateUploadStatus();
     },
-    async uploadImagesToStorage() {
-      if (!this.uploadedImages.length) return [];
+
+    removeExplanationImage(index) {
+      this.explanationImages.splice(index, 1);
+      this.updateUploadStatus();
+    },
+
+    async uploadImagesToStorage(images, folder) {
+      if (!images.length) return [];
       
       const uploadedUrls = [];
-      this.isUploading = true;
-      this.uploadStatus = 'Загрузка на сервер...';
       
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError || !session) throw new Error('Not authenticated');
         
-        for (const img of this.uploadedImages) {
+        for (const img of images) {
           const fileExt = img.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExt}`;
           const subjectFolder = this.selectedSubject === 'Химия ЕГЭ' ? 'chemistry' : 'biology';
-          const filePath = `tasks/${subjectFolder}/${fileName}`;
+          const filePath = `tasks/${subjectFolder}/${folder}/${fileName}`;
           
           const { error } = await supabase
             .storage
@@ -694,13 +727,18 @@ export default {
       } catch (error) {
         console.error('Ошибка загрузки:', error);
         throw error;
-      } finally {
-        this.isUploading = false;
       }
     },
+
     async saveTask() {
       try {
-        const imageUrls = await this.uploadImagesToStorage();
+        this.isUploading = true;
+        
+        // Загружаем изображения для каждого типа
+        const [textImageUrls, explanationImageUrls] = await Promise.all([
+          this.uploadImagesToStorage(this.uploadedImages, 'text'),
+          this.uploadImagesToStorage(this.explanationImages, 'explanation')
+        ]);
         
         const tableName = this.selectedSubject === 'Химия ЕГЭ' 
           ? 'chemistry_ege_task_bank' 
@@ -721,7 +759,8 @@ export default {
             number: this.newTask.number,
             points: this.newTask.points,
             difficulty: parseInt(this.newTask.difficulty),
-            images: imageUrls.length ? imageUrls : null,
+            images: textImageUrls.length ? textImageUrls : null,
+            image_explanation: explanationImageUrls.length ? explanationImageUrls : null,
             has_table: this.newTask.has_table,
             table_data: this.newTask.table_data,
           }])
@@ -772,6 +811,7 @@ export default {
 
         this.showSuccess = true;
         this.uploadedImages = [];
+        this.explanationImages = [];
         this.uploadStatus = 'Файлы не выбраны';
         
         setTimeout(() => {
@@ -782,6 +822,8 @@ export default {
       } catch (error) {
         console.error('Ошибка при сохранении:', error);
         alert(`Не удалось сохранить задание: ${error.message}`);
+      } finally {
+        this.isUploading = false;
       }
     }
   },
@@ -799,6 +841,11 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+/* Стили остаются без изменений */
+/* ... */
+</style>
 
 <style scoped>
 .editor-container {

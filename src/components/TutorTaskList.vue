@@ -25,6 +25,8 @@ export default {
   },
   computed: {
     filteredTasks() {
+      console.log('Current filters:', this.filters);
+console.log('Task number filter:', this.filters.taskNumber);
       if (!this.filters.subject) return [];
       
       // Конфигурация для разных предметов
@@ -62,13 +64,15 @@ export default {
         }
         
         // Фильтрация по номеру задания
-        if (this.filters.taskNumber && this.filters.taskNumber.length > 0) {
-          // Преобразуем номера в числа для сравнения
-          const taskNumbers = this.filters.taskNumber.map(Number);
-          if (!taskNumbers.includes(task.number)) {
-            return false;
-          }
-        }
+      // Замените блок фильтрации по номеру задания на:
+if (this.filters.taskNumber && this.filters.taskNumber.length > 0) {
+  // Преобразуем фильтры в строки и сравниваем со строковым значением задачи
+  const taskNumbers = this.filters.taskNumber.map(num => String(num));
+  
+  if (!taskNumbers.includes(String(task.number))) {
+    return false;
+  }
+}
         
         return true;
       });

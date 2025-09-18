@@ -114,6 +114,7 @@ onUnmounted(() => {
         <button @click="switchComponent('editor_students')" class="menu_button">Редактор учеников</button>
         <div class="menu_button" @click="switchComponent('editor_homework')">Редактор домашек</div>
         <div class="menu_button" @click="switchComponent('all_students')">Все ученики</div>
+                        <button class="menu_button"><a href="/TutorTaskBank.html" class="black_text_a">Редактор существующих заданий</a></button>
         <div class="menu_button">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
         <div class="exit">Выйти</div>

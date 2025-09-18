@@ -157,6 +157,7 @@ export default {
     };
   },
   computed: {
+    
     hasActiveFilters() {
       return this.selectedSubject || 
              this.selectedSections.length || 
@@ -263,7 +264,9 @@ emitFiltersChanged() {
     const filters = this.getCurrentFilters();
     // Преобразуем номера заданий в числа, если они есть
     if (filters.taskNumber) {
-      filters.taskNumber = filters.taskNumber.map(Number);
+      filters.taskNumber = filters.taskNumber.map(num => 
+        typeof num === 'string' ? parseInt(num, 10) : num
+      );
     }
     this.$emit('filters-changed', filters);
   });
