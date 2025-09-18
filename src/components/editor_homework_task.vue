@@ -79,25 +79,44 @@
           <button @click="insertTable('text')" class="toolbar-button" title="Вставить таблицу">
             <i class="table-icon">📊</i>
           </button>
-          <button @click="insertSubscript('text')" class="toolbar-button" title="Нижний индекс">
+          <button @click="formatText('text', 'sub')" class="toolbar-button" title="Нижний индекс">
             <span class="button-text">x<span class="subscript">2</span></span>
           </button>
-          <button @click="insertSuperscript('text')" class="toolbar-button" title="Верхний индекс">
+          <button @click="formatText('text', 'sup')" class="toolbar-button" title="Верхний индекс">
             <span class="button-text">x<span class="superscript">2</span></span>
           </button>
+          <button @click="clearFormatting('text')" class="toolbar-button" title="Очистить форматирование">
+            🧹
+          </button>
+          <button @click="triggerFileInput('text')" class="toolbar-button" title="Добавить изображение">
+            📷
+          </button>
         </div>
-        <textarea 
-          v-model="newTask.text" 
+        <div 
+          class="task-editor"
+          contenteditable="true"
+          ref="textEditor"
+          @input="updateNewTask('text', $event)"
+          @paste="handlePaste($event, 'text')"
           placeholder="Введите текст задания..."
-          class="task-textarea"
-          ref="textTextarea"
-        ></textarea>
+        ></div>
+        
+        <!-- Препросмотр изображений текста задания -->
+        <div class="image-preview" v-if="uploadedImages.length > 0">
+          <div v-for="(image, index) in uploadedImages" :key="image.id" class="preview-item">
+            <img :src="image.preview" class="preview-image">
+            <button @click="removeImage(index)" class="remove-image-btn" :disabled="isUploading">
+              ×
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Модальное окно для создания/редактирования таблицы -->
-      <div v-if="showTableModal" class="modal-overlay">
-        <div class="modal-content">
+      <div v-if="showTableModal" class="table-modal-overlay">
+        <div class="table-modal-content">
           <h3>{{ editingTable ? 'Редактирование таблицы' : 'Создание таблицы' }}</h3>
+          
           <div class="table-controls">
             <div class="control-row">
               <label>Строки:</label>
@@ -109,8 +128,6 @@
                 class="table-input"
                 @change="updateTableSize"
               >
-            </div>
-            <div class="control-row">
               <label>Столбцы:</label>
               <input 
                 type="number" 
@@ -128,19 +145,46 @@
             </div>
           </div>
           
+          <!-- Предпросмотр таблицы -->
+          <div class="table-preview-section">
+            <h4>Предпросмотр:</h4>
+            <div class="preview-table-container">
+              <table :class="{ 'with-borders': tableBorders }" v-html="generateTablePreviewHtml()"></table>
+            </div>
+          </div>
+          
           <!-- Редактируемая таблица -->
-          <div class="editable-table-container">
-            <table :class="{ 'with-borders': tableBorders }">
-              <tr v-for="(row, rowIndex) in tableContent" :key="rowIndex">
-                <td v-for="(cell, colIndex) in row" :key="colIndex">
-                  <textarea 
-                    v-model="tableContent[rowIndex][colIndex]" 
-                    class="table-cell-input"
-                    @focus="setActiveCell(rowIndex, colIndex)"
-                  ></textarea>
-                </td>
-              </tr>
-            </table>
+          <div class="editable-table-section">
+            <h4>Редактирование содержимого:</h4>
+            <div class="editable-table-container">
+              <table :class="{ 'with-borders': tableBorders }">
+                <tr v-for="(row, rowIndex) in tableContent" :key="rowIndex">
+                  <td v-for="(cell, colIndex) in row" :key="colIndex">
+                    <div 
+                      class="table-cell-editor"
+                      contenteditable="true"
+                      @input="updateTableCell(rowIndex, colIndex, $event)"
+                      @blur="updateTableCell(rowIndex, colIndex, $event)"
+                      @focus="activeTableCell = $event.target"
+                      v-html="cell"
+                    ></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            
+            <!-- Панель инструментов для ячеек таблицы -->
+            <div class="table-toolbar">
+              <button @click="formatTableCell('sub')" class="toolbar-button" title="Нижний индекс">
+                <span class="button-text">x<span class="subscript">2</span></span>
+              </button>
+              <button @click="formatTableCell('sup')" class="toolbar-button" title="Верхний индекс">
+                <span class="button-text">x<span class="superscript">2</span></span>
+              </button>
+              <button @click="clearTableFormatting()" class="toolbar-button" title="Очистить форматирование">
+                🧹
+              </button>
+            </div>
           </div>
           
           <div class="modal-buttons">
@@ -156,41 +200,51 @@
       <div class="text-editor" id="answer-editor">
         <label>Ответ:</label>
         <div class="editor-toolbar">
-          <button @click="insertSubscript('answer')" class="toolbar-button" title="Нижний индекс">
+          <button @click="formatText('answer', 'sub')" class="toolbar-button" title="Нижний индекс">
             <span class="button-text">x<span class="subscript">2</span></span>
           </button>
-          <button @click="insertSuperscript('answer')" class="toolbar-button" title="Верхний индекс">
+          <button @click="formatText('answer', 'sup')" class="toolbar-button" title="Верхний индекс">
             <span class="button-text">x<span class="superscript">2</span></span>
           </button>
+          <button @click="clearFormatting('answer')" class="toolbar-button" title="Очистить форматирование">
+            🧹
+          </button>
         </div>
-        <textarea 
-          v-model="newTask.answer" 
+        <div 
+          class="task-editor answer-editor"
+          contenteditable="true"
+          ref="answerEditor"
+          @input="updateNewTask('answer', $event)"
+          @paste="handlePaste($event, 'answer')"
           placeholder="Введите ответ на задание..."
-          class="task-textarea answer-textarea"
-          ref="answerTextarea"
-        ></textarea>
+        ></div>
       </div>
 
-      <!-- Поле для пояснения с инструментами -->
+      <!-- Поле для пояснения -->
       <div class="text-editor">
         <label>Пояснение к ответу:</label>
         <div class="editor-toolbar">
-          <button @click="insertSubscript('explanation')" class="toolbar-button" title="Нижний индекс">
+          <button @click="formatText('explanation', 'sub')" class="toolbar-button" title="Нижний индекс">
             <span class="button-text">x<span class="subscript">2</span></span>
           </button>
-          <button @click="insertSuperscript('explanation')" class="toolbar-button" title="Верхний индекс">
+          <button @click="formatText('explanation', 'sup')" class="toolbar-button" title="Верхний индекс">
             <span class="button-text">x<span class="superscript">2</span></span>
+          </button>
+          <button @click="clearFormatting('explanation')" class="toolbar-button" title="Очистить форматирование">
+            🧹
           </button>
           <button @click="triggerFileInput('explanation')" class="toolbar-button" title="Добавить изображение">
             📷
           </button>
         </div>
-        <textarea 
-          v-model="newTask.explanation" 
+        <div 
+          class="task-editor"
+          contenteditable="true"
+          ref="explanationEditor"
+          @input="updateNewTask('explanation', $event)"
+          @paste="handlePaste($event, 'explanation')"
           placeholder="Введите пояснение к ответу (опционально)..."
-          class="task-textarea"
-          ref="explanationTextarea"
-        ></textarea>
+        ></div>
         
         <!-- Препросмотр изображений пояснения -->
         <div class="image-preview" v-if="explanationImages.length > 0">
@@ -203,9 +257,9 @@
         </div>
       </div>
 
-      <!-- Загрузка изображений для основного текста -->
+      <!-- Загрузка изображений -->
       <div class="image-uploader">
-        <label>Изображения для текста задания:</label>
+        <label>Загрузить изображения:</label>
         <div class="upload-controls">
           <input 
             type="file" 
@@ -219,16 +273,6 @@
             {{ isUploading ? 'Загрузка...' : 'Выбрать файлы' }}
           </button>
           <span class="file-info">{{ uploadStatus }}</span>
-        </div>
-        
-        <!-- Препросмотр загруженных изображений -->
-        <div class="image-preview" v-if="uploadedImages.length > 0">
-          <div v-for="(image, index) in uploadedImages" :key="image.id" class="preview-item">
-            <img :src="image.preview" class="preview-image">
-            <button @click="removeImage(index)" class="remove-image-btn" :disabled="isUploading">
-              ×
-            </button>
-          </div>
         </div>
       </div>
 
@@ -352,12 +396,11 @@ export default {
       tableRows: 2,
       tableCols: 2,
       tableBorders: true,
-      currentTableHtml: '',
       editingTable: false,
-      activeCell: { row: 0, col: 0 },
       tableContent: this.initializeTableContent(2, 2),
       originalTableHtml: '',
-      currentTextarea: 'text'
+      currentTextarea: 'text',
+      activeTableCell: null
     };
   },
   computed: {
@@ -402,6 +445,28 @@ export default {
   created() {
     this.initializeTopics();
   },
+  watch: {
+    tableRows(newVal, oldVal) {
+      if (newVal !== oldVal) {
+        this.updateTableSize();
+      }
+    },
+    tableCols(newVal, oldVal) {
+      if (newVal !== oldVal) {
+        this.updateTableSize();
+      }
+    },
+    tableContent: {
+      deep: true,
+      handler() {
+        if (this.showTableModal) {
+          this.$nextTick(() => {
+            this.updateTablePreview();
+          });
+        }
+      }
+    }
+  },
   methods: {
     initializeTopics() {
       this.topicsData['Химия ЕГЭ'] = processModules(chemTopicsModules);
@@ -437,6 +502,13 @@ export default {
       this.uploadedImages = [];
       this.explanationImages = [];
       this.uploadStatus = 'Файлы не выбраны';
+      
+      // Очищаем редакторы
+      this.$nextTick(() => {
+        if (this.$refs.textEditor) this.$refs.textEditor.innerHTML = '';
+        if (this.$refs.answerEditor) this.$refs.answerEditor.innerHTML = '';
+        if (this.$refs.explanationEditor) this.$refs.explanationEditor.innerHTML = '';
+      });
     },
     initializeTableContent(rows, cols) {
       const content = [];
@@ -469,156 +541,244 @@ export default {
     resetTableContent() {
       this.tableContent = this.initializeTableContent(this.tableRows, this.tableCols);
     },
-    insertTable(textareaType) {
-      this.currentTextarea = textareaType;
-      const textarea = this.$refs[`${textareaType}Textarea`];
-      if (!textarea) return;
+    insertTable(editorType) {
+      this.currentTextarea = editorType;
+      const editor = this.$refs[`${editorType}Editor`];
+      if (!editor) return;
       
-      const selectedText = textarea.value.substring(
-        textarea.selectionStart,
-        textarea.selectionEnd
-      );
+      editor.focus();
+      const selection = window.getSelection();
       
-      if (selectedText.trim().startsWith('<table')) {
-        this.editingTable = true;
-        this.originalTableHtml = selectedText;
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let container = range.startContainer;
         
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(selectedText, 'text/html');
-        const table = doc.querySelector('table');
-        
-        if (table) {
-          this.tableBorders = table.hasAttribute('border');
-          this.tableRows = table.rows.length;
-          this.tableCols = table.rows[0]?.cells.length || 0;
-          
-          this.tableContent = [];
-          for (let i = 0; i < this.tableRows; i++) {
-            const row = [];
-            for (let j = 0; j < this.tableCols; j++) {
-              const cell = table.rows[i]?.cells[j];
-              row.push(cell ? cell.textContent.trim() : '');
-            }
-            this.tableContent.push(row);
+        while (container && container !== editor) {
+          if (container.tagName === 'TABLE') {
+            this.editingTable = true;
+            this.originalTableHtml = container.outerHTML;
+            this.parseTableElement(container);
+            break;
           }
+          container = container.parentNode;
+        }
+        
+        if (!container || container === editor) {
+          this.setupNewTable();
         }
       } else {
-        this.editingTable = false;
-        this.originalTableHtml = '';
-        this.tableRows = 2;
-        this.tableCols = 2;
-        this.tableBorders = true;
-        this.resetTableContent();
+        this.setupNewTable();
       }
       
       this.showTableModal = true;
     },
+    
+    parseTableElement(tableElement) {
+      this.tableBorders = tableElement.hasAttribute('border') || 
+                         tableElement.style.border !== 'none';
+      this.tableRows = tableElement.rows.length;
+      this.tableCols = tableElement.rows[0]?.cells.length || 0;
+      
+      this.tableContent = [];
+      for (let i = 0; i < this.tableRows; i++) {
+        const row = [];
+        for (let j = 0; j < this.tableCols; j++) {
+          const cell = tableElement.rows[i]?.cells[j];
+          row.push(cell ? cell.innerHTML : '');
+        }
+        this.tableContent.push(row);
+      }
+    },
+    
+    setupNewTable() {
+      this.editingTable = false;
+      this.originalTableHtml = '';
+      this.tableRows = 2;
+      this.tableCols = 2;
+      this.tableBorders = true;
+      this.resetTableContent();
+    },
+    
     insertTableToText() {
-      const textarea = this.$refs[`${this.currentTextarea}Textarea`];
-      if (!textarea) return;
+      const editor = this.$refs[`${this.currentTextarea}Editor`];
+      if (!editor) return;
       
-      const startPos = textarea.selectionStart;
-      const endPos = textarea.selectionEnd;
+      editor.focus();
       
+      const tableHtml = this.generateTableHtml();
+      
+      if (this.editingTable) {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          let container = range.startContainer;
+          
+          while (container && container !== editor) {
+            if (container.tagName === 'TABLE') {
+              container.outerHTML = tableHtml;
+              break;
+            }
+            container = container.parentNode;
+          }
+        }
+      } else {
+        document.execCommand('insertHTML', false, tableHtml);
+      }
+      
+      this.updateNewTask(this.currentTextarea, { target: editor });
+      
+      if (this.currentTextarea === 'text') {
+        this.updateTableData();
+      }
+      
+      this.showTableModal = false;
+    },
+    
+    generateTableHtml() {
       let html = '<table';
-      html += this.tableBorders ? ' border="1" cellpadding="5" cellspacing="0"' : ' style="border-collapse: collapse"';
+      html += this.tableBorders ? 
+        ' border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; margin: 10px 0;"' : 
+        ' style="border-collapse: collapse; border: none; margin: 10px 0;"';
       html += '>';
       
       for (let i = 0; i < this.tableRows; i++) {
         html += '<tr>';
         for (let j = 0; j < this.tableCols; j++) {
           const content = this.tableContent[i][j] || '&nbsp;';
-          html += `<td style="padding: 5px;">${content}</td>`;
+          html += `<td style="padding: 8px; border: ${this.tableBorders ? '1px solid #ddd' : 'none'}; vertical-align: top;">${content}</td>`;
         }
         html += '</tr>';
       }
       
       html += '</table>';
+      return html;
+    },
+    
+    updateTableData() {
+      this.newTask.has_table = true;
+      this.newTask.table_data = {
+        rows: this.tableRows,
+        cols: this.tableCols,
+        borders: this.tableBorders,
+        content: JSON.parse(JSON.stringify(this.tableContent))
+      };
+    },
+    
+    generateTablePreviewHtml() {
+      let html = '';
+      for (let i = 0; i < this.tableRows; i++) {
+        html += '<tr>';
+        for (let j = 0; j < this.tableCols; j++) {
+          const content = this.tableContent[i][j] || '&nbsp;';
+          html += `<td style="padding: 8px; border: 1px solid #ddd; min-height: 40px;">${content}</td>`;
+        }
+        html += '</tr>';
+      }
+      return html;
+    },
+    
+    updateTableCell(rowIndex, colIndex, event) {
+      this.tableContent[rowIndex][colIndex] = event.target.innerHTML;
+      this.activeTableCell = event.target;
+    },
+    
+    formatTableCell(formatType) {
+      if (!this.activeTableCell) return;
       
-      const currentValue = this.newTask[this.currentTextarea] || '';
+      this.activeTableCell.focus();
+      const selection = window.getSelection();
       
-      if (this.editingTable) {
-        this.newTask[this.currentTextarea] = 
-          currentValue.substring(0, startPos) + 
-          html + 
-          currentValue.substring(endPos);
+      if (selection.toString().trim()) {
+        if (formatType === 'sub') {
+          document.execCommand('subscript');
+        } else if (formatType === 'sup') {
+          document.execCommand('superscript');
+        }
       } else {
-        this.newTask[this.currentTextarea] = 
-          currentValue.substring(0, startPos) + 
-          html + 
-          currentValue.substring(startPos);
+        const exampleText = formatType === 'sub' ? 'индекс' : 'степень';
+        const tag = formatType === 'sub' ? 'sub' : 'sup';
+        document.execCommand('insertHTML', false, `<${tag}>${exampleText}</${tag}>`);
       }
       
-      // Устанавливаем флаг таблицы только для основного текста задания
-      if (this.currentTextarea === 'text') {
-        this.newTask.has_table = true;
-        this.newTask.table_data = {
-          rows: this.tableRows,
-          cols: this.tableCols,
-          borders: this.tableBorders,
-          content: this.tableContent
-        };
+      const cellElement = this.activeTableCell;
+      const cells = document.querySelectorAll('.table-cell-editor');
+      const index = Array.from(cells).indexOf(cellElement);
+      
+      if (index !== -1) {
+        const rowIndex = Math.floor(index / this.tableCols);
+        const colIndex = index % this.tableCols;
+        this.tableContent[rowIndex][colIndex] = cellElement.innerHTML;
+      }
+    },
+    
+    clearTableFormatting() {
+      if (!this.activeTableCell) return;
+      
+      this.activeTableCell.focus();
+      document.execCommand('removeFormat');
+      document.execCommand('unlink');
+      
+      const cellElement = this.activeTableCell;
+      const cells = document.querySelectorAll('.table-cell-editor');
+      const index = Array.from(cells).indexOf(cellElement);
+      
+      if (index !== -1) {
+        const rowIndex = Math.floor(index / this.tableCols);
+        const colIndex = index % this.tableCols;
+        this.tableContent[rowIndex][colIndex] = cellElement.innerHTML;
+      }
+    },
+    
+    formatText(editorType, formatType) {
+      const editor = this.$refs[`${editorType}Editor`];
+      if (!editor) return;
+      
+      editor.focus();
+      const selection = window.getSelection();
+      
+      if (selection.toString().trim()) {
+        if (formatType === 'sub') {
+          document.execCommand('subscript');
+        } else if (formatType === 'sup') {
+          document.execCommand('superscript');
+        }
+      } else {
+        const exampleText = formatType === 'sub' ? 'индекс' : 'степень';
+        const tag = formatType === 'sub' ? 'sub' : 'sup';
+        document.execCommand('insertHTML', false, `<${tag}>${exampleText}</${tag}>`);
       }
       
-      this.showTableModal = false;
-      
-      setTimeout(() => {
-        textarea.focus();
-        const newCursorPos = startPos + html.length;
-        textarea.setSelectionRange(newCursorPos, newCursorPos);
-      }, 0);
+      this.updateNewTask(editorType, { target: editor });
     },
-    setActiveCell(row, col) {
-      this.activeCell = { row, col };
+    
+    clearFormatting(editorType) {
+      const editor = this.$refs[`${editorType}Editor`];
+      if (!editor) return;
+      
+      editor.focus();
+      document.execCommand('removeFormat');
+      document.execCommand('unlink');
+      this.updateNewTask(editorType, { target: editor });
     },
-    insertSubscript(textareaType) {
-      this.currentTextarea = textareaType;
-      const textarea = this.$refs[`${textareaType}Textarea`];
-      if (!textarea) return;
-      
-      const startPos = textarea.selectionStart;
-      const endPos = textarea.selectionEnd;
-      const selectedText = textarea.value.substring(startPos, endPos);
-      
-      const textToInsert = selectedText 
-        ? `<sub>${selectedText}</sub>`
-        : '<sub>индекс</sub>';
-      
-      this.insertFormattedText(textToInsert, startPos, endPos, textarea, textareaType);
+    
+    updateNewTask(field, event) {
+      this.newTask[field] = event.target.innerHTML;
     },
-    insertSuperscript(textareaType) {
-      this.currentTextarea = textareaType;
-      const textarea = this.$refs[`${textareaType}Textarea`];
-      if (!textarea) return;
+    
+    handlePaste(event, field) {
+      event.preventDefault();
+      const text = (event.clipboardData || window.clipboardData).getData('text/html') || 
+                   (event.clipboardData || window.clipboardData).getData('text/plain');
       
-      const startPos = textarea.selectionStart;
-      const endPos = textarea.selectionEnd;
-      const selectedText = textarea.value.substring(startPos, endPos);
-      
-      const textToInsert = selectedText 
-        ? `<sup>${selectedText}</sup>`
-        : '<sup>степень</sup>';
-      
-      this.insertFormattedText(textToInsert, startPos, endPos, textarea, textareaType);
+      document.execCommand('insertHTML', false, text);
+      this.updateNewTask(field, { target: this.$refs[`${field}Editor`] });
     },
-    insertFormattedText(textToInsert, startPos, endPos, textarea, fieldName) {
-      const currentValue = this.newTask[fieldName] || '';
-      
-      this.newTask[fieldName] = 
-        currentValue.substring(0, startPos) + 
-        textToInsert + 
-        currentValue.substring(endPos);
-      
-      setTimeout(() => {
-        textarea.focus();
-        const newCursorPos = startPos + textToInsert.length;
-        textarea.setSelectionRange(newCursorPos, newCursorPos);
-      }, 0);
-    },
+    
     triggerFileInput(type = 'text') {
       this.currentUploadType = type;
       this.$refs.fileInput.click();
     },
+    
     async handleFileUpload(event) {
       const files = event.target.files;
       if (!files.length) return;
@@ -649,7 +809,6 @@ export default {
             id: uuidv4()
           };
           
-          // Добавляем изображение в соответствующий массив
           if (this.currentUploadType === 'explanation') {
             this.explanationImages.push(imageData);
           } else {
@@ -673,6 +832,7 @@ export default {
       
       this.uploadStatus = `Текст: ${textCount}, Пояснение: ${explanationCount}`;
     },
+    
     getImagePreview(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -680,6 +840,7 @@ export default {
         reader.readAsDataURL(file);
       });
     },
+    
     removeImage(index) {
       this.uploadedImages.splice(index, 1);
       this.updateUploadStatus();
@@ -771,11 +932,11 @@ export default {
         if (data && data.length > 0) {
           const taskId = data[0].id;
           
-          const homeworkTableName = this.subject === 'biology' 
-            ? 'biology_ege_homework_tasks' 
-            : 'chemistry_ege_homework_tasks';
+          const homeworkTableName = this.selectedSubject === 'Химия ЕГЭ' 
+            ? 'chemistry_ege_homework_tasks' 
+            : 'biology_ege_homework_tasks';
           
-          // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ В ДОМАШНЕЙ РАБОТЕ
+          // Вычисляем номер задания в домашней работе
           const { data: existingTasks, error: fetchError } = await supabase
             .from(homeworkTableName)
             .select('number')
@@ -826,26 +987,9 @@ export default {
         this.isUploading = false;
       }
     }
-  },
-  watch: {
-    tableRows(newVal, oldVal) {
-      if (newVal !== oldVal) {
-        this.updateTableSize();
-      }
-    },
-    tableCols(newVal, oldVal) {
-      if (newVal !== oldVal) {
-        this.updateTableSize();
-      }
-    }
   }
 };
 </script>
-
-<style scoped>
-/* Стили остаются без изменений */
-/* ... */
-</style>
 
 <style scoped>
 .editor-container {
@@ -912,6 +1056,7 @@ export default {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .toolbar-button {
@@ -923,13 +1068,14 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s;
 }
 
 .toolbar-button:hover {
   background-color: #e0e0e0;
 }
 
-.task-textarea {
+.task-editor {
   width: 100%;
   min-height: 150px;
   padding: 12px;
@@ -937,19 +1083,40 @@ export default {
   border-radius: 6px;
   font-size: 16px;
   resize: vertical;
-  box-sizing: border-box;
+  font-family: inherit;
+  overflow-y: auto;
+  background: white;
 }
 
-.answer-textarea {
-  min-height: 80px !important;
-  height: 80px !important;
-  resize: vertical;
-}
-
-.task-textarea:focus {
+.task-editor:focus {
   outline: none;
   border-color: #b241d1;
   box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
+}
+
+.task-editor[placeholder]:empty:before {
+  content: attr(placeholder);
+  color: #6c757d;
+  font-style: italic;
+}
+
+.answer-editor {
+  min-height: 80px;
+}
+
+sub, sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+sub {
+  bottom: -0.25em;
+}
+
+sup {
+  top: -0.5em;
 }
 
 .points-select {
@@ -966,7 +1133,7 @@ export default {
   box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
 }
 
-.modal-overlay {
+.table-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -979,17 +1146,17 @@ export default {
   z-index: 1000;
 }
 
-.modal-content {
+.table-modal-content {
   background-color: white;
   padding: 20px;
   border-radius: 8px;
   width: 90%;
-  max-width: 600px;
+  max-width: 800px;
   max-height: 90vh;
   overflow-y: auto;
 }
 
-.modal-content h3 {
+.table-modal-content h3 {
   margin-top: 0;
   color: #333;
 }
@@ -1001,36 +1168,65 @@ export default {
 .control-row {
   display: flex;
   align-items: center;
-  margin-bottom: 10px;
+  gap: 15px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .control-row label {
-  margin-right: 10px;
-  min-width: 80px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  min-width: auto;
 }
 
 .table-input {
   width: 60px;
-  padding: 5px;
+  padding: 6px 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
 }
 
-.editable-table-container {
-  margin: 20px 0;
+.table-preview-section,
+.editable-table-section {
+  margin: 15px 0;
+}
+
+.table-preview-section h4,
+.editable-table-section h4 {
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.preview-table-container {
+  padding: 10px;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  background: #fafafa;
   overflow-x: auto;
-  max-height: 300px;
-  overflow-y: auto;
+}
+
+.preview-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.preview-table-container td {
+  padding: 8px;
+  border: 1px solid #ddd;
+  min-height: 40px;
+  vertical-align: top;
+}
+
+.editable-table-container {
+  margin: 10px 0;
+  overflow-x: auto;
 }
 
 .editable-table-container table {
   width: 100%;
   border-collapse: collapse;
-  margin: 10px 0;
-}
-
-.editable-table-container table.with-borders {
-  border: 1px solid #ddd;
 }
 
 .editable-table-container table.with-borders td {
@@ -1038,64 +1234,62 @@ export default {
 }
 
 .editable-table-container td {
-  padding: 5px;
-  vertical-align: top;
-  min-width: 100px;
+  padding: 0;
 }
 
-.button-text {
-  font-style: italic;
-}
-
-.subscript {
-  vertical-align: sub;
-  font-size: 0.7em;
-}
-
-.superscript {
-  vertical-align: super;
-  font-size: 0.7em;
-}
-
-.table-cell-input {
-  width: 100%;
-  height: 60px;
-  padding: 5px;
-  border: 1px solid #eee;
-  resize: none;
-  font-family: inherit;
-  font-size: 14px;
-}
-
-.table-cell-input:focus {
+.table-cell-editor {
+  padding: 8px;
+  min-height: 40px;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  background: white;
   outline: none;
-  border-color: #b241d1;
-  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.table-cell-editor:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.table-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
 }
 
 .modal-buttons {
   display: flex;
+  gap: 12px;
   justify-content: flex-end;
-  gap: 10px;
   margin-top: 20px;
 }
 
 .modal-button {
   padding: 8px 16px;
   border: 1px solid #ddd;
-  border-radius: 4px;
-  background-color: #f0f0f0;
+  border-radius: 6px;
+  background: white;
   cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
 }
 
 .modal-button.primary {
-  background-color: #b241d1;
+  background: #007bff;
   color: white;
-  border-color: #9a36b8;
+  border-color: #007bff;
 }
 
 .modal-button.primary:hover {
-  background-color: #9a36b8;
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+.modal-button:hover {
+  background: #f8f9fa;
 }
 
 .image-uploader {
@@ -1241,10 +1435,18 @@ export default {
   cursor: not-allowed;
 }
 
-.toolbar-button i sub,
-.toolbar-button i sup {
-  font-size: 0.7em;
+.button-text {
+  font-style: italic;
+}
+
+.subscript {
   vertical-align: sub;
+  font-size: 0.7em;
+}
+
+.superscript {
+  vertical-align: super;
+  font-size: 0.7em;
 }
 
 @media (max-width: 768px) {
@@ -1260,7 +1462,7 @@ export default {
     font-size: 20px;
   }
   
-  .task-textarea {
+  .task-editor {
     min-height: 120px;
   }
   
@@ -1280,7 +1482,7 @@ export default {
     align-items: flex-start;
   }
   
-  .modal-content {
+  .table-modal-content {
     width: 95%;
     padding: 15px;
   }
@@ -1298,7 +1500,7 @@ export default {
     max-height: 200px;
   }
   
-  .table-cell-input {
+  .table-cell-editor {
     height: 40px;
     font-size: 12px;
   }
