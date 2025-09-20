@@ -53,13 +53,6 @@ function checkNumericAnswer(userRaw, variant, points, orderMatters) {
   const userElems = splitNumericElements(userRaw);
   const correctElems = splitNumericElements(variant);
 
-  if (points === 1) {
-    if (userRaw === variant) {
-      return { correct: true, partial: false };
-    }
-    return { correct: false, partial: false };
-  }
-
   if (orderMatters) {
     // порядок обязателен
     let matches = 0;
@@ -267,19 +260,109 @@ export default {
     }
 
     // Санитизация HTML
-const sanitizeHtml = (html) => {
-  if (!html) return ''
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
-    ALLOWED_ATTR: ['style', 'class']
-  })
-}
+    const sanitizeHtml = (html) => {
+      if (!html) return ''
+      return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span', 'table', 'tr', 'td', 'th', 'tbody', 'thead'],
+        ALLOWED_ATTR: ['style', 'class', 'colspan', 'rowspan']
+      })
+    }
 
+    // Форматирование текста с абзацами
+    const formatTextWithParagraphs = (text) => {
+      if (!text) return '';
+      
+      if (text.includes('<') && text.includes('>')) {
+        return text;
+      }
+      
+      let formattedText = text
+        .trim()
+        .replace(/\r\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+      
+      if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
+        formattedText = `<p>${formattedText}</p>`;
+      }
+      
+      return formattedText;
+    }
+
+    // Форматирование текста ответа
+    const formatAnswerText = (text) => {
+      if (!text) return '';
+      
+      let formattedText = String(text);
+      
+      // Обработка химических формул (например, H2O → H₂O)
+      formattedText = formattedText.replace(/([A-Za-z])(\d+)/g, '$1<sub>$2</sub>');
+      
+      // Обработка степеней (например, x^2 → x²)
+      formattedText = formattedText.replace(/(\w)\^(\d+)/g, '$1<sup>$2</sup>');
+      
+      // Обработка специальных тегов [sub] и [sup]
+      formattedText = formattedText.replace(/\[sub\](.*?)\[\/sub\]/g, '<sub>$1</sub>');
+      formattedText = formattedText.replace(/\[sup\](.*?)\[\/sup\]/g, '<sup>$1</sup>');
+      
+      // Переносы строк
+      formattedText = formattedText.replace(/\n/g, '<br>');
+      
+      return formattedText;
+    }
+
+    // Получение текста задания без таблиц
+    const getTaskTextWithoutTables = (task) => {
+      if (!task.text) return '';
+      
+      // Если есть табличные данные в отдельном поле, показываем текст без таблиц
+      if (task.has_table && task.table_data) {
+        return formatTextWithParagraphs(task.text.replace(/<table[\s\S]*?<\/table>/gi, ''));
+      }
+      
+      // Если это HTML-таблица в тексте, возвращаем весь текст
+      return formatTextWithParagraphs(task.text);
+    }
+
+    // Получение пояснения с поддержкой изображений
+// Получение пояснения с поддержкой изображений
+const getExplanationContent = (task) => {
+  let content = '';
+  // Внутри функции getExplanationContent добавьте отладочный вывод
+console.log('image_explanation data:', task.image_explanation);
+console.log('Type of image_explanation:', typeof task.image_explanation);
+  // Добавляем текстовое пояснение с абзацами
+  if (task.explanation) {
+    content += formatTextWithParagraphs(task.explanation);
+  }
+  
+  // Добавляем изображения пояснения если есть (обрабатываем массив)
+  if (task.image_explanation && Array.isArray(task.image_explanation)) {
+    task.image_explanation.forEach(imagePath => {
+      if (typeof imagePath === 'string') {
+        const imageUrl = getImageUrl(imagePath);
+        content += `<div class="explanation-image-container">
+          <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
+        </div>`;
+      }
+    });
+  } else if (typeof task.image_explanation === 'string') {
+    // Обработка для случая, когда image_explanation - строка
+    const imageUrl = getImageUrl(task.image_explanation);
+    content += `<div class="explanation-image-container">
+      <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
+    </div>`;
+  }
+  
+  return content;
+}
     // Получение URL изображения
     const getImageUrl = (imagePath) => {
-      if (!imagePath) return ''
+      if (!imagePath) return '';
+      if (typeof imagePath !== 'string') return '';
       if (imagePath.startsWith('http')) return imagePath;
-      
+      console.log('url изображения', imagePath)
       try {
         const { data: { publicUrl } } = supabase
           .storage
@@ -287,48 +370,70 @@ const sanitizeHtml = (html) => {
           .getPublicUrl(imagePath);
         return publicUrl;
       } catch (err) {
-        console.error('Ошибка получения URL изображения:', err)
-        return ''
+        console.error('Ошибка получения URL изображения:', err);
+        return '';
       }
     }
 
-    // Удаление таблиц из текста задания
-    // Функция для обработки текста с абзацами
-    const formatTextWithParagraphs = (text) => {
-      if (!text) return ''
+    // Получение URL изображения ответа
+    const getAnswerImageUrl = (imagePath) => {
+      if (!imagePath) return '';
+      if (imagePath.startsWith('http')) return imagePath;
       
-      // Заменяем двойные переносы на параграфы
-      let formattedText = text
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/\n/g, '<br>')
-      
-      // Оборачиваем в параграф, если нужно
-      if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
-        formattedText = `<p>${formattedText}</p>`
+      try {
+        const { data: { publicUrl } } = supabase
+          .storage
+          .from('answers')
+          .getPublicUrl(imagePath);
+        return publicUrl;
+      } catch (err) {
+        console.error('Ошибка получения URL изображения ответа:', err);
+        return '';
       }
-      
-      return formattedText
     }
 
-    // Обновите функцию получения текста задания
-const getTaskTextWithoutTables = (task) => {
-  if (!task.text) return '';
-  
-  // Если есть табличные данные в отдельном поле, показываем текст без таблиц
-  if (task.has_table && task.table_data) {
-    return formatTextWithParagraphs(task.text.replace(/<table[\s\S]*?<\/table>/gi, ''));
-  }
-  
-  // Если это HTML-таблица в тексте (как в вашем примере), возвращаем весь текст
-  return formatTextWithParagraphs(task.text);
-}
+    // Загрузка изображения ответа
+    const uploadAnswerImage = async (task, file) => {
+      if (!user_id.value) return null;
+
+      try {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${user_id.value}/${task.task_id}/${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase
+          .storage
+          .from('answers')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        return fileName;
+      } catch (err) {
+        console.error('Ошибка загрузки изображения:', err);
+        error.value = 'Ошибка загрузки изображения: ' + err.message;
+        return null;
+      }
+    }
+
+    // Удаление изображения ответа
+    const deleteAnswerImage = async (imagePath) => {
+      try {
+        const { error: deleteError } = await supabase
+          .storage
+          .from('answers')
+          .remove([imagePath]);
+
+        if (deleteError) throw deleteError;
+      } catch (err) {
+        console.error('Ошибка удаления изображения:', err);
+      }
+    }
 
     // Начать редактирование ответа
     const startEdit = (task) => {
       task.isEditing = true;
       task.editAnswerInput = task.userAnswer || '';
       
-      // Фокусируемся на поле ввода после обновления DOM
       nextTick(() => {
         const input = document.querySelector(`.task-item[data-task-id="${task.task_id}"] .answer-input`);
         if (input) {
@@ -346,8 +451,8 @@ const getTaskTextWithoutTables = (task) => {
 
     // Сохранение отредактированного ответа
     const saveEditedAnswer = async (task) => {
-      if (!task.editAnswerInput.trim()) {
-        alert('Пожалуйста, введите ответ');
+      if (!task.editAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
+        alert('Пожалуйста, введите ответ или прикрепите изображение');
         return;
       }
 
@@ -355,12 +460,10 @@ const getTaskTextWithoutTables = (task) => {
         task.saving = true;
         const userAnswer = task.editAnswerInput.trim();
         
-        // Обновляем данные задачи
         task.userAnswer = userAnswer;
         task.userAnswerInput = userAnswer;
         task.isEditing = false;
         
-        // Сохраняем в базу данных
         await saveTaskProgress(task, false);
         
         task.saving = false;
@@ -374,8 +477,8 @@ const getTaskTextWithoutTables = (task) => {
 
     // Сохранение ответа
     const saveAnswer = async (task) => {
-      if (!task.userAnswerInput.trim()) {
-        alert('Пожалуйста, введите ответ');
+      if (!task.userAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
+        alert('Пожалуйста, введите ответ или прикрепите изображение');
         return;
       }
 
@@ -404,7 +507,6 @@ const getTaskTextWithoutTables = (task) => {
       let is_completed = false;
 
       if (checkCorrectness) {
-        // Используем новый алгоритм проверки
         const result = checkAnswerComponent(
           task.userAnswer,
           task.answer,
@@ -423,16 +525,19 @@ const getTaskTextWithoutTables = (task) => {
 
       try {
         const progressTable = `${subject.value}_progress`;
+        const progressData = {
+          user_id: user_id.value,
+          task_id: task.task_id,
+          is_completed: is_completed,
+          score: score,
+          user_answer: task.userAnswer || '',
+          answer_images: task.answerImages || [],
+          last_updated: new Date().toISOString()
+        };
+
         const { error } = await supabase
           .from(progressTable)
-          .upsert({
-            user_id: user_id.value,
-            task_id: task.task_id,
-            is_completed: is_completed,
-            score: score,
-            user_answer: task.userAnswer,
-            last_updated: new Date().toISOString()
-          }, {
+          .upsert(progressData, {
             onConflict: 'user_id,task_id'
           });
 
@@ -451,12 +556,10 @@ const getTaskTextWithoutTables = (task) => {
       try {
         task.saving = true;
         
-        // Обновляем баллы задачи
         task.awardedPoints = manualScore;
         task.isCorrect = manualScore === task.points;
         task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points;
         
-        // Сохраняем в прогресс
         const progressTable = `${subject.value}_progress`;
         const { error } = await supabase
           .from(progressTable)
@@ -465,7 +568,8 @@ const getTaskTextWithoutTables = (task) => {
             task_id: task.task_id,
             is_completed: manualScore > 0,
             score: manualScore,
-            user_answer: task.userAnswer,
+            user_answer: task.userAnswer || '',
+            answer_images: task.answerImages || [],
             last_updated: new Date().toISOString(),
           }, {
             onConflict: 'user_id,task_id'
@@ -473,7 +577,6 @@ const getTaskTextWithoutTables = (task) => {
 
         if (error) throw error;
         
-        // Обновляем общий балл домашнего задания
         await updateHomeworkTotalScore();
         
       } catch (err) {
@@ -517,29 +620,23 @@ const getTaskTextWithoutTables = (task) => {
       try {
         error.value = null;
         
-        // Пересчитываем общий балл перед завершением
         updateTotalScore();
 
-        // Проверяем и сохраняем все ответы с определением правильности
         for (const task of tasks.value) {
-          if (task.userAnswer) {
+          if (task.userAnswer || (task.answerImages && task.answerImages.length > 0)) {
             await saveTaskProgress(task, true);
           }
         }
 
-        // Обновляем общий балл после проверки всех заданий
         updateTotalScore();
 
-        // Сохраняем завершение домашнего задания
         const completionData = {
-          homework_id: parseInt(homeworkId.value), // Убедимся, что это число
+          homework_id: parseInt(homeworkId.value),
           user_id: user_id.value,
           is_completed: true,
           score: totalScore.value,
           completed_at: new Date().toISOString()
         };
-
-        console.log('Отправляемые данные:', completionData);
 
         const { error: completionError } = await supabase
           .from(`${subject.value}_homework_completed`)
@@ -579,7 +676,6 @@ const getTaskTextWithoutTables = (task) => {
           throw new Error('Не указаны параметры домашнего задания')
         }
 
-        // Загрузка информации о домашнем задании
         const { data: homeworkInfo, error: homeworkInfoError } = await supabase
           .from(`${subject.value}_homework_list`)
           .select('deadline, homework_name, lesson_number, lesson_name')
@@ -598,12 +694,11 @@ const getTaskTextWithoutTables = (task) => {
           }
         }
 
-        // Загружаем задания домашнего задания с правильным номером
         const { data: homeworkTasks, error: homeworkError } = await supabase
           .from(`${subject.value}_homework_tasks`)
           .select('*')
           .eq('homework_id', homeworkId.value)
-          .order('number', { ascending: true }) // Сортируем по номеру
+          .order('number', { ascending: true })
 
         if (homeworkError) {
           throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
@@ -613,7 +708,6 @@ const getTaskTextWithoutTables = (task) => {
           throw new Error('Задания для этого домашнего задания не найдены')
         }
 
-        // Загружаем детали заданий из банка задач
         const taskIds = homeworkTasks.map(task => task.task_id)
         const { data: taskDetails, error: taskError } = await supabase
           .from(`${subject.value}_task_bank`)
@@ -624,30 +718,36 @@ const getTaskTextWithoutTables = (task) => {
           throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
         }
 
-        // Объединяем данные, сохраняя номер из homework_tasks
         tasks.value = homeworkTasks.map(homeworkTask => {
           const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
           return {
-            ...homeworkTask, // Это важно - homeworkTask должен быть первым
+            ...homeworkTask,
             ...taskDetail,
-            number: homeworkTask.number, // Сохраняем номер из homework_tasks
+            number: homeworkTask.number,
             userAnswerInput: '',
             userAnswer: null,
+            answerImages: [],
             isCorrect: false,
             isPartiallyCorrect: false,
             awardedPoints: 0,
             saving: false,
             isEditing: false,
             editAnswerInput: '',
-            manualScore: 0 // Для куратора
+            manualScore: 0,
+            uploadingImages: false,
+            showExplanation: false
           }
         })
 
-        // Загружаем прогресс выполнения
         await loadTasksProgress()
-
-        // Проверяем статус выполнения домашнего задания
         await checkHomeworkCompletion()
+
+        // Привязываем обработчики изображений после загрузки
+        if (showAnswers.value) {
+          nextTick(() => {
+            bindExplanationImageHandlers();
+          });
+        }
 
       } catch (err) {
         error.value = err.message
@@ -676,7 +776,6 @@ const getTaskTextWithoutTables = (task) => {
           return
         }
 
-        // Проверяем статус завершения домашнего задания
         const { data: completionData } = await supabase
           .from(`${subject.value}_homework_completed`)
           .select('is_completed')
@@ -686,17 +785,17 @@ const getTaskTextWithoutTables = (task) => {
 
         showAnswers.value = completionData?.is_completed || isTutorMode.value;
 
-        // Обновляем задачи
         tasks.value = tasks.value.map(task => {
           const progress = progressData?.find(p => p.task_id === task.task_id)
           if (progress) {
             return {
               ...task,
               userAnswer: progress.user_answer,
+              answerImages: progress.answer_images || [],
               isCorrect: showAnswers.value ? progress.score === task.points : false,
               isPartiallyCorrect: showAnswers.value ? (progress.score > 0 && progress.score < task.points) : false,
               awardedPoints: showAnswers.value ? progress.score : 0,
-              manualScore: progress.score || 0 // Для куратора
+              manualScore: progress.score || 0
             }
           }
           return task
@@ -727,11 +826,96 @@ const getTaskTextWithoutTables = (task) => {
         if (completionData) {
           isCompleted.value = completionData.is_completed
           totalScore.value = completionData.score || 0
-          showAnswers.value = completionData.is_completed || isTutorMode.value // Показываем ответы в режиме куратора
+          showAnswers.value = completionData.is_completed || isTutorMode.value
         }
 
       } catch (err) {
         console.error('Ошибка проверки статуса выполнения:', err)
+      }
+    }
+
+    // Обработка загрузки изображений для ответа
+    const handleImageUpload = async (task, event) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      try {
+        task.uploadingImages = true;
+        const newImages = [];
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          
+          if (!file.type.startsWith('image/')) {
+            alert('Пожалуйста, загружайте только изображения');
+            continue;
+          }
+
+          if (file.size > 5 * 1024 * 1024) {
+            alert('Размер файла не должен превышать 5MB');
+            continue;
+          }
+
+          const imagePath = await uploadAnswerImage(task, file);
+          if (imagePath) {
+            newImages.push(imagePath);
+          }
+        }
+
+        if (newImages.length > 0) {
+          task.answerImages = [...(task.answerImages || []), ...newImages];
+          // Очищаем текстовый ответ при загрузке изображения
+          task.userAnswerInput = '';
+          task.userAnswer = '';
+          await saveTaskProgress(task, false);
+        }
+
+      } catch (err) {
+        console.error('Ошибка загрузки изображений:', err);
+        error.value = 'Ошибка при загрузке изображений: ' + err.message;
+      } finally {
+        task.uploadingImages = false;
+        event.target.value = '';
+      }
+    }
+
+    // Привязка обработчиков к изображениям пояснений
+    const bindExplanationImageHandlers = () => {
+      const explanationImages = document.querySelectorAll('.explanation-image');
+      explanationImages.forEach(img => {
+        // Удаляем старые обработчики
+        img.onclick = null;
+        // Добавляем новые
+        img.onclick = () => {
+          openImageModal(img.src);
+        };
+      });
+    }
+
+    // Переключение отображения пояснения
+    const toggleExplanation = (task) => {
+      task.showExplanation = !task.showExplanation;
+      
+      // После переключения привязываем обработчики к новым изображениям
+      if (task.showExplanation) {
+        nextTick(() => {
+          bindExplanationImageHandlers();
+        });
+      }
+    }
+
+    // Удаление изображения ответа
+    const removeAnswerImage = async (task, imageIndex) => {
+      try {
+        const imageToRemove = task.answerImages[imageIndex];
+        
+        await deleteAnswerImage(imageToRemove);
+        task.answerImages.splice(imageIndex, 1);
+        await saveTaskProgress(task, false);
+        
+      } catch (err) {
+        console.error('Ошибка удаления изображения:', err);
+        error.value = 'Ошибка при удалении изображения: ' + err.message;
       }
     }
 
@@ -793,7 +977,7 @@ const getTaskTextWithoutTables = (task) => {
 
     // Есть ли ответы на задания
     const hasAnswers = computed(() => {
-      return tasks.value.some(task => task.userAnswer)
+      return tasks.value.some(task => task.userAnswer || (task.answerImages && task.answerImages.length > 0))
     })
 
     // Максимальный возможный балл
@@ -803,7 +987,7 @@ const getTaskTextWithoutTables = (task) => {
 
     // Статус задания
     const getTaskStatusClass = (task) => {
-      if (!task.userAnswer) return 'status-not-completed'
+      if (!task.userAnswer && (!task.answerImages || task.answerImages.length === 0)) return 'status-not-completed'
       if (!showAnswers.value) return 'status-saved'
       if (task.isCorrect) return 'status-correct'
       if (task.isPartiallyCorrect) return 'status-partial'
@@ -811,7 +995,7 @@ const getTaskTextWithoutTables = (task) => {
     }
 
     const getTaskStatusText = (task) => {
-      if (!task.userAnswer) return 'Не решено'
+      if (!task.userAnswer && (!task.answerImages || task.answerImages.length === 0)) return 'Не решено'
       if (!showAnswers.value) return 'Ответ сохранен'
       if (task.isCorrect) return `✓ Верно (${task.awardedPoints}/${task.points} балла)`
       if (task.isPartiallyCorrect) return `± Частично (${task.awardedPoints}/${task.points} балла)`
@@ -826,7 +1010,12 @@ const getTaskTextWithoutTables = (task) => {
     }
 
     const getFeedbackText = (task) => {
-      return ''; // Текст отображается напрямую в шаблоне
+      return '';
+    }
+
+    // Проверяем, является ли задание второй частью
+    const isSecondPartTask = (task) => {
+      return task.part === 'Вторая часть';
     }
 
     // Следим за изменениями баллов
@@ -838,27 +1027,36 @@ const getTaskTextWithoutTables = (task) => {
         loading.value = false
       }
 
-        // Блокировка контекстного меню
+      // Исправленные обработчики событий
       document.addEventListener('contextmenu', (e) => {
-        if (e.target.closest('.task-text')) {
+        const target = e.target;
+        if (target && typeof target.closest === 'function' && target.closest('.task-text')) {
           e.preventDefault()
           return false
         }
       })
       
-      // Блокировка выделения текста (опционально)
       document.addEventListener('selectstart', (e) => {
-        if (e.target.closest('.task-text')) {
+        const target = e.target;
+        if (target && typeof target.closest === 'function' && target.closest('.task-text')) {
           e.preventDefault()
           return false
         }
       })
     })
 
-    // Обновляем общий балл при измененияз
     watch(() => tasks.value.map(t => t.awardedPoints), () => {
       updateTotalScore()
     }, { deep: true })
+
+    // При изменении showAnswers привязываем обработчики
+    watch(showAnswers, (newVal) => {
+      if (newVal) {
+        nextTick(() => {
+          bindExplanationImageHandlers();
+        });
+      }
+    })
 
     return {
       homeworkName: homeworkData.value.homework_name,
@@ -873,8 +1071,12 @@ const getTaskTextWithoutTables = (task) => {
       selectedImage,
       showAnswers,
       sanitizeHtml,
+      formatTextWithParagraphs,
+      formatAnswerText,
       getImageUrl,
+      getAnswerImageUrl,
       getTaskTextWithoutTables,
+      getExplanationContent,
       saveAnswer,
       completeHomework,
       formatDate,
@@ -893,7 +1095,11 @@ const getTaskTextWithoutTables = (task) => {
       cancelEdit,
       saveEditedAnswer,
       setTutorScore,
-      updateHomeworkTotalScore
+      updateHomeworkTotalScore,
+      handleImageUpload,
+      removeAnswerImage,
+      isSecondPartTask,
+      toggleExplanation
     }
   }
 }
@@ -936,6 +1142,7 @@ const getTaskTextWithoutTables = (task) => {
               :key="task.task_id"
               class="task-item"
               :class="{ 'extended-task': task.points > 1 }"
+              :data-task-id="task.task_id"
             >
               <div class="task-card">
                 <div class="task-header">
@@ -949,27 +1156,23 @@ const getTaskTextWithoutTables = (task) => {
                 </div>
 
                 <div class="task-content">
-  <div 
-    class="task-text" 
-    v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
-    @copy.prevent
-    @cut.prevent
-    @dragstart.prevent
-  ></div>
-  
-  <!-- Отображаем таблицу только если она в отдельном поле table_data -->
-  <div v-if="task.has_table && task.table_data" class="task-table-container">
-    <table :class="{ 'with-borders': task.table_data.borders }">
-      <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
-        <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
-          <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
-        </td>
-      </tr>
-    </table>
-  </div>
-  
-  <!-- Для HTML-таблиц, встроенных в текст, они уже будут в task-text -->
-
+                  <div 
+                    class="task-text" 
+                    v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
+                    @copy.prevent
+                    @cut.prevent
+                    @dragstart.prevent
+                  ></div>
+                  
+                  <div v-if="task.has_table && task.table_data" class="task-table-container">
+                    <table :class="{ 'with-borders': task.table_data.borders }">
+                      <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
+                        <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
+                          <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
                   
                   <div class="task-images" v-if="task.images && task.images.length">
                     <div class="image-grid">
@@ -1004,12 +1207,53 @@ const getTaskTextWithoutTables = (task) => {
                         <button @click="saveEditedAnswer(task)" class="submit-button">Сохранить</button>
                         <button @click="cancelEdit(task)" class="cancel-button">Отмена</button>
                       </div>
+                      
+                      <!-- Загрузка изображений для второй части -->
+                      <div v-if="isSecondPartTask(task)" class="image-upload-section">
+                        <label class="upload-label">
+                          📎 Прикрепить изображения
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            @change="handleImageUpload(task, $event)"
+                            class="file-input"
+                          >
+                        </label>
+                        <div v-if="task.uploadingImages" class="uploading-text">
+                          Загрузка...
+                        </div>
+                        
+                        <!-- Отображение уже загруженных изображений -->
+                        <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
+                          <div class="images-title">Загруженные изображения:</div>
+                          <div class="images-grid">
+                            <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                              <img 
+                                :src="getAnswerImageUrl(imagePath)" 
+                                :alt="'Изображение ответа ' + (imgIndex + 1)"
+                                class="answer-image"
+                                @click="openImageModal(getAnswerImageUrl(imagePath))"
+                              >
+                              <button 
+                                @click="removeAnswerImage(task, imgIndex)"
+                                class="remove-image-btn"
+                                title="Удалить изображение"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
                       <div v-if="task.saving" class="saving-status">Сохранение...</div>
                     </div>
                     
                     <!-- Режим ввода нового ответа -->
                     <div v-else-if="!task.userAnswer && !isViewMode && !isCompleted">
-                      <div class="answer-input-container">
+                      <!-- Показываем поле ввода только если нет изображений -->
+                      <div v-if="!task.answerImages || task.answerImages.length === 0" class="answer-input-container">
                         <input 
                           v-model="task.userAnswerInput" 
                           type="text" 
@@ -1019,23 +1263,88 @@ const getTaskTextWithoutTables = (task) => {
                         >
                         <button @click="saveAnswer(task)" class="submit-button">Сохранить</button>
                       </div>
+                      
+                      <!-- Загрузка изображений для второй части -->
+                      <div v-if="isSecondPartTask(task)" class="image-upload-section">
+                        <label class="upload-label">
+                          📎 Прикрепить изображения
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            @change="handleImageUpload(task, $event)"
+                            class="file-input"
+                          >
+                        </label>
+                        <div v-if="task.uploadingImages" class="uploading-text">
+                          Загрузка...
+                        </div>
+                        
+                        <!-- Отображение загруженных изображений -->
+                        <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
+                          <div class="images-title">Загруженные изображения:</div>
+                          <div class="images-grid">
+                            <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                              <img 
+                                :src="getAnswerImageUrl(imagePath)" 
+                                :alt="'Изображение ответа ' + (imgIndex + 1)"
+                                class="answer-image"
+                                @click="openImageModal(getAnswerImageUrl(imagePath))"
+                              >
+                              <button 
+                                @click="removeAnswerImage(task, imgIndex)"
+                                class="remove-image-btn"
+                                title="Удалить изображение"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                          <button @click="saveAnswer(task)" class="submit-button">Сохранить ответ</button>
+                        </div>
+                      </div>
+                      
                       <div v-if="task.saving" class="saving-status">Сохранение...</div>
                     </div>
                     
                     <!-- Отображаем ответы только после завершения работы -->
-                    <div v-else-if="(isCompleted || task.userAnswer) && showAnswers" class="answer-result">
+                    <div v-else-if="(isCompleted || task.userAnswer || (task.answerImages && task.answerImages.length > 0)) && showAnswers" class="answer-result">
                       <div class="answer-feedback" :class="getFeedbackClass(task)">
                         <div class="feedback-content">
                           <span v-if="task.isCorrect" class="correct-icon">✓</span>
                           <span v-else-if="task.isPartiallyCorrect" class="partial-icon">±</span>
                           <span v-else class="incorrect-icon">✗</span>
                           
-                          <span class="user-answer-text">
+                          <span v-if="task.userAnswer" class="user-answer-text">
                             <strong>Ответ студента:</strong> {{ task.userAnswer }}
                           </span>
                           
+                          <!-- Изображения ответа -->
+                          <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
+                            <div class="images-title">Прикрепленные изображения:</div>
+                            <div class="images-grid">
+                              <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                                <img 
+                                  :src="getAnswerImageUrl(imagePath)" 
+                                  :alt="'Изображение ответа ' + (imgIndex + 1)"
+                                  class="answer-image"
+                                  @click="openImageModal(getAnswerImageUrl(imagePath))"
+                                >
+                                <button 
+                                  v-if="!isCompleted && !isTutorMode"
+                                  @click="removeAnswerImage(task, imgIndex)"
+                                  class="remove-image-btn"
+                                  title="Удалить изображение"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
                           <span class="correct-answer-text">
-                            <strong>Правильный ответ:</strong> {{ task.answer }}
+                            <strong>Правильный ответ:</strong> 
+                            <span v-html="sanitizeHtml(formatAnswerText(task.answer))"></span>
                           </span>
                           
                           <!-- Панель оценки куратора для заданий второй части -->
@@ -1072,8 +1381,36 @@ const getTaskTextWithoutTables = (task) => {
                     </div>
                     
                     <!-- Ответ сохранен, но домашнее задание не завершено -->
-                    <div v-else-if="task.userAnswer && !showAnswers" class="answer-saved">
+                    <div v-else-if="(task.userAnswer || (task.answerImages && task.answerImages.length > 0)) && !showAnswers" class="answer-saved">
                       <span class="saved-icon">✓</span> Ответ сохранен
+                      
+                      <!-- Текстовый ответ -->
+                      <span v-if="task.userAnswer" class="user-answer-text">
+                        {{ task.userAnswer }}
+                      </span>
+                      
+                      <!-- Изображения ответа -->
+                      <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
+                        <div class="images-title">Прикрепленные изображения:</div>
+                        <div class="images-grid">
+                          <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                            <img 
+                              :src="getAnswerImageUrl(imagePath)" 
+                              :alt="'Изображение ответа ' + (imgIndex + 1)"
+                              class="answer-image"
+                              @click="openImageModal(getAnswerImageUrl(imagePath))"
+                            >
+                            <button 
+                              @click="removeAnswerImage(task, imgIndex)"
+                              class="remove-image-btn"
+                              title="Удалить изображение"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
                       <button 
                         @click="startEdit(task)" 
                         class="edit-answer-btn"
@@ -1086,9 +1423,45 @@ const getTaskTextWithoutTables = (task) => {
                   </div>
                 </div>
 
-                <div v-if="task.userAnswer && task.explanation && showAnswers" class="explanation-section">
-                  <div class="explanation-title">Пояснение:</div>
-                  <div class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
+                <!-- Пояснение к заданию -->
+                <div v-if="showAnswers && (task.explanation || (task.image_explanation && task.image_explanation.length))" 
+                     class="explanation-section">
+                  <div class="explanation-header" @click="toggleExplanation(task)" style="cursor: pointer;">
+                    <div class="explanation-title">
+                      Пояснение: 
+                      <span class="explanation-toggle">
+                        {{ task.showExplanation ? '▲' : '▼' }}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <transition name="slide">
+                    <div v-if="task.showExplanation" class="explanation-content-container">
+<div class="explanation-content">
+  <div v-if="task.explanation" v-html="sanitizeHtml(formatTextWithParagraphs(task.explanation))"></div>
+  
+  <!-- Изображения пояснения -->
+  <div v-if="task.image_explanation && Array.isArray(task.image_explanation)" 
+       v-for="(imagePath, index) in task.image_explanation" :key="index">
+    <div class="explanation-image-container">
+      <img :src="getImageUrl(imagePath)" 
+           alt="Пояснение к заданию" 
+           class="explanation-image"
+           @click="openImageModal(getImageUrl(imagePath))">
+    </div>
+  </div>
+  
+  <div v-else-if="typeof task.image_explanation === 'string'">
+    <div class="explanation-image-container">
+      <img :src="getImageUrl(task.image_explanation)" 
+           alt="Пояснение к заданию" 
+           class="explanation-image"
+           @click="openImageModal(getImageUrl(task.image_explanation))">
+    </div>
+  </div>
+</div>
+                    </div>
+                  </transition>
                 </div>
               </div>
             </div>
@@ -1132,8 +1505,9 @@ const getTaskTextWithoutTables = (task) => {
   </div>
 </template>
 
+
 <style scoped>
-/* Все стили остаются без изменений */
+/* Все оригинальные стили остаются без изменений */
 .homework-content {
   max-width: 1000px;
   margin: 0 auto;
@@ -1306,7 +1680,6 @@ const getTaskTextWithoutTables = (task) => {
   top: -0.5em;
 }
 
-/* Убедимся, что HTML-контент в таблицах отображается правильно */
 .task-text :deep(table) {
   width: 100%;
   border-collapse: collapse;
@@ -1326,7 +1699,7 @@ const getTaskTextWithoutTables = (task) => {
 .task-text :deep(em) {
   font-style: italic;
 }
-/* Добавьте эти стили в секцию scoped */
+
 .answer-feedback {
   padding: 0.75rem;
   border-radius: 0.4rem;
@@ -1376,7 +1749,6 @@ const getTaskTextWithoutTables = (task) => {
   color: #c62828;
 }
 
-/* Анимации */
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.5s ease;
 }
@@ -1385,7 +1757,6 @@ const getTaskTextWithoutTables = (task) => {
   opacity: 0;
 }
 
-/* Стили для выделения текста ответов */
 .feedback-content strong {
   font-weight: 600;
 }
@@ -1401,6 +1772,7 @@ const getTaskTextWithoutTables = (task) => {
 .incorrect-feedback .feedback-content strong {
   color: #b71c1c;
 }
+
 .task-table-container {
   margin: 1.2rem 0;
   overflow-x: auto;
@@ -1428,6 +1800,7 @@ const getTaskTextWithoutTables = (task) => {
   vertical-align: top;
   font-size: clamp(0.9rem, 2vw, 1rem);
 }
+
 .task-table-container :deep(sub),
 .task-table-container :deep(sup) {
   font-size: 0.75em;
@@ -1444,11 +1817,11 @@ const getTaskTextWithoutTables = (task) => {
   top: -0.5em;
 }
 
-/* Убедимся, что HTML-контент в таблицах отображается правильно */
 .task-table-container :deep(p) {
   margin: 0;
   padding: 0;
 }
+
 .task-table-container :deep(strong) {
   font-weight: 600;
 }
@@ -1456,7 +1829,7 @@ const getTaskTextWithoutTables = (task) => {
 .task-table-container :deep(em) {
   font-style: italic;
 }
-/* Улучшенные стили для изображений (перенесены из TaskCard) */
+
 .task-images {
   margin-bottom: 1.25rem;
   width: 100%;
@@ -1471,7 +1844,7 @@ const getTaskTextWithoutTables = (task) => {
 
 .image-container {
   position: relative;
-  padding-top: 100%; /* Создает квадратный контейнер */
+  padding-top: 100%;
   overflow: hidden;
   border-radius: 0.4rem;
   border: 1px solid #eee;
@@ -1485,15 +1858,14 @@ const getTaskTextWithoutTables = (task) => {
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover; /* Заполняет контейнер без искажений */
+  object-fit: cover;
   transition: transform 0.3s ease;
 }
 
 .task-image:hover {
-  transform: scale(1.03); /* Легкий эффект увеличения при наведении */
+  transform: scale(1.03);
 }
 
-/* Стили для модального окна (уже есть, но на всякий случай) */
 .image-modal {
   position: fixed;
   top: 0;
@@ -1548,7 +1920,6 @@ const getTaskTextWithoutTables = (task) => {
   background: #9a36b8;
 }
 
-/* Адаптивность для модального окна */
 @media (max-width: 768px) {
   .close-modal {
     top: -1rem;
@@ -1647,73 +2018,35 @@ const getTaskTextWithoutTables = (task) => {
   border-left: 4px solid #c62828;
 }
 
-.feedback-content {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.5s ease;
 }
 
-.correct-icon, .partial-icon, .incorrect-icon {
-  font-size: 1.1rem;
-  font-weight: bold;
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
 }
 
-.correct-answer {
-  color: #2e7d32;
-  background-color: #f0faf0;
-  padding: 1rem;
-  border-left: 4px solid #2e7d32;
-  border-radius: 0.4rem;
-  margin-top: 0.8rem;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
-}
-
-.explanation-section {
-  margin-top: 1.5rem;
-  padding: 1.2rem;
-  background-color: #f8f9fa;
-  border-radius: 0.4rem;
-  border-left: 4px solid #b241d1;
-  width: 100%;
-}
-
-.explanation-title {
+.feedback-content strong {
   font-weight: 600;
-  color: #333;
-  margin-bottom: 0.6rem;
-  font-size: clamp(1rem, 2.5vw, 1.1rem);
 }
 
-.explanation-content {
-  line-height: 1.6;
-  color: #444;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+.correct-feedback .feedback-content strong {
+  color: #1b5e20;
 }
 
-.completion-section {
-  margin-top: 2rem;
-  text-align: center;
-  padding: 1.5rem;
-  border-top: 2px solid #eee;
+.partial-feedback .feedback-content strong {
+  color: #e65100;
+}
+
+.incorrect-feedback .feedback-content strong {
+  color: #b71c1c;
+}
+
+.task-table-container {
+  margin: 1.2rem 0;
+  overflow-x: auto;
   width: 100%;
 }
-
-.complete-btn {
-  padding: 1rem 2rem;
-  background-color: #28a745;
-  color: white;
-  border: none;
-  border-radius: 0.6rem;
-  font-size: clamp(1rem, 2.5vw, 1.1rem);
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  min-width: min(100%, 300px);
-}
-
-.complete-btn:hover {
-  background-color: #218838;
-}
-
 .completion-result {
   margin-top: 2rem;
   padding: 1.5rem;
@@ -1735,19 +2068,91 @@ const getTaskTextWithoutTables = (task) => {
   font-size: clamp(1rem, 2.5vw, 1.1rem);
   font-weight: 500;
 }
+.task-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.2rem;
+  min-width: 300px;
+}
 
-.loading, .error {
-  text-align: center;
-  padding: 2.5rem;
-  font-size: clamp(1.1rem, 3vw, 1.3rem);
+.task-table-container table.with-borders {
+  border: 1px solid #ddd;
+}
+
+.task-table-container table.with-borders td {
+  border: 1px solid #ddd;
+  padding: 0.6rem;
+}
+
+.task-table-container td {
+  padding: 0.6rem;
+  vertical-align: top;
+  font-size: clamp(0.9rem, 2vw, 1rem);
+}
+
+.task-table-container :deep(sub),
+.task-table-container :deep(sup) {
+  font-size: 0.75em;
+  line-height: 1;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.task-table-container :deep(sub) {
+  bottom: -0.25em;
+}
+
+.task-table-container :deep(sup) {
+  top: -0.5em;
+}
+
+.task-table-container :deep(p) {
+  margin: 0;
+  padding: 0;
+}
+
+.task-table-container :deep(strong) {
+  font-weight: 600;
+}
+
+.task-table-container :deep(em) {
+  font-style: italic;
+}
+
+.task-images {
+  margin-bottom: 1.25rem;
   width: 100%;
 }
 
-.error {
-  color: #dc3545;
-  background-color: #ffebee;
-  border-radius: 0.6rem;
-  border-left: 4px solid #dc3545;
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.image-container {
+  position: relative;
+  padding-top: 100%;
+  overflow: hidden;
+  border-radius: 0.4rem;
+  border: 1px solid #eee;
+  background: #f8f9fa;
+  cursor: pointer;
+}
+
+.task-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.task-image:hover {
+  transform: scale(1.03);
 }
 
 .image-modal {
@@ -1822,8 +2227,6 @@ const getTaskTextWithoutTables = (task) => {
   }
 }
 
-/* Добавляем новые стили для функциональности куратора */
-
 .tutor-mode-banner {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -1835,8 +2238,8 @@ const getTaskTextWithoutTables = (task) => {
 }
 
 .extended-task {
-  border-left: 4px solid #667eea;
-  background-color: #f8f9ff;
+  border-left: 4px solid #b241d1;
+  background-color: white;
 }
 
 .tutor-scoring-panel {
@@ -1911,7 +2314,6 @@ const getTaskTextWithoutTables = (task) => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-/* Адаптивность для панели куратора */
 @media (max-width: 768px) {
   .tutor-scoring-panel {
     flex-direction: column;
@@ -1929,17 +2331,277 @@ const getTaskTextWithoutTables = (task) => {
   }
 }
 
-/* Улучшаем визуальное выделение заданий второй части */
 .extended-task .task-header {
-  background-color: rgba(102, 126, 234, 0.05);
+  background-color: rgba(178, 65, 209, 0.05);
   padding: 1rem;
   margin: -1rem -1rem 1rem -1rem;
   border-radius: 0.8rem 0.8rem 0 0;
 }
 
 .extended-task .task-id {
-  color: #667eea;
+  color: #b241d1;
   font-weight: bold;
+}
+
+/* Новые стили для загрузки изображений */
+.image-upload-section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 0.4rem;
+  border: 1px dashed #dee2e6;
+}
+
+.upload-label {
+  display: inline-block;
+  background: #b241d1;
+  color: white;
+  padding: 0.8rem 1.2rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 1rem;
+}
+
+.upload-label:hover {
+  background: #9a36b8;
+}
+
+.file-input {
+  display: none;
+}
+
+.uploading-text {
+  color: #6c757d;
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
+.answer-images-preview {
+  margin-top: 1rem;
+}
+
+.images-title {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.8rem;
+  font-size: 0.9rem;
+}
+
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.image-item {
+  position: relative;
+  display: inline-block;
+}
+
+.answer-image {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 0.4rem;
+  border: 1px solid #dee2e6;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.answer-image:hover {
+  transform: scale(1.05);
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #dc3545;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.remove-image-btn:hover {
+  background: #c82333;
+}
+
+.answer-saved {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 1rem;
+  background: #e8f5e9;
+  border-radius: 0.4rem;
+  border-left: 4px solid #28a745;
+  flex-direction: column;
+}
+
+.user-answer-text {
+  margin-left: 0.5rem;
+  color: #155724;
+}
+
+.edit-answer-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: 0.3rem;
+  font-size: 1.1rem;
+  transition: background-color 0.2s;
+  margin-left: auto;
+}
+
+.edit-answer-btn:hover {
+  background-color: rgba(178, 65, 209, 0.1);
+}
+
+.cancel-button {
+  padding: 0.8rem 1.2rem;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+  min-width: fit-content;
+  white-space: nowrap;
+}
+
+.cancel-button:hover {
+  background-color: #5a6268;
+}
+
+.saving-status {
+  color: #6c757d;
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
+/* Стили для пояснения (взяты из TaskCard) */
+.explanation-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+  border-left: 4px solid #b241d1;
+}
+
+.explanation-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.explanation-title {
+  font-weight: 600;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.explanation-toggle {
+  font-size: 0.8rem;
+  color: #b241d1;
+}
+
+.explanation-content-container {
+  margin-top: 0.5rem;
+}
+
+.explanation-content {
+  line-height: 1.6;
+  color: #444;
+}
+
+.explanation-content :deep(p) {
+  margin-bottom: 0.8rem;
+}
+
+.explanation-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.explanation-content :deep(br) {
+  content: "";
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.explanation-content :deep(ul),
+.explanation-content :deep(ol) {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.explanation-content :deep(li) {
+  margin-bottom: 0.3rem;
+}
+
+.explanation-image-container {
+  margin: 1rem 0;
+  text-align: center;
+}
+
+.explanation-image {
+  max-width: 100%;
+  height: auto;
+  max-height: 300px;
+  border-radius: 0.4rem;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.explanation-image:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.3s ease;
+  max-height: 1000px;
+  overflow: hidden;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .images-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+  
+  .answer-image {
+    height: 60px;
+  }
+  
+  .answer-saved {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .edit-answer-btn {
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
 }
 </style>
 
@@ -2129,76 +2791,5 @@ a {
   bottom: 0;
   z-index: 1;
   pointer-events: none;
-}
-
-
-/* Добавляем новые стили для функциональности редактирования */
-
-.edit-mode {
-  margin-top: 1rem;
-}
-
-.saved-answer-content {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  padding: 0.8rem;
-  background-color: #f8f9fa;
-  border-radius: 0.4rem;
-  border-left: 3px solid #b241d1;
-}
-
-.answer-text {
-  flex: 1;
-  font-weight: 500;
-  color: #333;
-}
-
-.edit-answer-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.4rem;
-  border-radius: 0.3rem;
-  font-size: 1.1rem;
-  transition: background-color 0.2s;
-}
-
-.edit-answer-btn:hover {
-  background-color: rgba(178, 65, 209, 0.1);
-}
-
-.cancel-button {
-  padding: 0.8rem 1.2rem;
-  background-color: #6c757d;
-  color: white;
-  border: none;
-  border-radius: 0.4rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
-  min-width: fit-content;
-  white-space: nowrap;
-}
-
-.cancel-button:hover {
-  background-color: #5a6268;
-}
-
-/* Адаптивность для кнопок редактирования */
-@media (max-width: 480px) {
-  .answer-input-container {
-    flex-direction: column;
-  }
-  
-  .saved-answer-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  
-  .edit-answer-btn {
-    align-self: flex-end;
-  }
 }
 </style>
