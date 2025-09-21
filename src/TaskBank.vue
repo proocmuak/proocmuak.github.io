@@ -9,7 +9,7 @@
         </div> 
 
        <div class="main_part_page">
-            <filter_menu @filters-changed="handleFiltersChange" />
+            <StudentFilterMenu  @filters-changed="handleFiltersChange" />
             
             <TaskList :filters="currentFilters" @task-selected="handleTaskSelect" />
         </div>
@@ -17,13 +17,13 @@
 </template>
 
 <script>
-import filter_menu from './components/filter_menu.vue';
+import StudentFilterMenu  from './components/filter_student_menu.vue';
 import TaskList from './components/TaskList.vue';
 import {supabase} from './supabase.js';
 
 export default {
     components: {
-        filter_menu,
+        StudentFilterMenu,
         TaskList
     },
     data() {
