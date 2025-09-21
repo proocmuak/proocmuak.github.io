@@ -851,8 +851,8 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
             continue;
           }
 
-          if (file.size > 5 * 1024 * 1024) {
-            alert('Размер файла не должен превышать 5MB');
+          if (file.size > 25 * 1024 * 1024) {
+            alert('Размер файла не должен превышать 25MB');
             continue;
           }
 
@@ -1631,7 +1631,29 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
   font-weight: bold;
   align-self: flex-start;
 }
+.completion-section {
+  margin-top: 2rem;
+  text-align: center;
+  padding: 1.5rem;
+  border-top: 2px solid #eee;
+  width: 100%;
+}
 
+.complete-btn {
+  padding: 1rem 2rem;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 0.6rem;
+  font-size: clamp(1rem, 2.5vw, 1.1rem);
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  min-width: min(100%, 300px);
+}
+
+.complete-btn:hover {
+  background-color: #218838;
+}
 .status-not-completed {
   background: #f5f5f5;
   color: #666;
