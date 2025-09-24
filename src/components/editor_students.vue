@@ -32,9 +32,11 @@
               <th class="subject-column">Предмет 1</th>
               <th class="tariff-column">Тариф</th>
               <th class="date-column">Оплата до</th>
+              <th class="date-column">Доступ с</th>
               <th class="subject-column">Предмет 2</th>
               <th class="tariff-column">Тариф</th>
               <th class="date-column">Оплата до</th>
+              <th class="date-column">Доступ с</th>
               <th class="tutor-column">Наставник</th>
               <th class="access-column">Доступ</th>
             </tr>
@@ -71,6 +73,15 @@
                   class="date-input"
                 />
               </td>
+              <td class="date-column">
+                <input
+                  type="date"
+                  :value="student.subject1_access_from"
+                  :disabled="!student.subject1"
+                  @change="(e) => handleAccessFromChange(student, 'subject1_access_from', e.target.value)"
+                  class="date-input"
+                />
+              </td>
               
               <!-- Предмет 2 -->
               <td class="subject-column">
@@ -96,6 +107,15 @@
                   :value="student.subject2_payment_date"
                   :disabled="!student.subject2"
                   @change="(e) => handleDateChange(student, 'subject2_payment_date', e.target.value)"
+                  class="date-input"
+                />
+              </td>
+              <td class="date-column">
+                <input
+                  type="date"
+                  :value="student.subject2_access_from"
+                  :disabled="!student.subject2"
+                  @change="(e) => handleAccessFromChange(student, 'subject2_access_from', e.target.value)"
                   class="date-input"
                 />
               </td>
@@ -241,6 +261,8 @@ const fetchStudents = async () => {
     ...student,
     subject1_payment_date: student.subject1_payment_date ? formatDateForInput(student.subject1_payment_date) : '',
     subject2_payment_date: student.subject2_payment_date ? formatDateForInput(student.subject2_payment_date) : '',
+    subject1_access_from: student.subject1_access_from ? formatDateForInput(student.subject1_access_from) : '',
+    subject2_access_from: student.subject2_access_from ? formatDateForInput(student.subject2_access_from) : '',
     access: student.access !== undefined ? Boolean(student.access) : true
   }));
   
@@ -265,9 +287,11 @@ const handleSubjectChange = (student, subjectField, value) => {
     if (subjectField === 'subject1') {
       student.subject1_tariff = null;
       student.subject1_payment_date = '';
+      student.subject1_access_from = '';
     } else if (subjectField === 'subject2') {
       student.subject2_tariff = null;
       student.subject2_payment_date = '';
+      student.subject2_access_from = '';
     }
   }
   
@@ -294,6 +318,12 @@ const handleAccessChange = (student, value) => {
   updateStudent(student);
 };
 
+// Обработчик изменения даты доступа для конкретного предмета
+const handleAccessFromChange = (student, accessField, value) => {
+  student[accessField] = value;
+  updateStudent(student);
+};
+
 // Обновление данных студента
 const updateStudent = async (student) => {
   // Подготавливаем данные для сохранения
@@ -304,6 +334,8 @@ const updateStudent = async (student) => {
     subject2_tariff: student.subject2 ? student.subject2_tariff : null,
     subject1_payment_date: student.subject1 && student.subject1_payment_date ? student.subject1_payment_date : null,
     subject2_payment_date: student.subject2 && student.subject2_payment_date ? student.subject2_payment_date : null,
+    subject1_access_from: student.subject1 && student.subject1_access_from ? student.subject1_access_from : null,
+    subject2_access_from: student.subject2 && student.subject2_access_from ? student.subject2_access_from : null,
     tutor: student.tutor,
     access: student.access
   };
@@ -379,7 +411,7 @@ onMounted(async () => {
   flex-direction: column;
   max-width: 95vw;
   max-height: 95vh;
-  width: 87.5rem;
+  width: 95rem; /* Увеличил ширину для дополнительных столбцов */
   overflow: hidden;
 }
 
@@ -507,33 +539,33 @@ onMounted(async () => {
 
 /* Ширины колонок */
 .name-column {
-  width: 6.25rem;
-  min-width: 6.25rem;
+  width: 5.5rem;
+  min-width: 5.5rem;
 }
 
 .subject-column {
-  width: 7.5rem;
-  min-width: 7.5rem;
+  width: 6.5rem;
+  min-width: 6.5rem;
 }
 
 .tariff-column {
-  width: 6.875rem;
-  min-width: 6.875rem;
+  width: 6rem;
+  min-width: 6rem;
 }
 
 .date-column {
-  width: 7.5rem;
-  min-width: 7.5rem;
+  width: 6.5rem;
+  min-width: 6.5rem;
 }
 
 .tutor-column {
-  width: 8.75rem;
-  min-width: 8.75rem;
+  width: 7.5rem;
+  min-width: 7.5rem;
 }
 
 .access-column {
-  width: 7.5rem;
-  min-width: 7.5rem;
+  width: 6.5rem;
+  min-width: 6.5rem;
 }
 
 .date-input {
@@ -594,12 +626,12 @@ onMounted(async () => {
     width: 95vw;
   }
   
-  .name-column { width: 5.625rem; min-width: 5.625rem; }
-  .subject-column { width: 6.875rem; min-width: 6.875rem; }
-  .tariff-column { width: 6.25rem; min-width: 6.25rem; }
-  .date-column { width: 6.875rem; min-width: 6.875rem; }
-  .tutor-column { width: 8.125rem; min-width: 8.125rem; }
-  .access-column { width: 6.875rem; min-width: 6.875rem; }
+  .name-column { width: 5rem; min-width: 5rem; }
+  .subject-column { width: 6rem; min-width: 6rem; }
+  .tariff-column { width: 5.5rem; min-width: 5.5rem; }
+  .date-column { width: 6rem; min-width: 6rem; }
+  .tutor-column { width: 7rem; min-width: 7rem; }
+  .access-column { width: 6rem; min-width: 6rem; }
 }
 
 @media (max-width: 48rem) {

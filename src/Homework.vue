@@ -269,26 +269,30 @@ export default {
     }
 
     // Форматирование текста с абзацами
-    const formatTextWithParagraphs = (text) => {
-      if (!text) return '';
-      
-      if (text.includes('<') && text.includes('>')) {
-        return text;
-      }
-      
-      let formattedText = text
-        .trim()
-        .replace(/\r\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/\n/g, '<br>');
-      
-      if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
-        formattedText = `<p>${formattedText}</p>`;
-      }
-      
-      return formattedText;
-    }
+const formatTextWithParagraphs = (text) => {
+  if (!text) return '';
+  
+  // Если текст уже содержит HTML-теги (кроме простых тегов форматирования), возвращаем как есть
+  const hasComplexHTML = /<(?!\/?(sub|sup|br|strong|em|p)\b)[^>]+>/i.test(text);
+  
+  if (hasComplexHTML) {
+    return text;
+  }
+  
+  // Обрабатываем только простой текст без сложной HTML-разметки
+  let formattedText = text
+    .trim()
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  
+  if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
+    formattedText = `<p>${formattedText}</p>`;
+  }
+  
+  return formattedText;
+}
 
     // Форматирование текста ответа
     const formatAnswerText = (text) => {
@@ -476,28 +480,34 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
     }
 
     // Сохранение ответа
-    const saveAnswer = async (task) => {
-      if (!task.userAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
-        alert('Пожалуйста, введите ответ или прикрепите изображение');
-        return;
-      }
+const saveAnswer = async (task) => {
+  if (!task.userAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
+    alert('Пожалуйста, введите ответ или прикрепите изображение');
+    return;
+  }
 
-      try {
-        task.saving = true;
-        const userAnswer = task.userAnswerInput.trim();
-        
-        task.userAnswer = userAnswer;
-        
-        await saveTaskProgress(task, false);
-        
-        task.saving = false;
+  try {
+    task.saving = true;
+    const userAnswer = task.userAnswerInput.trim();
+    
+    task.userAnswer = userAnswer;
+    
+    await saveTaskProgress(task, false);
+    
+    // Устанавливаем флаг, что ответ сохранен
+    task.answerSaved = true;
+    setTimeout(() => {
+      task.answerSaved = false;
+    }, 3000);
+    
+    task.saving = false;
 
-      } catch (err) {
-        console.error('Ошибка сохранения ответа:', err);
-        task.saving = false;
-        error.value = 'Ошибка при сохранении ответа: ' + err.message;
-      }
-    }
+  } catch (err) {
+    console.error('Ошибка сохранения ответа:', err);
+    task.saving = false;
+    error.value = 'Ошибка при сохранении ответа: ' + err.message;
+  }
+}
 
     // Сохранение прогресса выполнения задания
     const saveTaskProgress = async (task, checkCorrectness = false) => {
@@ -727,6 +737,7 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
             userAnswerInput: '',
             userAnswer: null,
             answerImages: [],
+            answerSaved: false, 
             isCorrect: false,
             isPartiallyCorrect: false,
             awardedPoints: 0,
@@ -835,49 +846,56 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
     }
 
     // Обработка загрузки изображений для ответа
-    const handleImageUpload = async (task, event) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
+const handleImageUpload = async (task, event) => {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
 
-      try {
-        task.uploadingImages = true;
-        const newImages = [];
+  try {
+    task.uploadingImages = true;
+    const newImages = [];
 
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          
-          if (!file.type.startsWith('image/')) {
-            alert('Пожалуйста, загружайте только изображения');
-            continue;
-          }
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      if (!file.type.startsWith('image/')) {
+        alert('Пожалуйста, загружайте только изображения');
+        continue;
+      }
 
-          if (file.size > 25 * 1024 * 1024) {
-            alert('Размер файла не должен превышать 25MB');
-            continue;
-          }
+      if (file.size > 25 * 1024 * 1024) {
+        alert('Размер файла не должен превышать 25MB');
+        continue;
+      }
 
-          const imagePath = await uploadAnswerImage(task, file);
-          if (imagePath) {
-            newImages.push(imagePath);
-          }
-        }
-
-        if (newImages.length > 0) {
-          task.answerImages = [...(task.answerImages || []), ...newImages];
-          // Очищаем текстовый ответ при загрузке изображения
-          task.userAnswerInput = '';
-          task.userAnswer = '';
-          await saveTaskProgress(task, false);
-        }
-
-      } catch (err) {
-        console.error('Ошибка загрузки изображений:', err);
-        error.value = 'Ошибка при загрузке изображений: ' + err.message;
-      } finally {
-        task.uploadingImages = false;
-        event.target.value = '';
+      const imagePath = await uploadAnswerImage(task, file);
+      if (imagePath) {
+        newImages.push(imagePath);
       }
     }
+
+    if (newImages.length > 0) {
+      task.answerImages = [...(task.answerImages || []), ...newImages];
+      task.userAnswerInput = '';
+      task.userAnswer = '';
+      
+      // Устанавливаем флаг, что ответ сохранен (для изображений)
+      task.answerSaved = true;
+      await saveTaskProgress(task, false);
+      
+      // Скрываем сообщение через 3 секунды
+      setTimeout(() => {
+        task.answerSaved = false;
+      }, 3000);
+    }
+
+  } catch (err) {
+    console.error('Ошибка загрузки изображений:', err);
+    error.value = 'Ошибка при загрузке изображений: ' + err.message;
+  } finally {
+    task.uploadingImages = false;
+    event.target.value = '';
+  }
+}
 
     // Привязка обработчиков к изображениям пояснений
     const bindExplanationImageHandlers = () => {
@@ -1209,45 +1227,55 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
                       </div>
                       
                       <!-- Загрузка изображений для второй части -->
-                      <div v-if="isSecondPartTask(task)" class="image-upload-section">
-                        <label class="upload-label">
-                          📎 Прикрепить изображения
-                          <input
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            @change="handleImageUpload(task, $event)"
-                            class="file-input"
-                          >
-                        </label>
-                        <div v-if="task.uploadingImages" class="uploading-text">
-                          Загрузка...
-                        </div>
-                        
-                        <!-- Отображение уже загруженных изображений -->
-                        <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
-                          <div class="images-title">Загруженные изображения:</div>
-                          <div class="images-grid">
-                            <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
-                              <img 
-                                :src="getAnswerImageUrl(imagePath)" 
-                                :alt="'Изображение ответа ' + (imgIndex + 1)"
-                                class="answer-image"
-                                @click="openImageModal(getAnswerImageUrl(imagePath))"
-                              >
-                              <button 
-                                @click="removeAnswerImage(task, imgIndex)"
-                                class="remove-image-btn"
-                                title="Удалить изображение"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
+<!-- В разделе загрузки изображений -->
+<div v-if="isSecondPartTask(task)" class="image-upload-section">
+  <label class="upload-label">
+    📎 Прикрепить изображения
+    <input
+      type="file"
+      multiple
+      accept="image/*"
+      @change="handleImageUpload(task, $event)"
+      class="file-input"
+    >
+  </label>
+  
+  <!-- Индикатор загрузки -->
+  <div v-if="task.uploadingImages" class="upload-status-uploading">
+    ⏳ Загрузка изображений...
+  </div>
+  
+  <!-- Успешное сохранение -->
+  <div v-if="task.uploadSuccess" class="upload-status-success">
+    ✅ Изображения успешно сохранены!
+  </div>
+  
+  <!-- Отображение загруженных изображений -->
+  <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
+    <div class="images-title">Загруженные изображения:</div>
+    <div class="images-grid">
+      <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+        <img 
+          :src="getAnswerImageUrl(imagePath)" 
+          :alt="'Изображение ответа ' + (imgIndex + 1)"
+          class="answer-image"
+          @click="openImageModal(getAnswerImageUrl(imagePath))"
+        >
+        <button 
+          @click="removeAnswerImage(task, imgIndex)"
+          class="remove-image-btn"
+          title="Удалить изображение"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+    <!-- Кнопка явного сохранения -->
+    <button @click="saveAnswer(task)" class="save-images-btn">
+      💾 Сохранить изменения
+    </button>
+  </div>
+</div>
                     </div>
                     
                     <!-- Режим ввода нового ответа -->
@@ -1380,45 +1408,45 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
                       </div>
                     </div>
                     
-                    <!-- Ответ сохранен, но домашнее задание не завершено -->
-                    <div v-else-if="(task.userAnswer || (task.answerImages && task.answerImages.length > 0)) && !showAnswers" class="answer-saved">
-                      <span class="saved-icon">✓</span> Ответ сохранен
-                      
-                      <!-- Текстовый ответ -->
-                      <span v-if="task.userAnswer" class="user-answer-text">
-                        {{ task.userAnswer }}
-                      </span>
-                      
-                      <!-- Изображения ответа -->
-                      <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
-                        <div class="images-title">Прикрепленные изображения:</div>
-                        <div class="images-grid">
-                          <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
-                            <img 
-                              :src="getAnswerImageUrl(imagePath)" 
-                              :alt="'Изображение ответа ' + (imgIndex + 1)"
-                              class="answer-image"
-                              @click="openImageModal(getAnswerImageUrl(imagePath))"
-                            >
-                            <button 
-                              @click="removeAnswerImage(task, imgIndex)"
-                              class="remove-image-btn"
-                              title="Удалить изображение"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <button 
-                        @click="startEdit(task)" 
-                        class="edit-answer-btn"
-                        title="Редактировать ответ"
-                      >
-                        ✏️
-                      </button>
-                    </div>
+<!-- Ответ сохранен, но домашнее задание не завершено -->
+<div v-else-if="(task.userAnswer || (task.answerImages && task.answerImages.length > 0) || task.answerSaved) && !showAnswers" class="answer-saved">
+  <span class="saved-icon">✓</span> Ответ сохранен
+  
+  <!-- Текстовый ответ -->
+  <span v-if="task.userAnswer" class="user-answer-text">
+    {{ task.userAnswer }}
+  </span>
+  
+  <!-- Изображения ответа -->
+  <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
+    <div class="images-title">Прикрепленные изображения:</div>
+    <div class="images-grid">
+      <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+        <img 
+          :src="getAnswerImageUrl(imagePath)" 
+          :alt="'Изображение ответа ' + (imgIndex + 1)"
+          class="answer-image"
+          @click="openImageModal(getAnswerImageUrl(imagePath))"
+        >
+        <button 
+          @click="removeAnswerImage(task, imgIndex)"
+          class="remove-image-btn"
+          title="Удалить изображение"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <button 
+    @click="startEdit(task)" 
+    class="edit-answer-btn"
+    title="Редактировать ответ"
+  >
+    ✏️
+  </button>
+</div>
                     
                   </div>
                 </div>
@@ -1883,7 +1911,39 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
   object-fit: cover;
   transition: transform 0.3s ease;
 }
+.upload-status {
+  padding: 0.5rem;
+  border-radius: 0.3rem;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
 
+.upload-status-uploading {
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.upload-status-success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.save-images-btn {
+  margin-top: 1rem;
+  padding: 0.6rem 1rem;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.save-images-btn:hover {
+  background-color: #218838;
+}
 .task-image:hover {
   transform: scale(1.03);
 }
@@ -2463,10 +2523,16 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
   align-items: flex-start;
   gap: 0.8rem;
   padding: 1rem;
-  background: #e8f5e9;
+  background-color: #e8f5e9;
   border-radius: 0.4rem;
   border-left: 4px solid #28a745;
   flex-direction: column;
+  transition: all 0.3s ease;
+}
+
+.answer-saved.fade-out {
+  opacity: 0.7;
+  background-color: #f8f9fa;
 }
 
 .user-answer-text {
