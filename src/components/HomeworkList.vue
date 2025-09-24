@@ -14,13 +14,16 @@
     <div v-if="selectedSubject">
       <div v-if="loading" class="loading-message">Загрузка домашних заданий...</div>
       <div v-else-if="error" class="error-message">{{ error }}</div>
-      <div v-else-if="homeworks.length === 0" class="no-homeworks">
-        Нет домашних заданий для выбранного предмета
+      <div v-else-if="!hasAccess" class="no-access-message">
+        Домашние задания будут доступны с {{ formatAccessDate(studentAccessFrom) }}
+      </div>
+      <div v-else-if="filteredHomeworks.length === 0" class="no-homeworks">
+        Нет доступных домашних заданий для выбранного предмета
       </div>
       
       <div v-else class="homeworks-grid">
         <div 
-          v-for="homework in homeworks" 
+          v-for="homework in filteredHomeworks" 
           :key="homework.homework_id"
           class="homework-card"
           :class="{ 'completed': homework.is_completed }"
@@ -34,6 +37,9 @@
           </div>
           
           <p class="lesson-info">Урок {{ homework.lesson_number }}: {{ homework.lesson_name }}</p>
+          <p class="lesson-date" v-if="homework.lesson_date">
+            Дата урока: {{ formatDate(homework.lesson_date) }}
+          </p>
           
           <div class="homework-details">
             <div class="deadline" :class="deadlineStatus(homework.deadline)">
@@ -55,7 +61,7 @@
 </template>
 
 <script>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { supabase } from '../supabase.js'
 import CustomDropdown from './CustomDropdown.vue'
 
@@ -66,11 +72,14 @@ export default {
   },
   setup() {
     const homeworks = ref([])
+    const lessons = ref([])
     const selectedSubject = ref(null)
     const subjectOptions = ref([])
     const loading = ref(false)
     const error = ref(null)
     const user_id = ref(null)
+    const studentAccessFrom = ref(null)
+    const studentData = ref(null)
 
     // Преобразование названия предмета в имя таблицы
     const getSubjectTableName = (subjectName) => {
@@ -83,7 +92,87 @@ export default {
       return subjectMap[subjectName] || subjectName.toLowerCase().replace(/\s+/g, '_')
     }
 
-    // Функция для открытия домашнего задания с использованием window.location
+    // Получение поля доступа для предмета
+    const getAccessField = (subjectName) => {
+      if (subjectName.includes('Химия')) return 'subject1_access_from'
+      if (subjectName.includes('Биология')) return 'subject2_access_from'
+      return 'access_from'
+    }
+
+    // Проверяем, есть ли у студента доступ к домашним заданиям
+    const hasAccess = computed(() => {
+      if (!studentAccessFrom.value) return false
+      
+      const today = new Date()
+      const accessDate = new Date(studentAccessFrom.value)
+      
+      today.setHours(0, 0, 0, 0)
+      accessDate.setHours(0, 0, 0, 0)
+      
+      return today >= accessDate
+    })
+
+    // Загрузка уроков для выбранного предмета
+    const fetchLessons = async () => {
+      if (!selectedSubject.value) {
+        lessons.value = []
+        return
+      }
+
+      try {
+        const { data, error: lessonsError } = await supabase
+          .from(selectedSubject.value)
+          .select('number, date, title')
+          .order('number', { ascending: true })
+
+        if (lessonsError) throw lessonsError
+        
+        lessons.value = data || []
+        console.log('Уроки загружены:', lessons.value)
+      } catch (err) {
+        console.error('Ошибка загрузки уроков:', err)
+        lessons.value = []
+      }
+    }
+
+    // Фильтруем домашние задания по дате доступа
+    const filteredHomeworks = computed(() => {
+      if (!hasAccess.value || !studentAccessFrom.value) {
+        console.log('Нет доступа или даты доступа')
+        return []
+      }
+      
+      const accessDate = new Date(studentAccessFrom.value)
+      accessDate.setHours(0, 0, 0, 0)
+      
+      const filtered = homeworks.value.filter(homework => {
+        // Приводим lesson_number к number для сравнения
+        const lessonNumber = Number(homework.lesson_number)
+        const lesson = lessons.value.find(l => l.number === lessonNumber)
+        
+        if (!lesson || !lesson.date) {
+          console.log(`Урок ${lessonNumber} не найден или нет даты`, {
+            homeworkLesson: homework.lesson_number,
+            lessonNumber: lessonNumber,
+            lessons: lessons.value.map(l => l.number)
+          })
+          return false
+        }
+        
+        const lessonDate = new Date(lesson.date)
+        lessonDate.setHours(0, 0, 0, 0)
+        
+        const isAvailable = lessonDate >= accessDate
+        console.log(`Урок ${lessonNumber}: дата урока ${lesson.date}, доступ с ${studentAccessFrom.value}, доступен: ${isAvailable}`)
+        
+        return isAvailable
+      })
+      
+      console.log('Отфильтрованные задания:', filtered)
+      return filtered
+    })
+
+    // Функция для открытия домашнего задания
     const openHomework = (homework) => {
       const params = new URLSearchParams({
         subject: selectedSubject.value,
@@ -107,34 +196,52 @@ export default {
       }
     }
 
-    // Получение предметов пользователя из таблицы students
-    const fetchUserSubjects = async () => {
+    // Получение данных студента и даты доступа
+    const fetchStudentData = async () => {
       try {
         user_id.value = await getCurrentUserId()
         if (!user_id.value) {
           throw new Error('Пользователь не авторизован')
         }
 
-        const { data, error: subjectsError } = await supabase
+        const { data, error: studentError } = await supabase
           .from('students')
-          .select('subject1, subject2')
+          .select('subject1, subject2, subject1_access_from, subject2_access_from')
           .eq('user_id', user_id.value)
           .single()
 
-        if (subjectsError) throw subjectsError
+        if (studentError) throw studentError
 
-        // Формируем список предметов
+        studentData.value = data
+        return data
+
+      } catch (err) {
+        console.error('Ошибка загрузки данных студента:', err)
+        return null
+      }
+    }
+
+    // Получение предметов пользователя
+    const fetchUserSubjects = async () => {
+      try {
+        const studentData = await fetchStudentData()
+        if (!studentData) {
+          throw new Error('Не удалось загрузить данные студента')
+        }
+
         const options = []
-        if (data.subject1) {
+        if (studentData.subject1) {
           options.push({
-            value: getSubjectTableName(data.subject1),
-            label: data.subject1
+            value: getSubjectTableName(studentData.subject1),
+            label: studentData.subject1,
+            accessField: getAccessField(studentData.subject1)
           })
         }
-        if (data.subject2) {
+        if (studentData.subject2) {
           options.push({
-            value: getSubjectTableName(data.subject2),
-            label: data.subject2
+            value: getSubjectTableName(studentData.subject2),
+            label: studentData.subject2,
+            accessField: getAccessField(studentData.subject2)
           })
         }
 
@@ -146,9 +253,28 @@ export default {
       }
     }
 
+    // Обновление даты доступа при смене предмета
+    const updateAccessDate = (subjectValue) => {
+      if (!subjectValue || !studentData.value) {
+        studentAccessFrom.value = null
+        return
+      }
+
+      const subjectOption = subjectOptions.value.find(opt => opt.value === subjectValue)
+      if (!subjectOption) {
+        studentAccessFrom.value = null
+        return
+      }
+
+      const accessField = subjectOption.accessField
+      studentAccessFrom.value = studentData.value[accessField]
+      console.log(`Дата доступа для ${subjectOption.label}:`, studentAccessFrom.value)
+    }
+
     async function fetchHomeworks() {
       if (!selectedSubject.value) {
         homeworks.value = []
+        lessons.value = []
         return
       }
 
@@ -160,6 +286,12 @@ export default {
         if (!user_id.value) {
           throw new Error('Пользователь не авторизован')
         }
+
+        // Обновляем дату доступа
+        updateAccessDate(selectedSubject.value)
+
+        // Загружаем уроки и домашние задания параллельно
+        await Promise.all([fetchLessons()])
 
         const { data: homeworkData, error: homeworkError } = await supabase
           .from(`${selectedSubject.value}_homework_list`)
@@ -175,14 +307,23 @@ export default {
 
         if (completionError) throw completionError
 
+        // Обогащаем домашние задания данными об уроках
         homeworks.value = homeworkData.map(homework => {
           const completion = completionData?.find(c => c.homework_id === homework.homework_id)
+          const lessonNumber = Number(homework.lesson_number)
+          const lesson = lessons.value.find(l => l.number === lessonNumber)
+          
           return {
             ...homework,
             is_completed: completion?.is_completed || false,
-            score: completion?.score || null
+            score: completion?.score || null,
+            lesson_date: lesson?.date || null,
+            lesson_title: lesson?.title || null
           }
         })
+
+        console.log('Все домашние задания:', homeworks.value)
+        console.log('Все уроки:', lessons.value)
 
       } catch (err) {
         error.value = err.message
@@ -194,6 +335,15 @@ export default {
 
     const formatDate = (dateString) => {
       if (!dateString) return 'Не указан'
+      return new Date(dateString).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
+    }
+
+    const formatAccessDate = (dateString) => {
+      if (!dateString) return 'даты не указана'
       return new Date(dateString).toLocaleDateString('ru-RU', {
         day: 'numeric',
         month: 'long',
@@ -240,11 +390,15 @@ export default {
 
     return {
       homeworks,
+      filteredHomeworks,
       selectedSubject,
       subjectOptions,
       loading,
       error,
+      hasAccess,
+      studentAccessFrom,
       formatDate,
+      formatAccessDate,
       deadlineStatus,
       getStatusClass,
       getStatusText,
@@ -253,6 +407,44 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+/* Стили остаются без изменений */
+.lesson-date {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin: 0.25rem 0 0.75rem 0;
+}
+
+.homework-card:not(.completed) .lesson-date {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.homework-card.completed .lesson-date {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* Остальные стили из предыдущего кода */
+</style>
+
+<style scoped>
+/* Стили остаются без изменений */
+.lesson-date {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin: 0.25rem 0 0.75rem 0;
+}
+
+.homework-card:not(.completed) .lesson-date {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.homework-card.completed .lesson-date {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* Остальные стили из предыдущего кода */
+</style>
 
 <style scoped>
 .homework-container {
@@ -448,7 +640,8 @@ export default {
 .loading-message,
 .error-message,
 .no-homeworks,
-.select-subject-prompt {
+.select-subject-prompt,
+.no-access-message {
   padding: 2.5rem;
   text-align: center;
   font-size: clamp(1.1rem, 3vw, 1.2rem);
@@ -457,6 +650,14 @@ export default {
 
 .error-message {
   color: #b241d1;
+}
+
+.no-access-message {
+  color: #ff9800;
+  background-color: #fff3e0;
+  border-radius: 0.75rem;
+  border-left: 4px solid #ff9800;
+  margin-top: 1.25rem;
 }
 
 .select-subject-prompt {
@@ -546,7 +747,8 @@ export default {
   .loading-message,
   .error-message,
   .no-homeworks,
-  .select-subject-prompt {
+  .select-subject-prompt,
+  .no-access-message {
     padding: 1.5rem;
     font-size: 1rem;
   }
@@ -566,5 +768,4 @@ export default {
     padding: 0.75rem;
   }
 }
-  
 </style>

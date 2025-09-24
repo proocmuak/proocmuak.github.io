@@ -266,10 +266,10 @@
                       <div 
                         class="table-cell-editor"
                         contenteditable="true"
-                        @input="updateTableCell(rowIndex, colIndex, $event)"
-                        @blur="updateTableCell(rowIndex, colIndex, $event)"
+                        @input="handleTableCellInput(rowIndex, colIndex, $event)"
+                        @blur="handleTableCellBlur(rowIndex, colIndex, $event)"
                         @focus="activeTableCell = $event.target"
-                        v-html="cell"
+                        ref="tableCells"
                       ></div>
                     </td>
                   </tr>
@@ -524,20 +524,15 @@ export default {
       if (newVal !== oldVal) {
         this.updateTableSize();
       }
-    },
-    tableContent: {
-      deep: true,
-      handler() {
-        if (this.showTableModal) {
-          this.$nextTick(() => {
-            this.updateTablePreview();
-          });
-        }
-      }
     }
   },
   created() {
     this.initializeTopics();
+  },
+  mounted() {
+    this.$nextTick(() => {
+      this.updateTableCellContents();
+    });
   },
   methods: {
     initializeTopics() {
@@ -594,10 +589,160 @@ export default {
       }
       
       this.tableContent = newContent;
+      
+      this.$nextTick(() => {
+        this.updateTableCellContents();
+      });
+    },
+    updateTableCellContents() {
+      const cells = this.$refs.tableCells;
+      if (!cells) return;
+      
+      cells.forEach((cell, index) => {
+        const rowIndex = Math.floor(index / this.tableCols);
+        const colIndex = index % this.tableCols;
+        
+        if (this.tableContent[rowIndex] && this.tableContent[rowIndex][colIndex] !== undefined) {
+          cell.innerHTML = this.tableContent[rowIndex][colIndex];
+        }
+      });
     },
     resetTableContent() {
       this.tableContent = this.initializeTableContent(this.tableRows, this.tableCols);
     },
+    
+    // Методы для работы с таблицей (без прыгающего курсора)
+    handleTableCellInput(rowIndex, colIndex, event) {
+      this.tableContent[rowIndex][colIndex] = event.target.innerHTML;
+    },
+    
+    handleTableCellBlur(rowIndex, colIndex, event) {
+      const cleanedContent = this.cleanHtmlContent(event.target.innerHTML);
+      this.tableContent[rowIndex][colIndex] = cleanedContent;
+      
+      if (event.target.innerHTML !== cleanedContent) {
+        event.target.innerHTML = cleanedContent;
+      }
+    },
+    
+    cleanHtmlContent(html) {
+      let cleaned = html
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+      
+      cleaned = cleaned.replace(/<br\s*\/?>/g, '');
+      
+      return cleaned;
+    },
+    
+    getCursorPosition(element) {
+      const selection = window.getSelection();
+      if (selection.rangeCount === 0) return 0;
+      
+      const range = selection.getRangeAt(0);
+      const preRange = range.cloneRange();
+      preRange.selectNodeContents(element);
+      preRange.setEnd(range.endContainer, range.endOffset);
+      
+      return preRange.toString().length;
+    },
+    
+    setCursorPosition(element, position) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      
+      let currentPos = 0;
+      let foundNode = null;
+      let foundOffset = 0;
+      
+      function findPosition(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const length = node.textContent.length;
+          if (currentPos + length >= position) {
+            foundNode = node;
+            foundOffset = position - currentPos;
+            return true;
+          }
+          currentPos += length;
+        } else {
+          for (let i = 0; i < node.childNodes.length; i++) {
+            if (findPosition(node.childNodes[i])) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+      
+      if (findPosition(element)) {
+        range.setStart(foundNode, foundOffset);
+        range.setEnd(foundNode, foundOffset);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    },
+    
+    formatTableCell(formatType) {
+      if (!this.activeTableCell) return;
+      
+      const cursorPosition = this.getCursorPosition(this.activeTableCell);
+      const selection = window.getSelection();
+      const selectedText = selection.toString();
+      
+      this.activeTableCell.focus();
+      
+      if (selectedText.trim()) {
+        if (formatType === 'sub') {
+          document.execCommand('subscript');
+        } else if (formatType === 'sup') {
+          document.execCommand('superscript');
+        }
+      } else {
+        const exampleText = formatType === 'sub' ? 'индекс' : 'степень';
+        const tag = formatType === 'sub' ? 'sub' : 'sup';
+        document.execCommand('insertHTML', false, `<${tag}>${exampleText}</${tag}>`);
+      }
+      
+      this.$nextTick(() => {
+        this.setCursorPosition(this.activeTableCell, cursorPosition);
+        
+        const cells = this.$refs.tableCells;
+        if (cells) {
+          const index = cells.indexOf(this.activeTableCell);
+          if (index !== -1) {
+            const rowIndex = Math.floor(index / this.tableCols);
+            const colIndex = index % this.tableCols;
+            this.tableContent[rowIndex][colIndex] = this.activeTableCell.innerHTML;
+          }
+        }
+      });
+    },
+    
+    clearTableFormatting() {
+      if (!this.activeTableCell) return;
+      
+      const cursorPosition = this.getCursorPosition(this.activeTableCell);
+      
+      this.activeTableCell.focus();
+      document.execCommand('removeFormat');
+      document.execCommand('unlink');
+      
+      this.$nextTick(() => {
+        this.setCursorPosition(this.activeTableCell, cursorPosition);
+        
+        const cells = this.$refs.tableCells;
+        if (cells) {
+          const index = cells.indexOf(this.activeTableCell);
+          if (index !== -1) {
+            const rowIndex = Math.floor(index / this.tableCols);
+            const colIndex = index % this.tableCols;
+            this.tableContent[rowIndex][colIndex] = this.activeTableCell.innerHTML;
+          }
+        }
+      });
+    },
+    
     insertTable(editorType) {
       this.currentTextarea = editorType;
       const editor = this.$refs[`${editorType}Editor`];
@@ -645,6 +790,10 @@ export default {
         }
         this.tableContent.push(row);
       }
+      
+      this.$nextTick(() => {
+        this.updateTableCellContents();
+      });
     },
     
     setupNewTable() {
@@ -654,6 +803,10 @@ export default {
       this.tableCols = 2;
       this.tableBorders = true;
       this.resetTableContent();
+      
+      this.$nextTick(() => {
+        this.updateTableCellContents();
+      });
     },
     
     insertTableToText() {
@@ -734,55 +887,17 @@ export default {
       return html;
     },
     
-    updateTableCell(rowIndex, colIndex, event) {
-      this.tableContent[rowIndex][colIndex] = event.target.innerHTML;
-      this.activeTableCell = event.target;
-    },
-    
-    formatTableCell(formatType) {
-      if (!this.activeTableCell) return;
-      
-      this.activeTableCell.focus();
-      const selection = window.getSelection();
-      
-      if (selection.toString().trim()) {
-        if (formatType === 'sub') {
-          document.execCommand('subscript');
-        } else if (formatType === 'sup') {
-          document.execCommand('superscript');
-        }
-      } else {
-        const exampleText = formatType === 'sub' ? 'индекс' : 'степень';
-        const tag = formatType === 'sub' ? 'sub' : 'sup';
-        document.execCommand('insertHTML', false, `<${tag}>${exampleText}</${tag}>`);
-      }
-      
-      const cellElement = this.activeTableCell;
-      const cells = document.querySelectorAll('.table-cell-editor');
-      const index = Array.from(cells).indexOf(cellElement);
-      
-      if (index !== -1) {
-        const rowIndex = Math.floor(index / this.tableCols);
-        const colIndex = index % this.tableCols;
-        this.tableContent[rowIndex][colIndex] = cellElement.innerHTML;
-      }
-    },
-    
-    clearTableFormatting() {
-      if (!this.activeTableCell) return;
-      
-      this.activeTableCell.focus();
-      document.execCommand('removeFormat');
-      document.execCommand('unlink');
-      
-      const cellElement = this.activeTableCell;
-      const cells = document.querySelectorAll('.table-cell-editor');
-      const index = Array.from(cells).indexOf(cellElement);
-      
-      if (index !== -1) {
-        const rowIndex = Math.floor(index / this.tableCols);
-        const colIndex = index % this.tableCols;
-        this.tableContent[rowIndex][colIndex] = cellElement.innerHTML;
+    syncTableFromData() {
+      if (this.editedTask.table_data) {
+        const tableData = this.editedTask.table_data;
+        this.tableRows = tableData.rows;
+        this.tableCols = tableData.cols;
+        this.tableBorders = tableData.borders;
+        this.tableContent = JSON.parse(JSON.stringify(tableData.content));
+        
+        this.$nextTick(() => {
+          this.updateTableCellContents();
+        });
       }
     },
     
@@ -829,27 +944,6 @@ export default {
       
       document.execCommand('insertHTML', false, text);
       this.updateEditedTask(field, { target: this.$refs[`${field}Editor`] });
-    },
-    
-    syncTableFromData() {
-      if (this.editedTask.table_data) {
-        const tableData = this.editedTask.table_data;
-        this.tableRows = tableData.rows;
-        this.tableCols = tableData.cols;
-        this.tableBorders = tableData.borders;
-        this.tableContent = JSON.parse(JSON.stringify(tableData.content));
-      }
-    },
-    
-    syncTableDataFromEditor() {
-      const editor = this.$refs.textEditor;
-      if (!editor) return;
-      
-      const tableElement = editor.querySelector('table');
-      if (!tableElement) return;
-      
-      this.parseTableElement(tableElement);
-      this.updateTableData();
     },
     
     triggerFileInput(type = 'text') {
@@ -1102,6 +1196,17 @@ export default {
       }
     },
     
+    syncTableDataFromEditor() {
+      const editor = this.$refs.textEditor;
+      if (!editor) return;
+      
+      const tableElement = editor.querySelector('table');
+      if (!tableElement) return;
+      
+      this.parseTableElement(tableElement);
+      this.updateTableData();
+    },
+    
     async deleteTask() {
       if (!confirm('Вы уверены, что хотите удалить это задание? Это действие нельзя отменить.')) {
         return;
@@ -1144,9 +1249,6 @@ export default {
 };
 </script>
 
-<style scoped>
-/* Стили остаются такими же как в предыдущем коде */
-</style>
 <style scoped>
 .modal-overlay {
   position: fixed;
