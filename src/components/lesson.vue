@@ -32,7 +32,6 @@
           </div>
         </div>
         
-        <!-- Остальной код без изменений -->
         <!-- Секция рабочих материалов -->
         <div v-if="hasMaterials" class="materials-section">
           <h4>Материалы урока:</h4>
@@ -77,15 +76,17 @@
         </div>
         
         <!-- Домашнее задание -->
-        <div v-if="homeworkData" class="homework-section">
-          <h4>Домашнее задание:</h4>
+        <div v-if="homeworkData.length > 0" class="homework-section">
+          <h4>Домашние задания:</h4>
           <div class="homework-content">
-            <p class="homework-title">{{ homeworkData.homework_name }}</p>
-            <button @click="openHomeworkSimple(homeworkData)" class="download-button homework-button">
-              Посмотреть домашнее задание
-            </button>
-            <div v-if="homeworkData.deadline" class="deadline">
-              Срок сдачи: {{ formatDeadline(homeworkData.deadline) }}
+            <div v-for="(homework, index) in homeworkData" :key="homework.homework_id || index" class="homework-item">
+              <p class="homework-title">{{ homework.homework_name }}</p>
+              <button @click="openHomeworkSimple(homework)" class="download-button homework-button">
+                Посмотреть домашнее задание
+              </button>
+              <div v-if="homework.deadline" class="deadline">
+                Срок сдачи: {{ formatDeadline(homework.deadline) }}
+              </div>
             </div>
           </div>
         </div>
@@ -123,7 +124,7 @@ const props = defineProps({
 const emit = defineEmits(['back-to-calendar'])
 
 const lesson = ref(null)
-const homeworkData = ref(null)
+const homeworkData = ref([]) // Теперь массив для нескольких домашних заданий
 const loading = ref(false)
 const error = ref(null)
 const showMessage = ref(false)
@@ -298,7 +299,7 @@ async function fetchLesson() {
     loading.value = true
     error.value = null
     lesson.value = null
-    homeworkData.value = null
+    homeworkData.value = [] // Инициализируем как пустой массив
     
     const tableName = `${props.subject}_ege`
     
@@ -334,7 +335,7 @@ async function fetchLesson() {
       await fetchHomework(data?.title)
     } catch (homeworkErr) {
       console.log('Таблица домашних заданий не доступна или пуста:', homeworkErr.message)
-      homeworkData.value = null
+      homeworkData.value = []
     }
     
   } catch (err) {
@@ -369,30 +370,32 @@ const convertToArray = (value) => {
 
 async function fetchHomework(lessonName) {
   if (!lessonName) {
-    homeworkData.value = null
+    homeworkData.value = []
     return
   }
   
   try {
     const homeworkTable = `${props.subject}_ege_homework_list`
     
+    // Теперь используем select() без maybeSingle() чтобы получить все записи
     const { data, error: homeworkError } = await supabase
       .from(homeworkTable)
       .select('homework_id, homework_name, lesson_number, lesson_name, deadline')
       .eq('lesson_name', lessonName)
-      .maybeSingle()
+      .order('created_at', { ascending: true }) // Сортируем по дате создания
 
     if (homeworkError) {
       console.log('Ошибка загрузки домашнего задания:', homeworkError.message)
-      homeworkData.value = null
+      homeworkData.value = []
       return
     }
     
-    homeworkData.value = data || null
+    // data теперь массив (может быть пустым)
+    homeworkData.value = data || []
     
   } catch (err) {
     console.log('Не удалось загрузить домашнее задание:', err.message)
-    homeworkData.value = null
+    homeworkData.value = []
   }
 }
 
@@ -581,39 +584,40 @@ const formattedDate = computed(() => {
 
 /* Стили для домашнего задания */
 .homework-section {
-  background-color: #fff3e0;
+  background-color: rgba(178, 65, 209, 0.4);
   padding: 20px;
   border-radius: 8px;
-  border-left: 4px solid #ff9800;
 }
 
 .homework-content {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 25px;
+}
+
+.homework-item {
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  border: 1px solid #f8f9fa;
 }
 
 .homework-title {
   font-weight: 600;
   color: #2c3e50;
-  margin: 0;
+  margin: 0 0 10px 0;
+  font-size: 1.1em;
 }
 
 .homework-button {
   align-self: flex-start;
+  margin-bottom: 10px;
 }
 
 .deadline {
   font-size: 0.9em;
   color: #666;
   font-style: italic;
-}
-
-.homework-item {
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 6px;
-  margin-bottom: 10px;
 }
 
 .homework-text {
@@ -736,6 +740,14 @@ const formattedDate = computed(() => {
   .download-button {
     align-self: flex-end;
   }
+  
+  .homework-content {
+    gap: 20px;
+  }
+  
+  .homework-item {
+    padding: 12px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -745,6 +757,14 @@ const formattedDate = computed(() => {
   
   .iframe-container {
     padding: 10px;
+  }
+  
+  .homework-item {
+    padding: 10px;
+  }
+  
+  .homework-title {
+    font-size: 1em;
   }
 }
 </style>
