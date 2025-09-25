@@ -148,6 +148,7 @@ export default {
   setup() {
     const homeworkData = ref({
       homework_name: '',
+
       lesson_number: '',
       lesson_name: '',
       deadline: null
@@ -330,7 +331,6 @@ const formatTextWithParagraphs = (text) => {
     }
 
     // Получение пояснения с поддержкой изображений
-// Получение пояснения с поддержкой изображений
 const getExplanationContent = (task) => {
   let content = '';
   // Внутри функции getExplanationContent добавьте отладочный вывод
@@ -439,7 +439,7 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
       task.editAnswerInput = task.userAnswer || '';
       
       nextTick(() => {
-        const input = document.querySelector(`.task-item[data-task-id="${task.task_id}"] .answer-input`);
+        const input = document.querySelector(`.task-item[data-task-id="${task.task_id}"] .answer-input, .task-item[data-task-id="${task.task_id}"] .answer-textarea`);
         if (input) {
           input.focus();
           input.select();
@@ -1032,9 +1032,10 @@ const handleImageUpload = async (task, event) => {
     }
 
     // Проверяем, является ли задание второй частью
-    const isSecondPartTask = (task) => {
-      return task.part === 'Вторая часть';
-    }
+// Проверяем, является ли задание второй частью
+const isSecondPartTask = (task) => {
+  return task.part === 'Вторая часть';
+}
 
     // Следим за изменениями баллов
     onMounted(() => {
@@ -1159,7 +1160,7 @@ const handleImageUpload = async (task, event) => {
               v-for="task in sortedTasks" 
               :key="task.task_id"
               class="task-item"
-              :class="{ 'extended-task': task.points > 1 }"
+              :class="{ 'extended-task': isSecondPartTask(task) }"
               :data-task-id="task.task_id"
             >
               <div class="task-card">
@@ -1167,6 +1168,7 @@ const handleImageUpload = async (task, event) => {
                   <div class="task-meta">
                     <span class="task-topic">Тема: {{ task.topic }}</span>
                     <span class="task-id">#{{ task.number }} ({{ task.points }} балла)</span>
+                    <span v-if="isSecondPartTask(task)" class="task-part-badge">Вторая часть</span>
                   </div>
                   <div class="task-status" :class="getTaskStatusClass(task)">
                     {{ getTaskStatusText(task) }}
@@ -1214,81 +1216,104 @@ const handleImageUpload = async (task, event) => {
                     <!-- Режим редактирования -->
                     <div v-if="task.isEditing" class="edit-mode">
                       <div class="answer-input-container">
+                        <!-- Для второй части - textarea -->
+                        <textarea 
+                          v-if="isSecondPartTask(task)"
+                          v-model="task.editAnswerInput" 
+                          :placeholder="'Введите развернутый ответ (' + task.points + ' балла)'" 
+                          class="answer-textarea extended"
+                          rows="6"
+                          @keydown.ctrl.enter="saveEditedAnswer(task)"
+                          ref="editInput"
+                        ></textarea>
+                        
+                        <!-- Для первой части - обычный input -->
                         <input 
+                          v-else
                           v-model="task.editAnswerInput" 
                           type="text" 
-                          :placeholder="`Введите ответ (${task.points} балла)`" 
+                          :placeholder="'Введите ответ (' + task.points + ' балла)'" 
                           class="answer-input"
                           @keyup.enter="saveEditedAnswer(task)"
                           ref="editInput"
                         >
+                        
                         <button @click="saveEditedAnswer(task)" class="submit-button">Сохранить</button>
                         <button @click="cancelEdit(task)" class="cancel-button">Отмена</button>
                       </div>
                       
                       <!-- Загрузка изображений для второй части -->
-<!-- В разделе загрузки изображений -->
-<div v-if="isSecondPartTask(task)" class="image-upload-section">
-  <label class="upload-label">
-    📎 Прикрепить изображения
-    <input
-      type="file"
-      multiple
-      accept="image/*"
-      @change="handleImageUpload(task, $event)"
-      class="file-input"
-    >
-  </label>
-  
-  <!-- Индикатор загрузки -->
-  <div v-if="task.uploadingImages" class="upload-status-uploading">
-    ⏳ Загрузка изображений...
-  </div>
-  
-  <!-- Успешное сохранение -->
-  <div v-if="task.uploadSuccess" class="upload-status-success">
-    ✅ Изображения успешно сохранены!
-  </div>
-  
-  <!-- Отображение загруженных изображений -->
-  <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
-    <div class="images-title">Загруженные изображения:</div>
-    <div class="images-grid">
-      <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
-        <img 
-          :src="getAnswerImageUrl(imagePath)" 
-          :alt="'Изображение ответа ' + (imgIndex + 1)"
-          class="answer-image"
-          @click="openImageModal(getAnswerImageUrl(imagePath))"
-        >
-        <button 
-          @click="removeAnswerImage(task, imgIndex)"
-          class="remove-image-btn"
-          title="Удалить изображение"
-        >
-          ×
-        </button>
-      </div>
-    </div>
-    <!-- Кнопка явного сохранения -->
-    <button @click="saveAnswer(task)" class="save-images-btn">
-      💾 Сохранить изменения
-    </button>
-  </div>
-</div>
+                      <div v-if="isSecondPartTask(task)" class="image-upload-section">
+                        <label class="upload-label">
+                          📎 Прикрепить изображения
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            @change="handleImageUpload(task, $event)"
+                            class="file-input"
+                          >
+                        </label>
+                        
+                        <div v-if="task.uploadingImages" class="upload-status-uploading">
+                          ⏳ Загрузка изображений...
+                        </div>
+                        
+                        <div v-if="task.uploadSuccess" class="upload-status-success">
+                          ✅ Изображения успешно сохранены!
+                        </div>
+                        
+                        <!-- Отображение загруженных изображений -->
+                        <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
+                          <div class="images-title">Загруженные изображения:</div>
+                          <div class="images-grid">
+                            <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                              <img 
+                                :src="getAnswerImageUrl(imagePath)" 
+                                :alt="'Изображение ответа ' + (imgIndex + 1)"
+                                class="answer-image"
+                                @click="openImageModal(getAnswerImageUrl(imagePath))"
+                              >
+                              <button 
+                                @click="removeAnswerImage(task, imgIndex)"
+                                class="remove-image-btn"
+                                title="Удалить изображение"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                          <button @click="saveAnswer(task)" class="save-images-btn">
+                            💾 Сохранить изменения
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     
                     <!-- Режим ввода нового ответа -->
                     <div v-else-if="!task.userAnswer && !isViewMode && !isCompleted">
                       <!-- Показываем поле ввода только если нет изображений -->
                       <div v-if="!task.answerImages || task.answerImages.length === 0" class="answer-input-container">
+                        <!-- Для второй части - textarea -->
+                        <textarea 
+                          v-if="isSecondPartTask(task)"
+                          v-model="task.userAnswerInput" 
+                          :placeholder="'Введите развернутый ответ (' + task.points + ' балла)'" 
+                          class="answer-textarea extended"
+                          rows="6"
+                          @keydown.ctrl.enter="saveAnswer(task)"
+                        ></textarea>
+                        
+                        <!-- Для первой части - обычный input -->
                         <input 
+                          v-else
                           v-model="task.userAnswerInput" 
                           type="text" 
-                          :placeholder="`Введите ответ (${task.points} балла)`" 
+                          :placeholder="'Введите ответ (' + task.points + ' балла)'" 
                           class="answer-input"
                           @keyup.enter="saveAnswer(task)"
                         >
+                        
                         <button @click="saveAnswer(task)" class="submit-button">Сохранить</button>
                       </div>
                       
@@ -1343,9 +1368,13 @@ const handleImageUpload = async (task, event) => {
                           <span v-else-if="task.isPartiallyCorrect" class="partial-icon">±</span>
                           <span v-else class="incorrect-icon">✗</span>
                           
-                          <span v-if="task.userAnswer" class="user-answer-text">
-                            <strong>Ответ студента:</strong> {{ task.userAnswer }}
-                          </span>
+                          <div v-if="task.userAnswer" class="user-answer-container">
+                            <strong>Ответ студента:</strong> 
+                            <div class="user-answer-text" :class="{ 'multiline': isSecondPartTask(task) }">
+                              <pre v-if="isSecondPartTask(task)" style="white-space: pre-wrap; font-family: inherit; margin: 0.5rem 0;">{{ task.userAnswer }}</pre>
+                              <span v-else>{{ task.userAnswer }}</span>
+                            </div>
+                          </div>
                           
                           <!-- Изображения ответа -->
                           <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
@@ -1376,7 +1405,7 @@ const handleImageUpload = async (task, event) => {
                           </span>
                           
                           <!-- Панель оценки куратора для заданий второй части -->
-                          <div v-if="isTutorMode && task.points > 1" class="tutor-scoring-panel">
+                          <div v-if="isTutorMode && isSecondPartTask(task)" class="tutor-scoring-panel">
                             <span class="score-label">Оценка куратора:</span>
                             <select 
                               v-model="task.manualScore" 
@@ -1408,45 +1437,48 @@ const handleImageUpload = async (task, event) => {
                       </div>
                     </div>
                     
-<!-- Ответ сохранен, но домашнее задание не завершено -->
-<div v-else-if="(task.userAnswer || (task.answerImages && task.answerImages.length > 0) || task.answerSaved) && !showAnswers" class="answer-saved">
-  <span class="saved-icon">✓</span> Ответ сохранен
-  
-  <!-- Текстовый ответ -->
-  <span v-if="task.userAnswer" class="user-answer-text">
-    {{ task.userAnswer }}
-  </span>
-  
-  <!-- Изображения ответа -->
-  <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
-    <div class="images-title">Прикрепленные изображения:</div>
-    <div class="images-grid">
-      <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
-        <img 
-          :src="getAnswerImageUrl(imagePath)" 
-          :alt="'Изображение ответа ' + (imgIndex + 1)"
-          class="answer-image"
-          @click="openImageModal(getAnswerImageUrl(imagePath))"
-        >
-        <button 
-          @click="removeAnswerImage(task, imgIndex)"
-          class="remove-image-btn"
-          title="Удалить изображение"
-        >
-          ×
-        </button>
-      </div>
-    </div>
-  </div>
-  
-  <button 
-    @click="startEdit(task)" 
-    class="edit-answer-btn"
-    title="Редактировать ответ"
-  >
-    ✏️
-  </button>
-</div>
+                    <!-- Ответ сохранен, но домашнее задание не завершено -->
+                    <div v-else-if="(task.userAnswer || (task.answerImages && task.answerImages.length > 0) || task.answerSaved) && !showAnswers" class="answer-saved">
+                      <span class="saved-icon">✓</span> Ответ сохранен
+                      
+                      <!-- Текстовый ответ -->
+                      <div v-if="task.userAnswer" class="user-answer-container">
+                        <div class="user-answer-text" :class="{ 'multiline': isSecondPartTask(task) }">
+                          <pre v-if="isSecondPartTask(task)" style="white-space: pre-wrap; font-family: inherit; margin: 0.5rem 0;">{{ task.userAnswer }}</pre>
+                          <span v-else>{{ task.userAnswer }}</span>
+                        </div>
+                      </div>
+                      
+                      <!-- Изображения ответа -->
+                      <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
+                        <div class="images-title">Прикрепленные изображения:</div>
+                        <div class="images-grid">
+                          <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                            <img 
+                              :src="getAnswerImageUrl(imagePath)" 
+                              :alt="'Изображение ответа ' + (imgIndex + 1)"
+                              class="answer-image"
+                              @click="openImageModal(getAnswerImageUrl(imagePath))"
+                            >
+                            <button 
+                              @click="removeAnswerImage(task, imgIndex)"
+                              class="remove-image-btn"
+                              title="Удалить изображение"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <button 
+                        @click="startEdit(task)" 
+                        class="edit-answer-btn"
+                        title="Редактировать ответ"
+                      >
+                        ✏️
+                      </button>
+                    </div>
                     
                   </div>
                 </div>
@@ -1532,7 +1564,6 @@ const handleImageUpload = async (task, event) => {
     </div>
   </div>
 </template>
-
 
 <style scoped>
 /* Все оригинальные стили остаются без изменений */
@@ -1650,6 +1681,16 @@ const handleImageUpload = async (task, event) => {
   font-weight: bold;
   display: block;
   margin-top: 0.4rem;
+}
+
+.task-part-badge {
+  background: #b241d1;
+  color: white;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: bold;
+  margin-left: 0.5rem;
 }
 
 .task-status {
@@ -2056,6 +2097,33 @@ const handleImageUpload = async (task, event) => {
   box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
 }
 
+/* Стили для текстовой области */
+.answer-textarea {
+  flex: 1;
+  padding: 0.8rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 0.4rem;
+  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+  min-width: 0;
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.answer-textarea:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
+}
+
+.answer-textarea.extended {
+  min-height: 120px;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
 .submit-button {
   padding: 0.8rem 1.2rem;
   background-color: #b241d1;
@@ -2232,7 +2300,29 @@ const handleImageUpload = async (task, event) => {
   object-fit: cover;
   transition: transform 0.3s ease;
 }
+.completion-section {
+  margin-top: 2rem;
+  text-align: center;
+  padding: 1.5rem;
+  border-top: 2px solid #eee;
+  width: 100%;
+}
 
+.complete-btn {
+  padding: 1rem 2rem;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 0.6rem;
+  font-size: clamp(1rem, 2.5vw, 1.1rem);
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  min-width: min(100%, 300px);
+}
+
+.complete-btn:hover {
+  background-color: #218838;
+}
 .task-image:hover {
   transform: scale(1.03);
 }
@@ -2535,9 +2625,25 @@ const handleImageUpload = async (task, event) => {
   background-color: #f8f9fa;
 }
 
+.user-answer-container {
+  width: 100%;
+}
+
 .user-answer-text {
   margin-left: 0.5rem;
   color: #155724;
+}
+
+.user-answer-text.multiline {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: #f8f9fa;
+  padding: 0.8rem;
+  border-radius: 0.4rem;
+  border-left: 3px solid #b241d1;
+  margin: 0.5rem 0;
+  line-height: 1.5;
+  font-family: inherit;
 }
 
 .edit-answer-btn {
@@ -2689,6 +2795,28 @@ const handleImageUpload = async (task, event) => {
   .edit-answer-btn {
     margin-left: 0;
     margin-top: 0.5rem;
+  }
+  
+  .answer-input-container {
+    flex-direction: column;
+  }
+  
+  .answer-textarea {
+    min-height: 80px;
+  }
+  
+  .answer-textarea.extended {
+    min-height: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .answer-textarea {
+    min-height: 60px;
+  }
+  
+  .answer-textarea.extended {
+    min-height: 80px;
   }
 }
 </style>
