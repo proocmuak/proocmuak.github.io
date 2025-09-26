@@ -170,18 +170,50 @@ export default {
     };
   },
   computed: {
-    hasTableData() {
+    // Проверяем оба типа таблиц
+    hasStructuredTableData() {
       return this.task.table_data && 
              this.task.table_data.content && 
              this.task.table_data.content.length > 0;
     },
+    
+    hasHtmlTables() {
+      return this.task.text && this.task.text.includes('<table');
+    },
+    
+    hasAnyTableData() {
+      return this.hasStructuredTableData || this.hasHtmlTables;
+    },
+
+    // Извлекаем HTML таблицы из текста
+    extractedHtmlTables() {
+      if (!this.task.text) return [];
+      
+      const tables = [];
+      const tableRegex = /<table[\s\S]*?<\/table>/gi;
+      let match;
+      
+      while ((match = tableRegex.exec(this.task.text)) !== null) {
+        tables.push(match[0]);
+      }
+      
+      return tables;
+    },
+
+    // Текст без таблиц (для случаев, когда таблицы рендерятся отдельно)
     taskTextWithoutTables() {
       if (!this.task.text) return '';
-      const textWithoutTables = this.hasTableData ? 
-        this.task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : 
-        this.task.text;
-      return this.formatTextWithParagraphs(textWithoutTables);
+      
+      let text = this.task.text;
+      
+      // Удаляем таблицы только если они будут рендериться отдельно
+      if (this.hasStructuredTableData || this.extractedHtmlTables.length > 0) {
+        text = text.replace(/<table[\s\S]*?<\/table>/gi, '');
+      }
+      
+      return this.formatTextWithParagraphs(text);
     },
+
     taskStatus() {
       if (!this.answerChecked) return 'Не решено';
       
@@ -195,6 +227,7 @@ export default {
       
       return `✗ Неверно (0/${this.task.points} балла)`;
     },
+    
     statusClass() {
       return {
         'status-not-completed': !this.answerChecked,
@@ -203,6 +236,7 @@ export default {
         'status-incorrect': this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect
       };
     },
+    
     formattedAnswer() {
       if (!this.task.answer) return '';
       const answer = this.task.answer.toString();
@@ -213,6 +247,7 @@ export default {
       
       return this.formatTextWithParagraphs(answer);
     },
+    
     formattedExplanation() {
       if (!this.task.explanation) return '';
       const explanation = this.task.explanation.toString();
@@ -223,15 +258,19 @@ export default {
       
       return this.formatTextWithParagraphs(explanation);
     },
+    
     hasAnswerImages() {
       return this.task.image_answer && this.task.image_answer.length > 0;
     },
+    
     hasExplanationImages() {
       return this.task.image_explanation && this.task.image_explanation.length > 0;
     },
+    
     canShowExplanation() {
       return this.answerChecked && (this.task.explanation || this.hasExplanationImages);
     },
+    
     shortSubject() {
       return this.task.subject.includes('Химия') ? 'chemistry' : 'biology';
     }
@@ -239,8 +278,8 @@ export default {
   methods: {
     sanitizeHtml(html) {
       return DOMPurify.sanitize(html, {
-        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
-        ALLOWED_ATTR: ['style', 'class']
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+        ALLOWED_ATTR: ['style', 'class', 'border', 'cellpadding', 'cellspacing', 'width', 'height', 'align', 'valign', 'colspan', 'rowspan']
       });
     },
 
@@ -483,8 +522,6 @@ export default {
 }
 </script>
 
-<!-- Остальная часть компонента (template и styles) остается без изменений -->
-
 <template>
   <div class="task-card">
     <div class="task-header">
@@ -498,9 +535,11 @@ export default {
     </div>
     
     <div class="task-content">
+      <!-- Основной текст задания -->
       <div class="task-text" v-html="sanitizeHtml(taskTextWithoutTables)" @copy.prevent></div>
       
-      <div v-if="hasTableData" class="task-table-container">
+      <!-- Структурированные таблицы из table_data -->
+      <div v-if="hasStructuredTableData" class="task-table-container">
         <table :class="{ 'with-borders': task.table_data.borders }">
           <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
             <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
@@ -510,6 +549,16 @@ export default {
         </table>
       </div>
       
+      <!-- HTML таблицы из текста задания -->
+      <div v-if="extractedHtmlTables.length > 0" class="html-tables-container">
+        <div v-for="(tableHtml, index) in extractedHtmlTables" 
+             :key="'html-table-'+index" 
+             class="html-table-wrapper">
+          <div v-html="sanitizeHtml(tableHtml)" class="html-table-content"></div>
+        </div>
+      </div>
+      
+      <!-- Изображения задания -->
       <div class="task-images" v-if="task.images && task.images.length">
         <div class="image-grid">
           <div 
@@ -528,6 +577,7 @@ export default {
         </div>
       </div>
 
+      <!-- Блок ответа -->
       <div class="answer-section">
         <div v-if="isFirstPart" class="answer-input-container"  @copy.prevent>
           <input 
@@ -599,7 +649,7 @@ export default {
       </div>
     </div>
 
-    <!-- Блок пояснения с изображениями -->
+    <!-- Блок пояснения -->
     <div v-if="canShowExplanation" class="explanation-section">
       <div class="explanation-header" @click="toggleExplanation" style="cursor: pointer;">
         <div class="explanation-title">
@@ -615,6 +665,7 @@ export default {
           <div v-if="task.explanation" class="explanation-content">
             <span v-html="sanitizeHtml(formattedExplanation)"></span>
           </div>      
+          
           <!-- Изображения пояснения -->
           <div v-if="hasExplanationImages" class="explanation-images">
             <div class="image-grid">
@@ -637,6 +688,7 @@ export default {
       </transition>
     </div>
 
+    <!-- Модальное окно для изображений -->
     <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
       <div class="modal-content">
         <img :src="selectedImage" class="modal-image">
@@ -647,7 +699,8 @@ export default {
 </template>
 
 <style scoped>
-/* Все стили остаются без изменений */
+/* Все существующие стили остаются */
+
 *{
   font-family: Evolventa;
 }
@@ -691,10 +744,12 @@ export default {
   display: block;
   margin-top: 0.2rem;
 }
+
 .task-meta {
   flex: 1;
-  min-width: 0; /* Предотвращает переполнение */
+  min-width: 0;
 }
+
 .task-status {
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
@@ -724,6 +779,7 @@ export default {
   background: #ffebee;
   color: #c62828;
 }
+
 .show-answer-container {
   margin-bottom: 0.6rem;
 }
@@ -752,6 +808,7 @@ export default {
   color: #2e7d32;
   font-weight: 500;
 }
+
 .answer-feedback {
   padding: 0.75rem;
   border-radius: 0.4rem;
@@ -854,6 +911,7 @@ export default {
   margin-bottom: 0.4rem;
 }
 
+/* Стили для структурированных таблиц */
 .task-table-container {
   margin: 1rem 0;
   overflow-x: auto;
@@ -890,6 +948,47 @@ export default {
   background-color: #f9f9f9;
 }
 
+/* Стили для HTML таблиц */
+.html-tables-container {
+  margin: 1rem 0;
+}
+
+.html-table-wrapper {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.html-table-content {
+  width: 100%;
+}
+
+.html-table-content :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.html-table-content :deep(table) {
+  border: 1px solid #ddd;
+}
+
+.html-table-content :deep(td),
+.html-table-content :deep(th) {
+  border: 1px solid #ddd;
+  padding: 8px;
+  vertical-align: top;
+}
+
+.html-table-content :deep(th) {
+  background-color: #f5f5f5;
+  font-weight: bold;
+}
+
+.html-table-content :deep(tr:nth-child(even)) {
+  background-color: #f9f9f9;
+}
+
+/* Остальные стили остаются без изменений */
 .task-images {
   margin-bottom: 1.25rem;
 }
@@ -953,6 +1052,7 @@ export default {
   display: block;
   margin-bottom: 0.3rem;
 }
+
 .explanation-content :deep(p) {
   margin-bottom: 0.8rem;
   line-height: 1.5;
@@ -967,6 +1067,7 @@ export default {
   display: block;
   margin-bottom: 0.4rem;
 }
+
 .feedback-content :deep(ul),
 .feedback-content :deep(ol),
 .correct-answer :deep(ul),
@@ -992,6 +1093,7 @@ export default {
   margin: 0.3rem 0;
   display: inline;
 }
+
 .answer-section {
   margin-top: 1.25rem;
 }
@@ -1048,9 +1150,11 @@ export default {
 .incorrect-feedback .feedback-content strong {
   color: #b71c1c;
 }
+
 .submit-button:hover {
   background-color: #9a36b8;
 }
+
 .explanation-section {
   margin-top: 1.5rem;
   padding: 1rem;
@@ -1078,6 +1182,7 @@ export default {
 .explanation-content  p:last-child {
   margin-bottom: 0;
 }
+
 .answer-feedback, .correct-answer {
   padding: 0.75rem;
   border-radius: 0.4rem;
@@ -1248,6 +1353,18 @@ export default {
     width: 2rem;
     height: 2rem;
     font-size: 1.2rem;
+  }
+  
+  /* Адаптивные стили для таблиц */
+  .task-table-container,
+  .html-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .task-table-container table,
+  .html-table-content :deep(table) {
+    min-width: 500px;
   }
 }
 </style>
