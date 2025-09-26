@@ -1405,7 +1405,7 @@ const isSecondPartTask = (task) => {
                           </span>
                           
                           <!-- Панель оценки куратора для заданий второй части -->
-                          <div v-if="isTutorMode && isSecondPartTask(task)" class="tutor-scoring-panel">
+                          <div v-if="isTutorMode" class="tutor-scoring-panel">
                             <span class="score-label">Оценка куратора:</span>
                             <select 
                               v-model="task.manualScore" 
