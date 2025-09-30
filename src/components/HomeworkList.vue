@@ -762,4 +762,4 @@ export default {
     padding: 0.75rem;
   }
 }
-</style>  
+</style>

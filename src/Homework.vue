@@ -148,7 +148,6 @@ export default {
   setup() {
     const homeworkData = ref({
       homework_name: '',
-
       lesson_number: '',
       lesson_name: '',
       deadline: null
@@ -162,15 +161,36 @@ export default {
     const showImageModal = ref(false)
     const selectedImage = ref('')
     const showAnswers = ref(false)
-    const subject = ref('')
+    const subject = ref('') // chemistry или biology
+    const examType = ref('') // ege или oge
     const homeworkId = ref('')
     const editInput = ref(null)
 
     // Получаем параметры из URL
     const getUrlParams = () => {
       const params = new URLSearchParams(window.location.search)
+      const subjectParam = params.get('subject') // chemistry или biology
+      const examTypeParam = params.get('exam_type') // ege или oge
+      
+      // Если exam_type не передан, пытаемся определить из старого формата
+      let finalSubject = subjectParam
+      let finalExamType = examTypeParam
+      
+      if (!finalExamType && subjectParam) {
+        // Старый формат: subject=chemistry_ege
+        if (subjectParam.includes('_')) {
+          const parts = subjectParam.split('_')
+          finalSubject = parts[0]
+          finalExamType = parts[1]
+        } else {
+          // По умолчанию ЕГЭ для обратной совместимости
+          finalExamType = 'ege'
+        }
+      }
+      
       return {
-        subject: params.get('subject'),
+        subject: finalSubject,
+        exam_type: finalExamType,
         homework_id: params.get('homework_id'),
         homework_name: params.get('homework_name'),
         lesson_number: params.get('lesson_number'),
@@ -182,6 +202,7 @@ export default {
 
     const urlParams = getUrlParams()
     subject.value = urlParams.subject
+    examType.value = urlParams.exam_type
     homeworkId.value = urlParams.homework_id
 
     homeworkData.value = {
@@ -217,6 +238,22 @@ export default {
     const isTutorMode = computed(() => {
       return urlParams.view_mode === 'tutor';
     });
+
+    // Получение названий таблиц на основе subject и examType
+    const getTableNames = () => {
+      if (!subject.value || !examType.value) {
+        throw new Error('Не указаны subject и exam_type')
+      }
+      
+      const baseTable = `${subject.value}_${examType.value}`
+      return {
+        homeworkList: `${baseTable}_homework_list`,
+        homeworkTasks: `${baseTable}_homework_tasks`,
+        taskBank: `${baseTable}_task_bank`,
+        progress: `${baseTable}_progress`,
+        homeworkCompleted: `${baseTable}_homework_completed`
+      }
+    }
 
     // Метод для перенаправления в меню
     async function redirectToMenu() {
@@ -270,30 +307,30 @@ export default {
     }
 
     // Форматирование текста с абзацами
-const formatTextWithParagraphs = (text) => {
-  if (!text) return '';
-  
-  // Если текст уже содержит HTML-теги (кроме простых тегов форматирования), возвращаем как есть
-  const hasComplexHTML = /<(?!\/?(sub|sup|br|strong|em|p)\b)[^>]+>/i.test(text);
-  
-  if (hasComplexHTML) {
-    return text;
-  }
-  
-  // Обрабатываем только простой текст без сложной HTML-разметки
-  let formattedText = text
-    .trim()
-    .replace(/\r\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>');
-  
-  if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
-    formattedText = `<p>${formattedText}</p>`;
-  }
-  
-  return formattedText;
-}
+    const formatTextWithParagraphs = (text) => {
+      if (!text) return '';
+      
+      // Если текст уже содержит HTML-теги (кроме простых тегов форматирования), возвращаем как есть
+      const hasComplexHTML = /<(?!\/?(sub|sup|br|strong|em|p)\b)[^>]+>/i.test(text);
+      
+      if (hasComplexHTML) {
+        return text;
+      }
+      
+      // Обрабатываем только простой текст без сложной HTML-разметки
+      let formattedText = text
+        .trim()
+        .replace(/\r\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+      
+      if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
+        formattedText = `<p>${formattedText}</p>`;
+      }
+      
+      return formattedText;
+    }
 
     // Форматирование текста ответа
     const formatAnswerText = (text) => {
@@ -331,42 +368,41 @@ const formatTextWithParagraphs = (text) => {
     }
 
     // Получение пояснения с поддержкой изображений
-const getExplanationContent = (task) => {
-  let content = '';
-  // Внутри функции getExplanationContent добавьте отладочный вывод
-console.log('image_explanation data:', task.image_explanation);
-console.log('Type of image_explanation:', typeof task.image_explanation);
-  // Добавляем текстовое пояснение с абзацами
-  if (task.explanation) {
-    content += formatTextWithParagraphs(task.explanation);
-  }
-  
-  // Добавляем изображения пояснения если есть (обрабатываем массив)
-  if (task.image_explanation && Array.isArray(task.image_explanation)) {
-    task.image_explanation.forEach(imagePath => {
-      if (typeof imagePath === 'string') {
-        const imageUrl = getImageUrl(imagePath);
+    const getExplanationContent = (task) => {
+      let content = '';
+      
+      // Добавляем текстовое пояснение с абзацами
+      if (task.explanation) {
+        content += formatTextWithParagraphs(task.explanation);
+      }
+      
+      // Добавляем изображения пояснения если есть (обрабатываем массив)
+      if (task.image_explanation && Array.isArray(task.image_explanation)) {
+        task.image_explanation.forEach(imagePath => {
+          if (typeof imagePath === 'string') {
+            const imageUrl = getImageUrl(imagePath);
+            content += `<div class="explanation-image-container">
+              <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
+            </div>`;
+          }
+        });
+      } else if (typeof task.image_explanation === 'string') {
+        // Обработка для случая, когда image_explanation - строка
+        const imageUrl = getImageUrl(task.image_explanation);
         content += `<div class="explanation-image-container">
           <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
         </div>`;
       }
-    });
-  } else if (typeof task.image_explanation === 'string') {
-    // Обработка для случая, когда image_explanation - строка
-    const imageUrl = getImageUrl(task.image_explanation);
-    content += `<div class="explanation-image-container">
-      <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
-    </div>`;
-  }
-  
-  return content;
-}
+      
+      return content;
+    }
+
     // Получение URL изображения
     const getImageUrl = (imagePath) => {
       if (!imagePath) return '';
       if (typeof imagePath !== 'string') return '';
       if (imagePath.startsWith('http')) return imagePath;
-      console.log('url изображения', imagePath)
+      
       try {
         const { data: { publicUrl } } = supabase
           .storage
@@ -480,34 +516,34 @@ console.log('Type of image_explanation:', typeof task.image_explanation);
     }
 
     // Сохранение ответа
-const saveAnswer = async (task) => {
-  if (!task.userAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
-    alert('Пожалуйста, введите ответ или прикрепите изображение');
-    return;
-  }
+    const saveAnswer = async (task) => {
+      if (!task.userAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
+        alert('Пожалуйста, введите ответ или прикрепите изображение');
+        return;
+      }
 
-  try {
-    task.saving = true;
-    const userAnswer = task.userAnswerInput.trim();
-    
-    task.userAnswer = userAnswer;
-    
-    await saveTaskProgress(task, false);
-    
-    // Устанавливаем флаг, что ответ сохранен
-    task.answerSaved = true;
-    setTimeout(() => {
-      task.answerSaved = false;
-    }, 3000);
-    
-    task.saving = false;
+      try {
+        task.saving = true;
+        const userAnswer = task.userAnswerInput.trim();
+        
+        task.userAnswer = userAnswer;
+        
+        await saveTaskProgress(task, false);
+        
+        // Устанавливаем флаг, что ответ сохранен
+        task.answerSaved = true;
+        setTimeout(() => {
+          task.answerSaved = false;
+        }, 3000);
+        
+        task.saving = false;
 
-  } catch (err) {
-    console.error('Ошибка сохранения ответа:', err);
-    task.saving = false;
-    error.value = 'Ошибка при сохранении ответа: ' + err.message;
-  }
-}
+      } catch (err) {
+        console.error('Ошибка сохранения ответа:', err);
+        task.saving = false;
+        error.value = 'Ошибка при сохранении ответа: ' + err.message;
+      }
+    }
 
     // Сохранение прогресса выполнения задания
     const saveTaskProgress = async (task, checkCorrectness = false) => {
@@ -534,7 +570,7 @@ const saveAnswer = async (task) => {
       }
 
       try {
-        const progressTable = `${subject.value}_progress`;
+        const tableNames = getTableNames();
         const progressData = {
           user_id: user_id.value,
           task_id: task.task_id,
@@ -546,7 +582,7 @@ const saveAnswer = async (task) => {
         };
 
         const { error } = await supabase
-          .from(progressTable)
+          .from(tableNames.progress)
           .upsert(progressData, {
             onConflict: 'user_id,task_id'
           });
@@ -570,9 +606,9 @@ const saveAnswer = async (task) => {
         task.isCorrect = manualScore === task.points;
         task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points;
         
-        const progressTable = `${subject.value}_progress`;
+        const tableNames = getTableNames();
         const { error } = await supabase
-          .from(progressTable)
+          .from(tableNames.progress)
           .upsert({
             user_id: user_id.value,
             task_id: task.task_id,
@@ -604,8 +640,9 @@ const saveAnswer = async (task) => {
       const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
       
       try {
+        const tableNames = getTableNames();
         const { error } = await supabase
-          .from(`${subject.value}_homework_completed`)
+          .from(tableNames.homeworkCompleted)
           .upsert({
             homework_id: parseInt(homeworkId.value),
             user_id: user_id.value,
@@ -640,6 +677,7 @@ const saveAnswer = async (task) => {
 
         updateTotalScore();
 
+        const tableNames = getTableNames();
         const completionData = {
           homework_id: parseInt(homeworkId.value),
           user_id: user_id.value,
@@ -649,7 +687,7 @@ const saveAnswer = async (task) => {
         };
 
         const { error: completionError } = await supabase
-          .from(`${subject.value}_homework_completed`)
+          .from(tableNames.homeworkCompleted)
           .upsert(completionData, {
             onConflict: 'user_id,homework_id'
           });
@@ -682,12 +720,14 @@ const saveAnswer = async (task) => {
           throw new Error('Пользователь не авторизован')
         }
 
-        if (!subject.value || !homeworkId.value) {
-          throw new Error('Не указаны параметры домашнего задания')
+        if (!subject.value || !examType.value || !homeworkId.value) {
+          throw new Error('Не указаны параметры домашнего задания (subject, exam_type, homework_id)')
         }
 
+        const tableNames = getTableNames();
+
         const { data: homeworkInfo, error: homeworkInfoError } = await supabase
-          .from(`${subject.value}_homework_list`)
+          .from(tableNames.homeworkList)
           .select('deadline, homework_name, lesson_number, lesson_name')
           .eq('homework_id', homeworkId.value)
           .single()
@@ -705,7 +745,7 @@ const saveAnswer = async (task) => {
         }
 
         const { data: homeworkTasks, error: homeworkError } = await supabase
-          .from(`${subject.value}_homework_tasks`)
+          .from(tableNames.homeworkTasks)
           .select('*')
           .eq('homework_id', homeworkId.value)
           .order('number', { ascending: true })
@@ -720,7 +760,7 @@ const saveAnswer = async (task) => {
 
         const taskIds = homeworkTasks.map(task => task.task_id)
         const { data: taskDetails, error: taskError } = await supabase
-          .from(`${subject.value}_task_bank`)
+          .from(tableNames.taskBank)
           .select('*')
           .in('id', taskIds)
 
@@ -773,11 +813,11 @@ const saveAnswer = async (task) => {
       if (!user_id.value) return
 
       try {
+        const tableNames = getTableNames();
         const taskIds = tasks.value.map(task => task.task_id)
-        const progressTable = `${subject.value}_progress`;
         
         const { data: progressData, error: progressError } = await supabase
-          .from(progressTable)
+          .from(tableNames.progress)
           .select('*')
           .eq('user_id', user_id.value)
           .in('task_id', taskIds)
@@ -788,7 +828,7 @@ const saveAnswer = async (task) => {
         }
 
         const { data: completionData } = await supabase
-          .from(`${subject.value}_homework_completed`)
+          .from(tableNames.homeworkCompleted)
           .select('is_completed')
           .eq('homework_id', homeworkId.value)
           .eq('user_id', user_id.value)
@@ -817,13 +857,14 @@ const saveAnswer = async (task) => {
       }
     }
 
-    // Проверка статус выполнения домашнего задания
+    // Проверка статуса выполнения домашнего задания
     const checkHomeworkCompletion = async () => {
       if (!user_id.value) return
 
       try {
+        const tableNames = getTableNames();
         const { data: completionData, error: completionError } = await supabase
-          .from(`${subject.value}_homework_completed`)
+          .from(tableNames.homeworkCompleted)
           .select('*')
           .eq('homework_id', homeworkId.value)
           .eq('user_id', user_id.value)
@@ -846,56 +887,56 @@ const saveAnswer = async (task) => {
     }
 
     // Обработка загрузки изображений для ответа
-const handleImageUpload = async (task, event) => {
-  const files = event.target.files;
-  if (!files || files.length === 0) return;
+    const handleImageUpload = async (task, event) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
 
-  try {
-    task.uploadingImages = true;
-    const newImages = [];
+      try {
+        task.uploadingImages = true;
+        const newImages = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      
-      if (!file.type.startsWith('image/')) {
-        alert('Пожалуйста, загружайте только изображения');
-        continue;
-      }
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          
+          if (!file.type.startsWith('image/')) {
+            alert('Пожалуйста, загружайте только изображения');
+            continue;
+          }
 
-      if (file.size > 25 * 1024 * 1024) {
-        alert('Размер файла не должен превышать 25MB');
-        continue;
-      }
+          if (file.size > 25 * 1024 * 1024) {
+            alert('Размер файла не должен превышать 25MB');
+            continue;
+          }
 
-      const imagePath = await uploadAnswerImage(task, file);
-      if (imagePath) {
-        newImages.push(imagePath);
+          const imagePath = await uploadAnswerImage(task, file);
+          if (imagePath) {
+            newImages.push(imagePath);
+          }
+        }
+
+        if (newImages.length > 0) {
+          task.answerImages = [...(task.answerImages || []), ...newImages];
+          task.userAnswerInput = '';
+          task.userAnswer = '';
+          
+          // Устанавливаем флаг, что ответ сохранен (для изображений)
+          task.answerSaved = true;
+          await saveTaskProgress(task, false);
+          
+          // Скрываем сообщение через 3 секунды
+          setTimeout(() => {
+            task.answerSaved = false;
+          }, 3000);
+        }
+
+      } catch (err) {
+        console.error('Ошибка загрузки изображений:', err);
+        error.value = 'Ошибка при загрузке изображений: ' + err.message;
+      } finally {
+        task.uploadingImages = false;
+        event.target.value = '';
       }
     }
-
-    if (newImages.length > 0) {
-      task.answerImages = [...(task.answerImages || []), ...newImages];
-      task.userAnswerInput = '';
-      task.userAnswer = '';
-      
-      // Устанавливаем флаг, что ответ сохранен (для изображений)
-      task.answerSaved = true;
-      await saveTaskProgress(task, false);
-      
-      // Скрываем сообщение через 3 секунды
-      setTimeout(() => {
-        task.answerSaved = false;
-      }, 3000);
-    }
-
-  } catch (err) {
-    console.error('Ошибка загрузки изображений:', err);
-    error.value = 'Ошибка при загрузке изображений: ' + err.message;
-  } finally {
-    task.uploadingImages = false;
-    event.target.value = '';
-  }
-}
 
     // Привязка обработчиков к изображениям пояснений
     const bindExplanationImageHandlers = () => {
@@ -1032,17 +1073,33 @@ const handleImageUpload = async (task, event) => {
     }
 
     // Проверяем, является ли задание второй частью
-// Проверяем, является ли задание второй частью
-const isSecondPartTask = (task) => {
-  return task.part === 'Вторая часть';
-}
+    const isSecondPartTask = (task) => {
+      return task.part === 'Вторая часть';
+    }
+
+    // Получение отображаемого названия предмета
+    const getDisplaySubjectName = computed(() => {
+      const subjectNames = {
+        'chemistry': 'Химия',
+        'biology': 'Биология'
+      };
+      const examTypeNames = {
+        'ege': 'ЕГЭ',
+        'oge': 'ОГЭ'
+      };
+      
+      const subjectName = subjectNames[subject.value] || subject.value;
+      const examTypeName = examTypeNames[examType.value] || examType.value;
+      
+      return `${subjectName} ${examTypeName}`;
+    });
 
     // Следим за изменениями баллов
     onMounted(() => {
-      if (subject.value && homeworkId.value) {
+      if (subject.value && examType.value && homeworkId.value) {
         fetchHomeworkTasks()
       } else {
-        error.value = 'Не указаны параметры домашнего задания'
+        error.value = 'Не указаны параметры домашнего задания (subject, exam_type, homework_id)'
         loading.value = false
       }
 
@@ -1118,7 +1175,8 @@ const isSecondPartTask = (task) => {
       handleImageUpload,
       removeAnswerImage,
       isSecondPartTask,
-      toggleExplanation
+      toggleExplanation,
+      getDisplaySubjectName
     }
   }
 }
@@ -1405,7 +1463,7 @@ const isSecondPartTask = (task) => {
                           </span>
                           
                           <!-- Панель оценки куратора для заданий второй части -->
-                          <div v-if="isTutorMode  " class="tutor-scoring-panel">
+                          <div v-if="isTutorMode" class="tutor-scoring-panel">
                             <span class="score-label">Оценка куратора:</span>
                             <select 
                               v-model="task.manualScore" 
