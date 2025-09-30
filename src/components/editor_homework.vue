@@ -4,15 +4,18 @@
       <div class="title">Редактор Домашек</div>
       <div class="subject-selector">
         <select v-model="selectedSubject" class="subject-dropdown">
-          <option value="biology">Биология ЕГЭ</option>
-          <option value="chemistry">Химия ЕГЭ</option>
+          <option value="biology_ege">Биология ЕГЭ</option>
+          <option value="chemistry_ege">Химия ЕГЭ</option>
+          <option value="biology_oge">Биология ОГЭ</option>
+          <option value="chemistry_oge">Химия ОГЭ</option>
         </select>
       </div>
     </div>
     
     <div class="block_of_content">
       <EgeHomeworkEditor
-      :subject="selectedSubject"
+      :subject="getSubjectKey(selectedSubject)"
+      :exam-type="getExamType(selectedSubject)"
       @homework-selected="handleHomeworkSelect"
       />
     </div>
@@ -28,13 +31,25 @@ export default {
   },
   data() {
     return {
-      selectedSubject: 'biology' // По умолчанию выбрана биология
+      selectedSubject: 'biology_ege' // По умолчанию выбрана биология ЕГЭ
     }
   },
-    methods: {
+  methods: {
     handleHomeworkSelect(homeworkData) {
       console.log('Выбрана домашняя работа:', homeworkData)
       // Здесь можно сохранить данные или выполнить другие действия
+    },
+    
+    getSubjectKey(subjectValue) {
+      if (subjectValue.includes('biology')) return 'biology'
+      if (subjectValue.includes('chemistry')) return 'chemistry'
+      return 'biology'
+    },
+    
+    getExamType(subjectValue) {
+      if (subjectValue.includes('ege')) return 'ege'
+      if (subjectValue.includes('oge')) return 'oge'
+      return 'ege'
     }
   }
 }
@@ -79,6 +94,7 @@ export default {
   background-color: white;
   cursor: pointer;
   transition: all 0.3s ease;
+  min-width: 200px;
 }
 
 .subject-dropdown:hover {
@@ -101,11 +117,22 @@ export default {
     flex-direction: column;
     align-items: flex-start;
   }
+  
+  .subject-dropdown {
+    min-width: 150px;
+    font-size: 0.9rem;
+  }
 }
 
 @media (max-width: 480px) {
   .title {
     font-size: 1.2rem;
+  }
+  
+  .subject-dropdown {
+    min-width: 120px;
+    font-size: 0.8rem;
+    padding: 6px 12px;
   }
 }
 </style>

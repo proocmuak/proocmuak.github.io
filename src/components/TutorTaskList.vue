@@ -32,7 +32,9 @@ console.log('Task number filter:', this.filters.taskNumber);
       // Конфигурация для разных предметов
       const partConfig = {
         'Химия ЕГЭ': { firstPartMax: 28 },
-        'Биология ЕГЭ': { firstPartMax: 21 }
+        'Биология ЕГЭ': { firstPartMax: 21 },
+        'Химия ОГЭ': { firstPartMax: 19 },
+        'Биология ОГЭ': { firstPartMax: 21 }
       };
       
       const config = partConfig[this.filters.subject];
@@ -64,15 +66,14 @@ console.log('Task number filter:', this.filters.taskNumber);
         }
         
         // Фильтрация по номеру задания
-      // Замените блок фильтрации по номеру задания на:
-if (this.filters.taskNumber && this.filters.taskNumber.length > 0) {
-  // Преобразуем фильтры в строки и сравниваем со строковым значением задачи
-  const taskNumbers = this.filters.taskNumber.map(num => String(num));
-  
-  if (!taskNumbers.includes(String(task.number))) {
-    return false;
-  }
-}
+        if (this.filters.taskNumber && this.filters.taskNumber.length > 0) {
+          // Преобразуем фильтры в строки и сравниваем со строковым значением задачи
+          const taskNumbers = this.filters.taskNumber.map(num => String(num));
+          
+          if (!taskNumbers.includes(String(task.number))) {
+            return false;
+          }
+        }
         
         return true;
       });

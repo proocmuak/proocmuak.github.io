@@ -174,8 +174,12 @@ export default {
 
     // Функция для открытия домашнего задания
     const openHomework = (homework) => {
+      const subjectKey = getSubjectKeyFromTable(selectedSubject.value)
+      const examType = getExamTypeFromTable(selectedSubject.value)
+      
       const params = new URLSearchParams({
-        subject: selectedSubject.value,
+        subject: subjectKey,
+        exam_type: examType,
         homework_id: homework.homework_id,
         homework_name: homework.homework_name,
         lesson_number: homework.lesson_number,
@@ -269,6 +273,20 @@ export default {
       const accessField = subjectOption.accessField
       studentAccessFrom.value = studentData.value[accessField]
       console.log(`Дата доступа для ${subjectOption.label}:`, studentAccessFrom.value)
+    }
+
+    // Получение ключа предмета из имени таблицы
+    const getSubjectKeyFromTable = (tableName) => {
+      if (tableName.includes('chemistry')) return 'chemistry'
+      if (tableName.includes('biology')) return 'biology'
+      return 'biology'
+    }
+
+    // Получение типа экзамена из имени таблицы
+    const getExamTypeFromTable = (tableName) => {
+      if (tableName.includes('_ege')) return 'ege'
+      if (tableName.includes('_oge')) return 'oge'
+      return 'ege'
     }
 
     async function fetchHomeworks() {
@@ -409,44 +427,6 @@ export default {
 </script>
 
 <style scoped>
-/* Стили остаются без изменений */
-.lesson-date {
-  font-size: 0.8rem;
-  opacity: 0.8;
-  margin: 0.25rem 0 0.75rem 0;
-}
-
-.homework-card:not(.completed) .lesson-date {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.homework-card.completed .lesson-date {
-  color: rgba(0, 0, 0, 0.6);
-}
-
-/* Остальные стили из предыдущего кода */
-</style>
-
-<style scoped>
-/* Стили остаются без изменений */
-.lesson-date {
-  font-size: 0.8rem;
-  opacity: 0.8;
-  margin: 0.25rem 0 0.75rem 0;
-}
-
-.homework-card:not(.completed) .lesson-date {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.homework-card.completed .lesson-date {
-  color: rgba(0, 0, 0, 0.6);
-}
-
-/* Остальные стили из предыдущего кода */
-</style>
-
-<style scoped>
 .homework-container {
   max-width: 75rem;
   margin: 0 auto;
@@ -561,6 +541,20 @@ export default {
 
 .homework-card.completed .lesson-info {
   color: rgba(0, 0, 0, 0.8);
+}
+
+.lesson-date {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin: 0.25rem 0 0.75rem 0;
+}
+
+.homework-card:not(.completed) .lesson-date {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.homework-card.completed .lesson-date {
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .homework-details {
@@ -768,4 +762,4 @@ export default {
     padding: 0.75rem;
   }
 }
-</style>
+</style>  

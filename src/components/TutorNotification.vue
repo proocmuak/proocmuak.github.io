@@ -235,10 +235,11 @@ export default {
 
         // Получаем баллы студента
         const subjectKey = getSubjectKey(notification.subject);
+        const examType = getExamType(notification.subject);
         let score = 0;
         
-        if (subjectKey) {
-          const ratingTable = `${subjectKey}_rating`;
+        if (subjectKey && examType) {
+          const ratingTable = `${subjectKey}_${examType}_rating`;
           const { data: ratingData } = await supabase
             .from(ratingTable)
             .select('total_score')
@@ -261,16 +262,16 @@ export default {
         console.log('Данные студента:', student);
 
         // Получаем subject и examType из уведомления
-        const [subject, examType] = notification.subject.split('_');
+        const [subject, examTypeFromSubject] = notification.subject.split('_');
         
         // Устанавливаем данные для отображения компонента StudentHomework
         selectedStudent.value = student;
         selectedSubject.value = subject;
-        selectedExamType.value = examType;
+        selectedExamType.value = examTypeFromSubject;
 
         console.log('Параметры для StudentHomework:', {
           subject: subject,
-          examType: examType,
+          examType: examTypeFromSubject,
           student: student
         });
 
@@ -294,6 +295,12 @@ export default {
     const getSubjectKey = (subjectName) => {
       if (subjectName.includes('biology')) return 'biology';
       if (subjectName.includes('chemistry')) return 'chemistry';
+      return '';
+    };
+
+    const getExamType = (subjectName) => {
+      if (subjectName.includes('_ege')) return 'ege';
+      if (subjectName.includes('_oge')) return 'oge';
       return '';
     };
 

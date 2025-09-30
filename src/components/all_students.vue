@@ -243,9 +243,10 @@ export default {
                   return null
                 }
                 
-                // Получаем баллы из таблицы рейтинга
+                // Получаем баллы из таблицы рейтинга (обновлено для ОГЭ)
                 const subjectKey = this.getSubjectKey(this.selectedSubject)
-                const ratingTable = `${subjectKey}_rating`
+                const examType = this.getExamType(this.selectedSubject)
+                const ratingTable = `${subjectKey}_${examType}_rating`
                 
                 const { data: ratingData } = await supabase
                   .from(ratingTable)
@@ -300,6 +301,7 @@ export default {
 </script>
 
 <style scoped>
+/* Стили остаются без изменений */
 .teacher-students-container {
   padding: clamp(1rem, 2vw, 1.25rem);
   max-width: 85rem;

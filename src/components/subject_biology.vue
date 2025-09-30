@@ -81,13 +81,13 @@ export default {
     async fetchBiologyRating() {
       try {
         const { data, error } = await supabase
-          .from('biology_rating')
+          .from('biology_ege_rating')
           .select('total_score')
           .eq('user_id', this.user_id)
           .single()
 
         if (error && error.code === 'PGRST116') {
-          await supabase.from('biology_rating').insert([{ 
+          await supabase.from('biology_ege_rating').insert([{ 
             user_id: this.user_id, 
             total_score: 0 
           }])
@@ -104,7 +104,7 @@ export default {
     async calculateGlobalRating() {
       try {
         const { data: allRatings, error } = await supabase
-          .from('biology_rating')
+          .from('biology_ege_rating')
           .select('user_id, total_score')
           .order('total_score', { ascending: false })
 

@@ -261,7 +261,8 @@ export default {
           filteredStudents.map(async (student) => {
             try {
               const subjectKey = this.getSubjectKey(this.selectedSubject);
-              const ratingTable = `${subjectKey}_rating`;
+              const examType = this.getExamType(this.selectedSubject);
+              const ratingTable = `${subjectKey}_${examType}_rating`;
               
               // Получаем баллы из таблицы рейтинга
               const { data: ratingData, error: ratingError } = await supabase

@@ -28,7 +28,6 @@ import { ref } from 'vue'
 import SubjectButton from './SubjectButton.vue'
 import TableEditor from './TableEditor.vue'
 
-
 // Конфигурация предметов
 const subjects = [
   {
@@ -40,7 +39,9 @@ const subjects = [
       { name: 'date', label: 'Дата', type: 'date' },
       { name: 'video', label: 'Видео', type: 'text' },
       { name: 'content', label: 'Содержание', type: 'textarea' },
-      { name: 'homework', label: 'Домашнее задание', type: 'textarea' }
+      { name: 'homework', label: 'Домашнее задание', type: 'textarea' },
+      { name: 'workbook', label: 'Рабочая тетрадь', type: 'textarea' },
+      { name: 'practice', label: 'Практика', type: 'textarea' }
     ]
   },
   {
@@ -52,10 +53,12 @@ const subjects = [
       { name: 'date', label: 'Дата', type: 'date' },
       { name: 'video', label: 'Видео', type: 'text' },
       { name: 'content', label: 'Содержание', type: 'textarea' },
-      { name: 'homework', label: 'Домашнее задание', type: 'textarea' }
+      { name: 'homework', label: 'Домашнее задание', type: 'textarea' },
+      { name: 'workbook', label: 'Рабочая тетрадь', type: 'textarea' },
+      { name: 'practice', label: 'Практика', type: 'textarea' }
     ]
   },
-    {
+  {
     title: 'Химия ОГЭ',
     tableName: 'chemistry_oge',
     fields: [
@@ -64,10 +67,12 @@ const subjects = [
       { name: 'date', label: 'Дата', type: 'date' },
       { name: 'video', label: 'Видео', type: 'text' },
       { name: 'content', label: 'Содержание', type: 'textarea' },
-      { name: 'homework', label: 'Домашнее задание', type: 'textarea' }
+      { name: 'homework', label: 'Домашнее задание', type: 'textarea' },
+      { name: 'workbook', label: 'Рабочая тетрадь', type: 'textarea' },
+      { name: 'practice', label: 'Практика', type: 'textarea' }
     ]
   },
-    {
+  {
     title: 'Биология ОГЭ',
     tableName: 'biology_oge',
     fields: [
@@ -76,9 +81,11 @@ const subjects = [
       { name: 'date', label: 'Дата', type: 'date' },
       { name: 'video', label: 'Видео', type: 'text' },
       { name: 'content', label: 'Содержание', type: 'textarea' },
-      { name: 'homework', label: 'Домашнее задание', type: 'textarea' }
+      { name: 'homework', label: 'Домашнее задание', type: 'textarea' },
+      { name: 'workbook', label: 'Рабочая тетрадь', type: 'textarea' },
+      { name: 'practice', label: 'Практика', type: 'textarea' }
     ]
-  },
+  }
 ]
 
 const activeEditor = ref(null)
@@ -112,8 +119,32 @@ export default {
 
 .subjects-grid {
   display: grid;
-  grid-template-columns: 20% 20% 20% 21%;
-  gap: 5%;
-  height: 70%;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .subjects-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+  }
+  
+  .title {
+    font-size: 4vw;
+  }
+}
+
+@media (max-width: 480px) {
+  .subjects-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  .teacher-menu {
+    padding: 10px;
+  }
 }
 </style>

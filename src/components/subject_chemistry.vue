@@ -89,7 +89,7 @@ export default {
     async fetchChemistryRating() {
       try {
         const { data, error } = await supabase
-          .from('chemistry_rating')
+          .from('chemistry_ege_rating')
           .select('total_score')
           .eq('user_id', this.user_id)
           .single()
@@ -98,7 +98,7 @@ export default {
           // Если записи нет, создаем новую с нулевым счетом
           if (error.code === 'PGRST116') {
             const { error: insertError } = await supabase
-              .from('chemistry_rating')
+              .from('chemistry_ege_rating')
               .insert([{ 
                 user_id: this.user_id, 
                 total_score: 0 
@@ -122,7 +122,7 @@ export default {
       try {
         // Получаем всех пользователей с их баллами, отсортированными по убыванию
         const { data: allRatings, error } = await supabase
-          .from('chemistry_rating')
+          .from('chemistry_ege_rating')
           .select('user_id, total_score')
           .order('total_score', { ascending: false })
 

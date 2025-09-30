@@ -32,7 +32,7 @@ const handleClick = () => {
   grid-template-rows: 50% 20%;
   gap: 20%;
   transition: opacity 0.3s ease;
-  height: 50%;
+  height: 25vw;
   cursor: pointer;
 }
 
