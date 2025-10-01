@@ -3,6 +3,7 @@
     <UniversalLesson
       v-if="selectedLesson"
       table-name="chemistry_oge"
+      :subject="subject"
       :lesson-number="selectedLesson"
       @back-to-calendar="selectedLesson = null"
     />
@@ -10,11 +11,14 @@
     <template v-else>
       <div v-if="loading" class="loading-message">Загрузка уроков...</div>
       <div v-else-if="error" class="error-message">{{ error }}</div>
-      <div v-else-if="lessons.length === 0" class="no-lessons">Нет доступных уроков</div>
+      <div v-else-if="!hasAccess" class="no-access-message">
+        Уроки будут доступны с {{ formatAccessDate(studentAccessFrom) }}
+      </div>
+      <div v-else-if="filteredLessons.length === 0" class="no-lessons">Нет доступных уроков</div>
       
       <div v-else class="lessons-grid">
         <div 
-          v-for="lesson in lessons" 
+          v-for="lesson in filteredLessons" 
           :key="lesson.number"
           class="lesson-card"
           @click="selectLesson(lesson.number)"
@@ -31,7 +35,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../supabase.js'
 import UniversalLesson from './lesson.vue'
 
@@ -39,10 +43,76 @@ const lessons = ref([])
 const selectedLesson = ref(null)
 const loading = ref(false)
 const error = ref(null)
+const subject = ref('chemistry')
+const studentAccessFrom = ref(null)
+const studentData = ref(null)
 
 const selectLesson = (number) => {
   console.log('Выбран урок:', number)
   selectedLesson.value = number
+}
+
+// Проверяем, есть ли у студента доступ к урокам химии
+const hasAccess = computed(() => {
+  if (!studentAccessFrom.value) return false
+  
+  const today = new Date()
+  const accessDate = new Date(studentAccessFrom.value)
+  
+  // Сбрасываем время для корректного сравнения дат
+  today.setHours(0, 0, 0, 0)
+  accessDate.setHours(0, 0, 0, 0)
+  
+  return today >= accessDate
+})
+
+// Фильтруем уроки по дате доступа
+const filteredLessons = computed(() => {
+  if (!hasAccess.value || !studentAccessFrom.value) return []
+  
+  const accessDate = new Date(studentAccessFrom.value)
+  
+  return lessons.value.filter(lesson => {
+    if (!lesson.date) return false
+    
+    const lessonDate = new Date(lesson.date)
+    return lessonDate >= accessDate
+  })
+})
+
+// Загрузка данных студента - для химии используем subject2_access_from
+async function fetchStudentData() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      throw new Error('Пользователь не авторизован')
+    }
+
+    const { data, error: studentError } = await supabase
+      .from('students')
+      .select('subject2_access_from, subject2')
+      .eq('user_id', user.id)
+      .single()
+
+    if (studentError) throw studentError
+    
+    studentData.value = data
+    
+    // Для химии используем subject2_access_from
+    // Также проверяем, что предмет2 установлен как химия
+    if (data?.subject2 && data.subject2.includes('Химия')) {
+      studentAccessFrom.value = data?.subject2_access_from
+    } else {
+      studentAccessFrom.value = null
+    }
+    
+    console.log('Данные студента загружены:', data)
+    console.log('Дата доступа к химии:', studentAccessFrom.value)
+  } catch (err) {
+    console.error('Ошибка загрузки данных студента:', err)
+    // Если нет доступа к данным студента, показываем все уроки
+    studentAccessFrom.value = null
+  }
 }
 
 async function fetchLessons() {
@@ -77,30 +147,26 @@ const formatDate = (dateString) => {
   })
 }
 
+const formatAccessDate = (dateString) => {
+  if (!dateString) return 'даты не указана'
+  return new Date(dateString).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  })
+}
+
 const dateStatus = (dateString) => {
   if (!dateString) return ''
   return new Date(dateString) > new Date() ? 'future-date' : 'past-date'
 }
 
-onMounted(fetchLessons)
+onMounted(async () => {
+  await fetchStudentData()
+  await fetchLessons()
+})
 </script>
 
-<style scoped>
-/* Добавьте эти стили для сообщений */
-.loading-message,
-.error-message,
-.no-lessons {
-  padding: 20px;
-  text-align: center;
-  font-size: 1.2rem;
-}
-
-.error-message {
-  color: #ff4444;
-}
-
-/* Остальные стили остаются без изменений */
-</style>
 <style scoped>
 .lessons-container {
   max-width: 1200px;
@@ -156,6 +222,27 @@ onMounted(fetchLessons)
 .past-date {
   color: #f9f8ff;
   opacity: 0.7;
+}
+
+.loading-message,
+.error-message,
+.no-lessons,
+.no-access-message {
+  padding: 20px;
+  text-align: center;
+  font-size: 1.2rem;
+  margin-top: 50px;
+}
+
+.error-message {
+  color: #ff4444;
+}
+
+.no-access-message {
+  color: #ff9800;
+  background-color: #fff3e0;
+  border-radius: 8px;
+  border-left: 4px solid #ff9800;
 }
 
 @media (max-width: 900px) {

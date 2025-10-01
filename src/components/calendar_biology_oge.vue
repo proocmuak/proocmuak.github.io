@@ -2,7 +2,7 @@
   <div class="lessons-container">
     <UniversalLesson
       v-if="selectedLesson"
-      table-name="chemistry_oge"
+      table-name="biology_oge"
       :subject="subject"
       :lesson-number="selectedLesson"
       @back-to-calendar="selectedLesson = null"
@@ -43,7 +43,7 @@ const lessons = ref([])
 const selectedLesson = ref(null)
 const loading = ref(false)
 const error = ref(null)
-const subject = ref('chemistry')
+const subject = ref('biology')
 const studentAccessFrom = ref(null)
 const studentData = ref(null)
 
@@ -52,7 +52,7 @@ const selectLesson = (number) => {
   selectedLesson.value = number
 }
 
-// Проверяем, есть ли у студента доступ к урокам химии
+// Проверяем, есть ли у студента доступ к урокам биологии
 const hasAccess = computed(() => {
   if (!studentAccessFrom.value) return false
   
@@ -80,7 +80,7 @@ const filteredLessons = computed(() => {
   })
 })
 
-// Загрузка данных студента - для химии используем subject2_access_from
+// Загрузка данных студента - для биологии используем subject2_access_from
 async function fetchStudentData() {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -98,16 +98,16 @@ async function fetchStudentData() {
     
     studentData.value = data
     
-    // Для химии используем subject2_access_from
-    // Также проверяем, что предмет2 установлен как химия
-    if (data?.subject2 && data.subject2.includes('Химия')) {
+    // Для биологии используем subject2_access_from
+    // Также проверяем, что предмет2 установлен как биология
+    if (data?.subject2 && data.subject2.includes('Биология')) {
       studentAccessFrom.value = data?.subject2_access_from
     } else {
       studentAccessFrom.value = null
     }
     
     console.log('Данные студента загружены:', data)
-    console.log('Дата доступа к химии:', studentAccessFrom.value)
+    console.log('Дата доступа к биологии:', studentAccessFrom.value)
   } catch (err) {
     console.error('Ошибка загрузки данных студента:', err)
     // Если нет доступа к данным студента, показываем все уроки
@@ -123,7 +123,7 @@ async function fetchLessons() {
     console.log('Загрузка списка уроков...')
     
     const { data, error: supabaseError } = await supabase
-      .from('chemistry_oge')
+      .from('biology_oge')
       .select('number, title, date')
       .order('number', { ascending: true })
 
