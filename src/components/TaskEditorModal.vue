@@ -339,6 +339,8 @@ import { chem_ege_sections } from '../assets/arrays/list_of_sections.js';
 
 const chemTopicsModules = import.meta.glob('../assets/arrays/topics/chem_ege/*.js', { eager: true });
 const bioTopicsModules = import.meta.glob('../assets/arrays/topics/biology_ege/*.js', { eager: true });
+const chemOgeTopicsModules = import.meta.glob('../assets/arrays/topics/chem_oge/*.js', { eager: true });
+const bioOgeTopicsModules = import.meta.glob('../assets/arrays/topics/biology_oge/*.js', { eager: true });
 
 const processModules = (modules) => {
   const result = {};
@@ -386,7 +388,9 @@ export default {
       parts: ['Первая часть', 'Вторая часть'],
       topicsData: {
         'Химия ЕГЭ': {},
-        'Биология ЕГЭ': {}
+        'Биология ЕГЭ': {},
+        'Химия ОГЭ': {},
+        'Биология ОГЭ': {}
       },
       sectionMappings: {
         'Химия ЕГЭ': {
@@ -414,6 +418,24 @@ export default {
           'Экология': 'ecology',
           'Анализ информации': 'information analysis',
           'Методология эксперимента': 'experimental methodology'
+        },
+        'Химия ОГЭ': {
+          'Основные понятия. Строение атома и периодический закон': 'Basic Concepts. Atomic Structure and the Periodic Law',
+          'Химическая связь и свойства элементов': 'Chemical Bond and Properties of Elements',
+          'Неорганическая химия': 'Inorganic Chemistry',
+          'Химические реакции': 'Chemical Reactions',
+          'Электролитическая диссоциация': 'Electrolytic Dissociation',
+          'Расчёты в химии': 'Calculations in Chemistry',
+          'Практические и экспериментальные задания': 'Practical and Experimental Tasks'
+        },
+        'Биология ОГЭ': {
+          'Биология – наука о живой природе. Методы научного познания': 'Biology - The Science of Living Nature. Methods of Scientific Knowledge',
+          'Среда обитания. Природные и искусственные сообщества. Человек и окружающая среда': 'Habitat. Natural and Artificial Communities',
+          'Эволюционное развитие растений, животных и человека': 'Evolutionary Development of Plants, Animals, and Humans',
+          'Организмы бактерий, грибов и лишайников': 'Organisms of Bacteria, Fungi, and Lichens',
+          'Растительный организм. Систематические группы растений': 'The Plant Organism. Systematic Groups of Plants',
+          'Животный организм. Систематические группы животных': 'The Animal Organism. Systematic Groups of Animals',
+          'Человек и его здоровье': 'Humans and Their Health'
         }
       },
       uploadedImages: [],
@@ -457,23 +479,39 @@ export default {
       return sectionKey ? this.topicsData[this.subject][sectionKey] || this.availableTopics : this.availableTopics;
     },
     filteredTaskNumbers() {
-      const config = this.getSubjectConfig();
-      if (!config) return [];
+      if (!this.subject) return [];
       
-      const numbers = [];
-      const maxNumber = this.editedTask.part === 'Первая часть' 
-        ? config.firstPartMax 
-        : 35;
-      
-      const minNumber = this.editedTask.part === 'Первая часть' 
-        ? 1 
-        : config.firstPartMax + 1;
-      
-      for (let i = minNumber; i <= maxNumber; i++) {
-        numbers.push(i);
+      if (this.subject === 'Химия ЕГЭ') {
+        if (!this.editedTask.part) {
+          return Array.from({length: 34}, (_, i) => i + 1);
+        }
+        return this.editedTask.part === 'Первая часть'
+          ? Array.from({length: 28}, (_, i) => i + 1)
+          : Array.from({length: 6}, (_, i) => i + 29);
+      } else if (this.subject === 'Биология ЕГЭ') {
+        if (!this.editedTask.part) {
+          return Array.from({length: 28}, (_, i) => i + 1);
+        }
+        return this.editedTask.part === 'Первая часть'
+          ? Array.from({length: 21}, (_, i) => i + 1)
+          : Array.from({length: 7}, (_, i) => i + 22);
+      } else if (this.subject === 'Химия ОГЭ') {
+        if (!this.editedTask.part) {
+          return Array.from({length: 23}, (_, i) => i + 1);
+        }
+        return this.editedTask.part === 'Первая часть'
+          ? Array.from({length: 19}, (_, i) => i + 1)
+          : Array.from({length: 4}, (_, i) => i + 20);
+      } else if (this.subject === 'Биология ОГЭ') {
+        if (!this.editedTask.part) {
+          return Array.from({length: 26}, (_, i) => i + 1);
+        }
+        return this.editedTask.part === 'Первая часть'
+          ? Array.from({length: 21}, (_, i) => i + 1)
+          : Array.from({length: 5}, (_, i) => i + 22);
       }
       
-      return numbers;
+      return [];
     }
   },
   watch: {
@@ -538,13 +576,8 @@ export default {
     initializeTopics() {
       this.topicsData['Химия ЕГЭ'] = processModules(chemTopicsModules);
       this.topicsData['Биология ЕГЭ'] = processModules(bioTopicsModules);
-    },
-    getSubjectConfig() {
-      const configs = {
-        'Химия ЕГЭ': { firstPartMax: 28 },
-        'Биология ЕГЭ': { firstPartMax: 21 }
-      };
-      return configs[this.subject];
+      this.topicsData['Химия ОГЭ'] = processModules(chemOgeTopicsModules);
+      this.topicsData['Биология ОГЭ'] = processModules(bioOgeTopicsModules);
     },
     async loadSectionsAndTopics() {
       try {
@@ -554,6 +587,12 @@ export default {
         } else if (this.subject === 'Биология ЕГЭ') {
           this.availableSections = Object.keys(this.sectionMappings['Биология ЕГЭ']);
           this.availableTopics = Object.values(this.topicsData['Биология ЕГЭ']).flat();
+        } else if (this.subject === 'Химия ОГЭ') {
+          this.availableSections = Object.keys(this.sectionMappings['Химия ОГЭ']);
+          this.availableTopics = Object.values(this.topicsData['Химия ОГЭ']).flat();
+        } else if (this.subject === 'Биология ОГЭ') {
+          this.availableSections = Object.keys(this.sectionMappings['Биология ОГЭ']);
+          this.availableTopics = Object.values(this.topicsData['Биология ОГЭ']).flat();
         } else {
           this.availableSections = [];
           this.availableTopics = [];
@@ -901,14 +940,32 @@ export default {
       }
     },
     
-    formatText(editorType, formatType) {
-      const editor = this.$refs[`${editorType}Editor`];
+    updateEditedTask(field, event) {
+      this.editedTask[field] = event.target.innerHTML;
+      
+      if (field === 'text') {
+        const hasTable = event.target.innerHTML.includes('<table');
+        if (hasTable !== this.editedTask.has_table) {
+          this.editedTask.has_table = hasTable;
+        }
+      }
+    },
+    
+    handlePaste(event, field) {
+      event.preventDefault();
+      const text = (event.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, text);
+    },
+    
+    formatText(field, formatType) {
+      const editor = this.$refs[`${field}Editor`];
       if (!editor) return;
       
       editor.focus();
       const selection = window.getSelection();
+      const selectedText = selection.toString();
       
-      if (selection.toString().trim()) {
+      if (selectedText.trim()) {
         if (formatType === 'sub') {
           document.execCommand('subscript');
         } else if (formatType === 'sup') {
@@ -920,316 +977,192 @@ export default {
         document.execCommand('insertHTML', false, `<${tag}>${exampleText}</${tag}>`);
       }
       
-      this.updateEditedTask(editorType, { target: editor });
+      this.updateEditedTask(field, { target: editor });
     },
     
-    clearFormatting(editorType) {
-      const editor = this.$refs[`${editorType}Editor`];
+    clearFormatting(field) {
+      const editor = this.$refs[`${field}Editor`];
       if (!editor) return;
       
       editor.focus();
       document.execCommand('removeFormat');
       document.execCommand('unlink');
-      this.updateEditedTask(editorType, { target: editor });
+      this.updateEditedTask(field, { target: editor });
     },
     
-    updateEditedTask(field, event) {
-      this.editedTask[field] = event.target.innerHTML;
-    },
-    
-    handlePaste(event, field) {
-      event.preventDefault();
-      const text = (event.clipboardData || window.clipboardData).getData('text/html') || 
-                   (event.clipboardData || window.clipboardData).getData('text/plain');
-      
-      document.execCommand('insertHTML', false, text);
-      this.updateEditedTask(field, { target: this.$refs[`${field}Editor`] });
-    },
-    
-    triggerFileInput(type = 'text') {
+    triggerFileInput(type) {
       this.currentUploadType = type;
       this.$refs.fileInput.click();
     },
     
     async handleFileUpload(event) {
-      const files = event.target.files;
-      if (!files.length) return;
+      const files = Array.from(event.target.files);
+      if (files.length === 0) return;
       
       this.isUploading = true;
       this.uploadStatus = `Загрузка ${files.length} файла(ов)...`;
       
       try {
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          
-          if (file.size > 5 * 1024 * 1024) {
-            this.uploadStatus = `Файл ${file.name} слишком большой (макс. 5MB)`;
-            continue;
-          }
-          
-          if (!file.type.match('image.*')) {
-            this.uploadStatus = `Файл ${file.name} не является изображением`;
-            continue;
-          }
-          
-          const preview = await this.getImagePreview(file);
-          
-          const imageData = {
-            file,
-            preview,
-            name: file.name,
-            id: uuidv4()
-          };
-          
-          if (this.currentUploadType === 'explanation') {
-            this.explanationImages.push(imageData);
-          } else {
-            this.uploadedImages.push(imageData);
-          }
+        const uploadPromises = files.map(file => this.uploadImage(file));
+        const uploadedUrls = await Promise.all(uploadPromises);
+        
+        const imageObjects = uploadedUrls.map(url => ({
+          id: uuidv4(),
+          url,
+          preview: url
+        }));
+        
+        if (this.currentUploadType === 'text') {
+          this.uploadedImages.push(...imageObjects);
+        } else if (this.currentUploadType === 'explanation') {
+          this.explanationImages.push(...imageObjects);
         }
         
-        this.updateUploadStatus();
+        this.uploadStatus = `Успешно загружено ${files.length} файла(ов)`;
+        
+        setTimeout(() => {
+          this.uploadStatus = 'Файлы не выбраны';
+        }, 3000);
+        
       } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        this.uploadStatus = 'Ошибка при загрузке файлов';
+        console.error('Ошибка загрузки файлов:', error);
+        this.uploadStatus = 'Ошибка загрузки файлов';
       } finally {
         this.isUploading = false;
-        this.$refs.fileInput.value = '';
+        event.target.value = '';
       }
     },
     
-    updateUploadStatus() {
-      const textCount = this.uploadedImages.length;
-      const explanationCount = this.explanationImages.length;
+    async uploadImage(file) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
+      const filePath = `task-images/${fileName}`;
       
-      this.uploadStatus = `Текст: ${textCount}, Пояснение: ${explanationCount}`;
-    },
-    
-    getImagePreview(file) {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.readAsDataURL(file);
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, file);
+      
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+      
+      const { data } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath);
+      
+      return data.publicUrl;
     },
     
     removeImage(index) {
       this.uploadedImages.splice(index, 1);
-      this.updateUploadStatus();
     },
     
     removeExplanationImage(index) {
       this.explanationImages.splice(index, 1);
-      this.updateUploadStatus();
     },
     
-    removeExistingImages(type) {
-      if (confirm('Вы уверены, что хотите удалить все изображения этого типа?')) {
-        this.existingImagesToRemove[type] = this.task[`image_${type}`] || this.task[type] || [];
-        if (type === 'text') {
-          this.task.images = [];
-        } else if (type === 'answer') {
-          this.task.image_answer = [];
-        } else if (type === 'explanation') {
-          this.task.image_explanation = [];
-        }
-      }
-    },
-    
-    async uploadImagesToStorage(images, folder) {
-      if (!images.length) return [];
+    async removeExistingImages(type) {
+      if (!this.task.id) return;
       
-      const uploadedUrls = [];
-      
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !session) throw new Error('Not authenticated');
-        
-        for (const img of images) {
-          const fileExt = img.name.split('.').pop();
-          const fileName = `${uuidv4()}.${fileExt}`;
-          const subjectFolder = this.subject === 'Химия ЕГЭ' ? 'chemistry' : 'biology';
-          const filePath = `tasks/${subjectFolder}/${folder}/${fileName}`;
-          
-          const { error } = await supabase
-            .storage
-            .from('task-images')
-            .upload(filePath, img.file, {
-              upsert: false,
-              contentType: img.file.type
-            });
-          
-          if (error) throw error;
-          
-          const { data: { publicUrl } } = supabase
-            .storage
-            .from('task-images')
-            .getPublicUrl(filePath);
-            
-          uploadedUrls.push(publicUrl);
-        }
-        
-        return uploadedUrls;
-      } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        throw error;
-      }
-    },
-    
-    async deleteImagesFromStorage(imageUrls) {
-      if (!imageUrls || !imageUrls.length) return;
-      
-      try {
-        const subjectFolder = this.subject === 'Химия ЕГЭ' ? 'chemistry' : 'biology';
-        
-        for (const url of imageUrls) {
-          const pathParts = url.split('/');
-          const fileName = pathParts[pathParts.length - 1];
-          const filePath = `tasks/${subjectFolder}/**/${fileName}`;
-          
-          const { data: files, error: listError } = await supabase
-            .storage
-            .from('task-images')
-            .list(`tasks/${subjectFolder}`, {
-              search: fileName
-            });
-          
-          if (listError) {
-            console.error('Ошибка поиска файла:', listError);
-            continue;
-          }
-          
-          if (files && files.length > 0) {
-            const exactPath = files[0].name;
-            const fullPath = `tasks/${subjectFolder}/${exactPath}`;
-            
-            const { error: deleteError } = await supabase
-              .storage
-              .from('task-images')
-              .remove([fullPath]);
-            
-            if (deleteError) {
-              console.error('Ошибка удаления файла:', deleteError);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Ошибка при удалении изображений:', error);
-      }
-    },
-    
-    closeModal() {
-      this.$emit('close');
-    },
-    
-    async saveTask() {
       this.isLoading = true;
       
       try {
-        if (this.editedTask.has_table && this.$refs.textEditor) {
-          this.syncTableDataFromEditor();
-        }
+        const imageFieldMap = {
+          text: 'images',
+          answer: 'image_answer',
+          explanation: 'image_explanation'
+        };
         
-        const config = this.getSubjectConfig();
-        if (!config) throw new Error('Неизвестный предмет');
+        const field = imageFieldMap[type];
+        if (!field) return;
         
-        const tableName = this.subject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_task_bank' 
-          : 'biology_ege_task_bank';
+        const { data: taskData, error: fetchError } = await supabase
+          .from('tasks')
+          .select(field)
+          .eq('id', this.task.id)
+          .single();
         
-        const [newTextImageUrls, newExplanationImageUrls] = await Promise.all([
-          this.uploadImagesToStorage(this.uploadedImages, 'text'),
-          this.uploadImagesToStorage(this.explanationImages, 'explanation')
-        ]);
+        if (fetchError) throw fetchError;
         
-        await Promise.all([
-          this.deleteImagesFromStorage(this.existingImagesToRemove.text),
-          this.deleteImagesFromStorage(this.existingImagesToRemove.answer),
-          this.deleteImagesFromStorage(this.existingImagesToRemove.explanation)
-        ]);
+        const imagesToRemove = taskData[field] || [];
         
-        const finalTextImages = [
-          ...(this.task.images || []).filter(img => !this.existingImagesToRemove.text.includes(img)),
-          ...newTextImageUrls
-        ];
-        
-        const finalExplanationImages = [
-          ...(this.task.image_explanation || []).filter(img => !this.existingImagesToRemove.explanation.includes(img)),
-          ...newExplanationImageUrls
-        ];
-        
-        const { error } = await supabase
-          .from(tableName)
-          .update({
-            section: this.editedTask.section,
-            topic: this.editedTask.topic,
-            part: this.editedTask.part,
-            number: this.editedTask.number,
-            points: this.editedTask.points,
-            difficulty: this.editedTask.difficulty,
-            text: this.editedTask.text,
-            answer: this.editedTask.answer,
-            explanation: this.editedTask.explanation,
-            has_table: this.editedTask.has_table,
-            table_data: this.editedTask.table_data,
-            images: finalTextImages.length ? finalTextImages : null,
-            image_explanation: finalExplanationImages.length ? finalExplanationImages : null,
-          })
-          .eq('id', this.task.id);
-        
-        if (error) throw error;
-        
-        this.$emit('task-updated', {
-          ...this.task,
-          ...this.editedTask,
-          images: finalTextImages,
-          image_explanation: finalExplanationImages
+        const deletePromises = imagesToRemove.map(async (imageUrl) => {
+          const fileName = imageUrl.split('/').pop();
+          const { error: deleteError } = await supabase.storage
+            .from('images')
+            .remove([`task-images/${fileName}`]);
+          
+          if (deleteError) {
+            console.error('Ошибка удаления файла:', deleteError);
+          }
         });
         
+        await Promise.all(deletePromises);
+        
+        const { error: updateError } = await supabase
+          .from('tasks')
+          .update({ [field]: [] })
+          .eq('id', this.task.id);
+        
+        if (updateError) throw updateError;
+        
+        this.$emit('task-updated');
         this.closeModal();
         
       } catch (error) {
-        console.error('Ошибка сохранения задания:', error);
-        alert('Ошибка при сохранении задания: ' + error.message);
+        console.error('Ошибка удаления изображений:', error);
+        alert('Ошибка удаления изображений');
       } finally {
         this.isLoading = false;
       }
     },
     
-    syncTableDataFromEditor() {
-      const editor = this.$refs.textEditor;
-      if (!editor) return;
-      
-      const tableElement = editor.querySelector('table');
-      if (!tableElement) return;
-      
-      this.parseTableElement(tableElement);
-      this.updateTableData();
-    },
-    
-    async deleteTask() {
-      if (!confirm('Вы уверены, что хотите удалить это задание? Это действие нельзя отменить.')) {
-        return;
-      }
+    async saveTask() {
+      if (!this.isFormValid) return;
       
       this.isLoading = true;
       
       try {
-        const config = this.getSubjectConfig();
-        if (!config) throw new Error('Неизвестный предмет');
-        
-        const tableName = this.subject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_task_bank' 
-          : 'biology_ege_task_bank';
-        
-        await Promise.all([
-          this.deleteImagesFromStorage(this.task.images || []),
-          this.deleteImagesFromStorage(this.task.image_answer || []),
-          this.deleteImagesFromStorage(this.task.image_explanation || [])
-        ]);
+        const updatedTask = {
+          section: this.editedTask.section,
+          topic: this.editedTask.topic,
+          part: this.editedTask.part,
+          number: this.editedTask.number,
+          points: this.editedTask.points,
+          difficulty: this.editedTask.difficulty,
+          text: this.editedTask.text,
+          answer: this.editedTask.answer,
+          explanation: this.editedTask.explanation,
+          has_table: this.editedTask.has_table,
+          table_data: this.editedTask.table_data
+        };
         
         const { error } = await supabase
-          .from(tableName)
+          .from('tasks')
+          .update(updatedTask)
+          .eq('id', this.task.id);
+        
+        if (error) throw error;
+        
+        this.$emit('task-updated');
+        this.closeModal();
+        
+      } catch (error) {
+        console.error('Ошибка сохранения задания:', error);
+        alert('Ошибка сохранения задания');
+      } finally {
+        this.isLoading = false;
+      }
+    },
+    
+    async deleteTask() {
+      if (!confirm('Вы уверены, что хотите удалить это задание?')) return;
+      
+      this.isLoading = true;
+      
+      try {
+        const { error } = await supabase
+          .from('tasks')
           .delete()
           .eq('id', this.task.id);
         
@@ -1240,10 +1173,14 @@ export default {
         
       } catch (error) {
         console.error('Ошибка удаления задания:', error);
-        alert('Ошибка при удалении задания: ' + error.message);
+        alert('Ошибка удаления задания');
       } finally {
         this.isLoading = false;
       }
+    },
+    
+    closeModal() {
+      this.$emit('close');
     }
   }
 };
@@ -1256,22 +1193,22 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
   justify-content: center;
-  z-index: 10000;
-  padding: 20px;
+  align-items: center;
+  z-index: 1000;
 }
 
 .modal-content {
   background: white;
-  border-radius: 12px;
+  border-radius: 8px;
   width: 90%;
-  max-width: 900px;
+  max-width: 800px;
   max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .modal-header {
@@ -1279,12 +1216,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 1px solid #eee;
-  background: #f8f9fa;
-  border-radius: 12px 12px 0 0;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .modal-header h2 {
@@ -1296,43 +1228,44 @@ export default {
 .close-button {
   background: none;
   border: none;
-  font-size: 2rem;
+  font-size: 24px;
   cursor: pointer;
   color: #666;
   padding: 0;
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  transition: background-color 0.2s;
 }
 
 .close-button:hover {
-  background-color: #e9ecef;
   color: #333;
+  background-color: #f0f0f0;
+  border-radius: 50%;
 }
 
 .modal-body {
   padding: 20px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
 }
 
 .form-item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
 }
 
 .form-item label {
-  font-weight: 600;
+  font-weight: 500;
   color: #333;
   font-size: 0.9rem;
 }
@@ -1340,9 +1273,9 @@ export default {
 .points-select {
   padding: 8px 12px;
   border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  font-size: 0.9rem;
+  border-radius: 4px;
+  font-size: 14px;
+  background-color: white;
 }
 
 .text-editor {
@@ -1352,68 +1285,71 @@ export default {
 .text-editor label {
   display: block;
   margin-bottom: 8px;
-  font-weight: 600;
+  font-weight: 500;
   color: #333;
 }
 
 .editor-toolbar {
   display: flex;
-  gap: 8px;
+  gap: 5px;
   margin-bottom: 8px;
-  flex-wrap: wrap;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
 }
 
 .toolbar-button {
-  padding: 6px 12px;
+  padding: 6px 10px;
   border: 1px solid #ddd;
   background: white;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s;
+  font-size: 14px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  min-width: 36px;
+  height: 32px;
 }
 
 .toolbar-button:hover {
-  background: #f8f9fa;
-  border-color: #007bff;
+  background-color: #f0f0f0;
 }
 
-.toolbar-button:active {
-  background: #e3f2fd;
+.toolbar-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .button-text {
-  font-size: 0.9rem;
+  position: relative;
+  font-size: 14px;
 }
 
 .subscript, .superscript {
-  font-size: 0.7em;
-  line-height: 1;
+  font-size: 10px;
+  position: absolute;
 }
 
 .subscript {
-  vertical-align: sub;
+  bottom: -4px;
 }
 
 .superscript {
-  vertical-align: super;
+  top: -4px;
 }
 
 .task-editor {
-  width: 100%;
-  min-height: 80px;
-  padding: 12px;
+  min-height: 100px;
   border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  line-height: 1.4;
-  resize: vertical;
-  font-family: inherit;
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  background-color: white;
   overflow-y: auto;
-  background: white;
+  max-height: 200px;
 }
 
 .task-editor:focus {
@@ -1422,130 +1358,121 @@ export default {
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
-.task-editor[placeholder]:empty:before {
+.task-editor[contenteditable="true"]:empty:before {
   content: attr(placeholder);
-  color: #6c757d;
+  color: #999;
   font-style: italic;
 }
 
 .answer-editor {
   min-height: 60px;
-}
-
-sub, sup {
-  font-size: 0.75em;
-  line-height: 0;
-  position: relative;
-  vertical-align: baseline;
-}
-
-sub {
-  bottom: -0.25em;
-}
-
-sup {
-  top: -0.5em;
+  max-height: 120px;
 }
 
 .image-preview {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 10px;
-  flex-wrap: wrap;
 }
 
 .preview-item {
   position: relative;
   border: 1px solid #ddd;
-  border-radius: 6px;
-  overflow: hidden;
+  border-radius: 4px;
+  padding: 5px;
+  background: white;
 }
 
 .preview-image {
-  width: 100px;
-  height: 100px;
-  object-fit: cover;
+  max-width: 100px;
+  max-height: 100px;
+  display: block;
 }
 
 .remove-image-btn {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  background: rgba(255, 0, 0, 0.8);
+  top: -8px;
+  right: -8px;
+  background: #dc3545;
   color: white;
   border: none;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
   cursor: pointer;
-  font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .remove-image-btn:hover {
-  background: rgba(255, 0, 0, 1);
+  background: #c82333;
+}
+
+.remove-image-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .image-uploader {
-  margin: 20px 0;
-  padding: 16px;
-  border: 2px dashed #ddd;
-  border-radius: 8px;
-  background: #fafafa;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
 }
 
 .image-uploader label {
   display: block;
-  margin-bottom: 12px;
-  font-weight: 600;
+  margin-bottom: 8px;
+  font-weight: 500;
   color: #333;
 }
 
 .upload-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .upload-button {
   padding: 8px 16px;
-  background: #007bff;
+  background-color: #007bff;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.2s;
+  font-size: 14px;
 }
 
 .upload-button:hover:not(:disabled) {
-  background: #0056b3;
+  background-color: #0056b3;
 }
 
 .upload-button:disabled {
-  background: #6c757d;
+  background-color: #6c757d;
   cursor: not-allowed;
 }
 
 .file-info {
+  font-size: 14px;
   color: #666;
-  font-size: 0.9rem;
 }
 
 .images-info {
-  margin: 20px 0;
-  padding: 16px;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  background: #f8f9fa;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 4px;
 }
 
 .images-info h4 {
-  margin: 0 0 12px 0;
-  color: #333;
+  margin: 0 0 10px 0;
+  color: #856404;
 }
 
 .images-list {
@@ -1557,38 +1484,113 @@ sup {
 .image-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 8px;
   background: white;
-  border-radius: 6px;
-  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  border: 1px solid #ffeaa7;
 }
 
 .image-group strong {
-  min-width: 80px;
-  color: #495057;
+  min-width: 100px;
+  color: #333;
 }
 
 .remove-existing-btn {
   padding: 4px 8px;
-  background: #dc3545;
+  background-color: #dc3545;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 12px;
   margin-left: auto;
 }
 
 .remove-existing-btn:hover:not(:disabled) {
-  background: #c82333;
+  background-color: #c82333;
 }
 
 .remove-existing-btn:disabled {
-  background: #6c757d;
+  background-color: #6c757d;
   cursor: not-allowed;
 }
 
+.modal-footer {
+  padding: 20px;
+  border-top: 1px solid #e0e0e0;
+  background-color: #f8f9fa;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.delete-button {
+  padding: 10px 16px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.delete-button:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.delete-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.right-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.cancel-button {
+  padding: 10px 20px;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.cancel-button:hover:not(:disabled) {
+  background-color: #545b62;
+}
+
+.cancel-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.save-button {
+  padding: 10px 20px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.save-button:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.save-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+/* Стили для модального окна таблицы */
 .table-modal-overlay {
   position: fixed;
   top: 0;
@@ -1597,236 +1599,145 @@ sup {
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
   justify-content: center;
-  z-index: 10001;
+  align-items: center;
+  z-index: 2000;
 }
 
 .table-modal-content {
   background: white;
-  padding: 24px;
-  border-radius: 12px;
+  border-radius: 8px;
   width: 90%;
-  max-width: 800px;
-  max-height: 80vh;
+  max-width: 700px;
+  max-height: 90vh;
+  padding: 20px;
   overflow-y: auto;
 }
 
 .table-modal-content h3 {
   margin: 0 0 20px 0;
   color: #333;
+  text-align: center;
 }
 
 .table-controls {
   margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
 }
 
 .control-row {
   display: flex;
   align-items: center;
-  gap: 15px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
 .control-row label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: 600;
-  min-width: auto;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
 }
 
 .table-input {
-  padding: 6px 8px;
+  width: 60px;
+  padding: 4px 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
-  width: 60px;
+  text-align: center;
 }
 
 .table-preview-section,
 .editable-table-section {
-  margin: 15px 0;
+  margin-bottom: 20px;
 }
 
 .table-preview-section h4,
 .editable-table-section h4 {
-  margin-bottom: 8px;
+  margin: 0 0 10px 0;
   color: #333;
 }
 
-.preview-table-container {
-  padding: 10px;
-  border: 1px solid #eee;
-  border-radius: 6px;
-  background: #fafafa;
-  overflow-x: auto;
-}
-
-.preview-table-container table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.preview-table-container td {
-  padding: 8px;
-  border: 1px solid #ddd;
-  min-height: 40px;
-  vertical-align: top;
-}
-
+.preview-table-container,
 .editable-table-container {
-  margin: 10px 0;
   overflow-x: auto;
+  margin-bottom: 10px;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: white;
 }
 
+.preview-table-container table,
 .editable-table-container table {
   width: 100%;
   border-collapse: collapse;
 }
 
+.preview-table-container table.with-borders td,
 .editable-table-container table.with-borders td {
   border: 1px solid #ddd;
 }
 
-.editable-table-container td {
-  padding: 0;
+.preview-table-container table:not(.with-borders) td,
+.editable-table-container table:not(.with-borders) td {
+  border: none;
 }
 
 .table-cell-editor {
-  padding: 8px;
   min-height: 40px;
+  padding: 8px;
   border: 1px solid #e9ecef;
-  border-radius: 4px;
-  background: white;
+  border-radius: 2px;
+  background-color: white;
   outline: none;
-  font-family: inherit;
-  font-size: 0.9rem;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .table-cell-editor:focus {
   border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
 .table-toolbar {
   display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  flex-wrap: wrap;
+  gap: 5px;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
 }
 
 .modal-buttons {
   display: flex;
-  gap: 12px;
-  justify-content: flex-end;
+  justify-content: center;
+  gap: 10px;
   margin-top: 20px;
 }
 
 .modal-button {
-  padding: 8px 16px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s;
+  font-size: 14px;
+  min-width: 100px;
 }
 
 .modal-button.primary {
-  background: #007bff;
+  background-color: #007bff;
   color: white;
-  border-color: #007bff;
 }
 
 .modal-button.primary:hover {
-  background: #0056b3;
-  border-color: #0056b3;
+  background-color: #0056b3;
 }
 
 .modal-button:hover {
-  background: #f8f9fa;
-}
-
-.modal-footer {
-  padding: 20px;
-  border-top: 1px solid #eee;
-  background: #f8f9fa;
-  border-radius: 0 0 12px 12px;
-  position: sticky;
-  bottom: 0;
-}
-
-.action-buttons {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-
-.delete-button {
-  padding: 10px 16px;
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.2s;
-}
-
-.delete-button:hover:not(:disabled) {
-  background: #c82333;
-}
-
-.delete-button:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
-.right-buttons {
-  display: flex;
-  gap: 12px;
-}
-
-.cancel-button {
-  padding: 10px 20px;
-  background: #6c757d;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.2s;
-}
-
-.cancel-button:hover:not(:disabled) {
-  background: #5a6268;
-}
-
-.cancel-button:disabled {
-  background: #adb5bd;
-  cursor: not-allowed;
-}
-
-.save-button {
-  padding: 10px 20px;
-  background: #28a745;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.2s;
-}
-
-.save-button:hover:not(:disabled) {
-  background: #218838;
-}
-
-.save-button:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
+  background-color: #f8f9fa;
 }
 
 /* Адаптивность */
@@ -1842,52 +1753,22 @@ sup {
   
   .action-buttons {
     flex-direction: column;
-    align-items: stretch;
+    gap: 10px;
   }
   
   .right-buttons {
-    justify-content: stretch;
-  }
-  
-  .cancel-button,
-  .save-button,
-  .delete-button {
-    flex: 1;
-    text-align: center;
+    width: 100%;
+    justify-content: space-between;
   }
   
   .table-modal-content {
-    padding: 16px;
+    width: 95%;
+    margin: 10px;
   }
   
   .control-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
-  }
-}
-
-@media (max-width: 480px) {
-  .modal-header h2 {
-    font-size: 1.2rem;
-  }
-  
-  .upload-controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .modal-buttons {
-    flex-direction: column;
-  }
-  
-  .modal-button {
-    width: 100%;
-  }
-  
-  .table-preview-section,
-  .editable-table-section {
-    margin: 10px 0;
   }
 }
 </style>

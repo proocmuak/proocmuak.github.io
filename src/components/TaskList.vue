@@ -31,7 +31,9 @@ export default {
       // Конфигурация для разных предметов
       const partConfig = {
         'Химия ЕГЭ': { firstPartMax: 28 },
-        'Биология ЕГЭ': { firstPartMax: 21 }
+        'Биология ЕГЭ': { firstPartMax: 21 },
+        'Химия ОГЭ': { firstPartMax: 19 },
+        'Биология ОГЭ': { firstPartMax: 21 }
       };
       
       const config = partConfig[this.filters.subject];
@@ -66,15 +68,15 @@ export default {
           if (taskPart !== this.filters.part) return false;
         }
         
-// Фильтрация по номеру задания
-if (this.filters.taskNumber && this.filters.taskNumber.length > 0) {
-  // Преобразуем фильтры в строки и сравниваем со строковым значением задачи
-  const taskNumbers = this.filters.taskNumber.map(num => String(num));
-  
-  if (!taskNumbers.includes(String(task.number))) {
-    return false;
-  }
-}
+        // Фильтрация по номеру задания
+        if (this.filters.taskNumber && this.filters.taskNumber.length > 0) {
+          // Преобразуем фильтры в строки и сравниваем со строковым значением задачи
+          const taskNumbers = this.filters.taskNumber.map(num => String(num));
+          
+          if (!taskNumbers.includes(String(task.number))) {
+            return false;
+          }
+        }
         
         return true;
       });
@@ -133,6 +135,16 @@ if (this.filters.taskNumber && this.filters.taskNumber.length > 0) {
         'Биология ЕГЭ': {
           taskTable: 'biology_ege_task_bank',
           progressTable: 'biology_ege_progress',
+          firstPartMax: 21
+        },
+        'Химия ОГЭ': {
+          taskTable: 'chemistry_oge_task_bank',
+          progressTable: 'chemistry_oge_progress',
+          firstPartMax: 19
+        },
+        'Биология ОГЭ': {
+          taskTable: 'biology_oge_task_bank',
+          progressTable: 'biology_oge_progress',
           firstPartMax: 21
         }
       };

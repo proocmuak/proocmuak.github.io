@@ -94,6 +94,8 @@ import { supabase } from '../supabase';
 
 const chemTopicsModules = import.meta.glob('../assets/arrays/topics/chem_ege/*.js', { eager: true });
 const bioTopicsModules = import.meta.glob('../assets/arrays/topics/biology_ege/*.js', { eager: true });
+const chemOgeTopicsModules = import.meta.glob('../assets/arrays/topics/chem_oge/*.js', { eager: true });
+const bioOgeTopicsModules = import.meta.glob('../assets/arrays/topics/biology_oge/*.js', { eager: true });
 
 const processModules = (modules) => {
   const result = {};
@@ -129,10 +131,11 @@ export default {
       selectedDifficulty: null,
       topicsData: {
         'Химия ЕГЭ': {},
-        'Биология ЕГЭ': {}
+        'Биология ЕГЭ': {},
+        'Химия ОГЭ': {},
+        'Биология ОГЭ': {}
       },
       parts: ['Первая часть', 'Вторая часть'],
-      taskNumbers: Array.from({length: 34}, (_, i) => i + 1),
       sectionMappings: {
         'Химия ЕГЭ': {
           'Общая химия': 'general chemistry',
@@ -159,6 +162,24 @@ export default {
           'Экология': 'ecology',
           'Анализ информации': 'information analysis',
           'Методология эксперимента': 'experimental methodology'
+        },
+        'Химия ОГЭ': {
+          'Основные понятия. Строение атома и периодический закон': 'Basic Concepts. Atomic Structure and the Periodic Law',
+          'Химическая связь и свойства элементов': 'Chemical Bond and Properties of Elements',
+          'Неорганическая химия': 'Inorganic Chemistry',
+          'Химические реакции': 'Chemical Reactions',
+          'Электролитическая диссоциация': 'Electrolytic Dissociation',
+          'Расчёты в химии': 'Calculations in Chemistry',
+          'Практические и экспериментальные задания': 'Practical and Experimental Tasks'
+        },
+        'Биология ОГЭ': {
+          'Биология – наука о живой природе. Методы научного познания': 'Biology - The Science of Living Nature. Methods of Scientific Knowledge',
+          'Среда обитания. Природные и искусственные сообщества. Человек и окружающая среда': 'Habitat. Natural and Artificial Communities',
+          'Эволюционное развитие растений, животных и человека': 'Evolutionary Development of Plants, Animals, and Humans',
+          'Организмы бактерий, грибов и лишайников': 'Organisms of Bacteria, Fungi, and Lichens',
+          'Растительный организм. Систематические группы растений': 'The Plant Organism. Systematic Groups of Plants',
+          'Животный организм. Систематические группы животных': 'The Animal Organism. Systematic Groups of Animals',
+          'Человек и его здоровье': 'Humans and Their Health'
         }
       }
     };
@@ -198,14 +219,14 @@ export default {
           secondPart: Array.from({length: 7}, (_, i) => i + 22)
         },
         'Химия ОГЭ': { 
-          maxTasks: 24,
+          maxTasks: 23,
           firstPart: Array.from({length: 19}, (_, i) => i + 1),
-          secondPart: Array.from({length: 5}, (_, i) => i + 20)
+          secondPart: Array.from({length: 4}, (_, i) => i + 20)
         },
         'Биология ОГЭ': { 
           maxTasks: 26,
-          firstPart: Array.from({length: 22}, (_, i) => i + 1),
-          secondPart: Array.from({length: 4}, (_, i) => i + 23)
+          firstPart: Array.from({length: 21}, (_, i) => i + 1),
+          secondPart: Array.from({length: 5}, (_, i) => i + 22)
         }
       };
       
@@ -345,10 +366,11 @@ export default {
     initializeTopicsData() {
       this.topicsData['Химия ЕГЭ'] = processModules(chemTopicsModules);
       this.topicsData['Биология ЕГЭ'] = processModules(bioTopicsModules);
+      this.topicsData['Химия ОГЭ'] = processModules(chemOgeTopicsModules);
+      this.topicsData['Биология ОГЭ'] = processModules(bioOgeTopicsModules);
     },
     
     handleSubjectChange(subject) {
-      // Для ОГЭ предметов можно добавить базовую обработку или оставить пустые разделы
       if (subject === 'Химия ЕГЭ') {
         this.availableSections = chem_ege_sections;
         this.allTopics = Object.values(this.topicsData['Химия ЕГЭ']).flat();
@@ -357,11 +379,13 @@ export default {
         this.availableSections = Object.keys(this.sectionMappings['Биология ЕГЭ']);
         this.allTopics = Object.values(this.topicsData['Биология ЕГЭ']).flat();
       }
-      else if (subject === 'Химия ОГЭ' || subject === 'Биология ОГЭ') {
-        // Для ОГЭ показываем пустые разделы или базовые
-        this.availableSections = ['Общие разделы'];
-        this.allTopics = ['Общие темы'];
-        console.log('Выбран предмет ОГЭ, разделы и темы ограничены');
+      else if (subject === 'Химия ОГЭ') {
+        this.availableSections = Object.keys(this.sectionMappings['Химия ОГЭ']);
+        this.allTopics = Object.values(this.topicsData['Химия ОГЭ']).flat();
+      }
+      else if (subject === 'Биология ОГЭ') {
+        this.availableSections = Object.keys(this.sectionMappings['Биология ОГЭ']);
+        this.allTopics = Object.values(this.topicsData['Биология ОГЭ']).flat();
       }
       else {
         this.availableSections = [];

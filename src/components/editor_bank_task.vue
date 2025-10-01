@@ -305,6 +305,8 @@ import { supabase } from '../supabase';
 
 const chemTopicsModules = import.meta.glob('../assets/arrays/topics/chem_ege/*.js', { eager: true });
 const bioTopicsModules = import.meta.glob('../assets/arrays/topics/biology_ege/*.js', { eager: true });
+const chemOgeTopicsModules = import.meta.glob('../assets/arrays/topics/chem_oge/*.js', { eager: true });
+const bioOgeTopicsModules = import.meta.glob('../assets/arrays/topics/biology_oge/*.js', { eager: true });
 
 const processModules = (modules) => {
   const result = {};
@@ -322,13 +324,15 @@ export default {
   },
   data() {
     return {
-      subjects: ['Химия ЕГЭ', 'Биология ЕГЭ'],
+      subjects: ['Химия ЕГЭ', 'Биология ЕГЭ', 'Химия ОГЭ', 'Биология ОГЭ'],
       selectedSubject: null,
       availableSections: [],
       allTopics: [],
       topicsData: {
         'Химия ЕГЭ': {},
-        'Биология ЕГЭ': {}
+        'Биология ЕГЭ': {},
+        'Химия ОГЭ': {},
+        'Биология ОГЭ': {}
       },
       parts: ['Первая часть', 'Вторая часть'],
       sectionMappings: {
@@ -357,6 +361,24 @@ export default {
           'Экология': 'ecology',
           'Анализ информации': 'information analysis',
           'Методология эксперимента': 'experimental methodology'
+        },
+        'Химия ОГЭ': {
+          'Основные понятия. Строение атома и периодический закон': 'Basic Concepts. Atomic Structure and the Periodic Law',
+          'Химическая связь и свойства элементов': 'Chemical Bond and Properties of Elements',
+          'Неорганическая химия': 'Inorganic Chemistry',
+          'Химические реакции': 'Chemical Reactions',
+          'Электролитическая диссоциация': 'Electrolytic Dissociation',
+          'Расчёты в химии': 'Calculations in Chemistry',
+          'Практические и экспериментальные задания': 'Practical and Experimental Tasks'
+        },
+        'Биология ОГЭ': {
+          'Биология – наука о живой природе. Методы научного познания': 'Biology - The Science of Living Nature. Methods of Scientific Knowledge',
+          'Среда обитания. Природные и искусственные сообщества. Человек и окружающая среда': 'Habitat. Natural and Artificial Communities',
+          'Эволюционное развитие растений, животных и человека': 'Evolutionary Development of Plants, Animals, and Humans',
+          'Организмы бактерий, грибов и лишайников': 'Organisms of Bacteria, Fungi, and Lichens',
+          'Растительный организм. Систематические группы растений': 'The Plant Organism. Systematic Groups of Plants',
+          'Животный организм. Систематические группы животных': 'The Animal Organism. Systematic Groups of Animals',
+          'Человек и его здоровье': 'Humans and Their Health'
         }
       },
       newTask: {
@@ -406,14 +428,30 @@ export default {
         return this.newTask.part === 'Первая часть'
           ? Array.from({length: 28}, (_, i) => i + 1)
           : Array.from({length: 6}, (_, i) => i + 29);
-      } else {
+      } else if (this.selectedSubject === 'Биология ЕГЭ') {
         if (!this.newTask.part) {
           return Array.from({length: 28}, (_, i) => i + 1);
         }
         return this.newTask.part === 'Первая часть'
           ? Array.from({length: 21}, (_, i) => i + 1)
           : Array.from({length: 7}, (_, i) => i + 22);
+      } else if (this.selectedSubject === 'Химия ОГЭ') {
+        if (!this.newTask.part) {
+          return Array.from({length: 23}, (_, i) => i + 1);
+        }
+        return this.newTask.part === 'Первая часть'
+          ? Array.from({length: 19}, (_, i) => i + 1)
+          : Array.from({length: 4}, (_, i) => i + 20);
+      } else if (this.selectedSubject === 'Биология ОГЭ') {
+        if (!this.newTask.part) {
+          return Array.from({length: 26}, (_, i) => i + 1);
+        }
+        return this.newTask.part === 'Первая часть'
+          ? Array.from({length: 21}, (_, i) => i + 1)
+          : Array.from({length: 5}, (_, i) => i + 22);
       }
+      
+      return [];
     },
     isFormValid() {
       return (
@@ -452,6 +490,8 @@ export default {
     initializeTopics() {
       this.topicsData['Химия ЕГЭ'] = processModules(chemTopicsModules);
       this.topicsData['Биология ЕГЭ'] = processModules(bioTopicsModules);
+      this.topicsData['Химия ОГЭ'] = processModules(chemOgeTopicsModules);
+      this.topicsData['Биология ОГЭ'] = processModules(bioOgeTopicsModules);
     },
     handleSubjectChange(subject) {
       if (subject === 'Химия ЕГЭ') {
@@ -460,6 +500,12 @@ export default {
       } else if (subject === 'Биология ЕГЭ') {
         this.availableSections = Object.keys(this.sectionMappings['Биология ЕГЭ']);
         this.allTopics = Object.values(this.topicsData['Биология ЕГЭ']).flat();
+      } else if (subject === 'Химия ОГЭ') {
+        this.availableSections = Object.keys(this.sectionMappings['Химия ОГЭ']);
+        this.allTopics = Object.values(this.topicsData['Химия ОГЭ']).flat();
+      } else if (subject === 'Биология ОГЭ') {
+        this.availableSections = Object.keys(this.sectionMappings['Биология ОГЭ']);
+        this.allTopics = Object.values(this.topicsData['Биология ОГЭ']).flat();
       } else {
         this.availableSections = [];
         this.allTopics = [];
@@ -491,7 +537,7 @@ export default {
       });
     },
     
-    // Методы для работы с таблицей (скопированные из editor_homework_task.vue)
+    // Методы для работы с таблицей
     initializeTableContent(rows, cols) {
       const content = [];
       for (let i = 0; i < rows; i++) {
@@ -927,12 +973,12 @@ export default {
       this.uploadedImages.splice(index, 1);
       this.updateUploadStatus();
     },
-
+    
     removeExplanationImage(index) {
       this.explanationImages.splice(index, 1);
       this.updateUploadStatus();
     },
-
+    
     async uploadImagesToStorage(images, folder) {
       if (!images.length) return [];
       
@@ -942,11 +988,23 @@ export default {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError || !session) throw new Error('Not authenticated');
         
+        // Определяем папку предмета
+        let subjectFolder;
+        if (this.selectedSubject === 'Химия ЕГЭ' || this.selectedSubject === 'Химия ОГЭ') {
+          subjectFolder = 'chemistry';
+        } else if (this.selectedSubject === 'Биология ЕГЭ' || this.selectedSubject === 'Биология ОГЭ') {
+          subjectFolder = 'biology';
+        } else {
+          subjectFolder = 'other';
+        }
+        
+        // Определяем тип экзамена
+        const examType = this.selectedSubject.includes('ЕГЭ') ? 'ege' : 'oge';
+        
         for (const img of images) {
           const fileExt = img.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExt}`;
-          const subjectFolder = this.selectedSubject === 'Химия ЕГЭ' ? 'chemistry' : 'biology';
-          const filePath = `tasks/${subjectFolder}/${folder}/${fileName}`;
+          const filePath = `tasks/${subjectFolder}/${examType}/${folder}/${fileName}`;
           
           const { error } = await supabase
             .storage
@@ -977,18 +1035,31 @@ export default {
       try {
         this.isUploading = true;
         
+        // Загрузка изображений
         const [textImageUrls, explanationImageUrls] = await Promise.all([
           this.uploadImagesToStorage(this.uploadedImages, 'text'),
           this.uploadImagesToStorage(this.explanationImages, 'explanation')
         ]);
         
-        const tableName = this.selectedSubject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_task_bank' 
-          : 'biology_ege_task_bank';
+        // Определяем таблицу в зависимости от предмета
+        let tableName;
+        if (this.selectedSubject === 'Химия ЕГЭ') {
+          tableName = 'chemistry_ege_task_bank';
+        } else if (this.selectedSubject === 'Биология ЕГЭ') {
+          tableName = 'biology_ege_task_bank';
+        } else if (this.selectedSubject === 'Химия ОГЭ') {
+          tableName = 'chemistry_oge_task_bank';
+        } else if (this.selectedSubject === 'Биология ОГЭ') {
+          tableName = 'biology_oge_task_bank';
+        } else {
+          throw new Error('Неизвестный предмет');
+        }
         
+        // Получаем информацию о пользователе
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
         
+        // Сохраняем задание в соответствующую таблицу
         const { data, error } = await supabase
           .from(tableName)
           .insert([{
@@ -1032,7 +1103,6 @@ export default {
 </script>
 
 <style scoped>
-/* Стили остаются такими же как в editor_homework_task.vue */
 .editor-container {
   width: 100%;
   min-height: 100%;

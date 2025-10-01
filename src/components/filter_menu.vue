@@ -47,24 +47,26 @@
         />
       </div>
 
-<div class="filter-item" v-if="selectedSubject">
-  <h3 class="filter-label">Номер задания</h3>
-  <CustomDropdown
-    :options="filteredTaskNumbers.map(String)"
-    placeholder="Выберите номер"
-    v-model="selectedTaskNumber"
-    :multiple="true"
-  />
-</div>
-    <!-- Добавляем новый элемент для сортировки -->
-    <div class="filter-item" v-if="selectedSubject">
-      <h3 class="filter-label">Сортировка по сложности</h3>
-      <CustomDropdown
-        :options="difficultyOptions"
-        placeholder="Выберите сложность"
-        v-model="selectedDifficulty"
-      />
-    </div>
+      <div class="filter-item" v-if="selectedSubject">
+        <h3 class="filter-label">Номер задания</h3>
+        <CustomDropdown
+          :options="filteredTaskNumbers.map(String)"
+          placeholder="Выберите номер"
+          v-model="selectedTaskNumber"
+          :multiple="true"
+        />
+      </div>
+
+      <!-- Добавляем новый элемент для сортировки -->
+      <div class="filter-item" v-if="selectedSubject">
+        <h3 class="filter-label">Сортировка по сложности</h3>
+        <CustomDropdown
+          :options="difficultyOptions"
+          placeholder="Выберите сложность"
+          v-model="selectedDifficulty"
+        />
+      </div>
+
       <!-- Кнопка сброса -->
       <div class="filter-reset">
         <button 
@@ -76,7 +78,6 @@
           <span class="reset-icon">×</span> Сбросить
         </button>
       </div>
-      
     </div>
   </div>
 </template>
@@ -88,6 +89,8 @@ import CustomDropdown from './CustomDropdown.vue';
 
 const chemTopicsModules = import.meta.glob('../assets/arrays/topics/chem_ege/*.js', { eager: true });
 const bioTopicsModules = import.meta.glob('../assets/arrays/topics/biology_ege/*.js', { eager: true });
+const chemOgeTopicsModules = import.meta.glob('../assets/arrays/topics/chem_oge/*.js', { eager: true });
+const bioOgeTopicsModules = import.meta.glob('../assets/arrays/topics/biology_oge/*.js', { eager: true });
 
 const processModules = (modules) => {
   const result = {};
@@ -121,10 +124,11 @@ export default {
       selectedDifficulty: null,
       topicsData: {
         'Химия ЕГЭ': {},
-        'Биология ЕГЭ': {}
+        'Биология ЕГЭ': {},
+        'Химия ОГЭ': {},
+        'Биология ОГЭ': {}
       },
       parts: ['Первая часть', 'Вторая часть'],
-      taskNumbers: Array.from({length: 34}, (_, i) => i + 1),
       sectionMappings: {
         'Химия ЕГЭ': {
           'Общая химия': 'general chemistry',
@@ -140,7 +144,6 @@ export default {
           'Клеточный цикл': 'cell cycle',
           'Размножение и развитие': 'reproduction and development',
           'Разнообразие организмов': 'diversity of organisms',
-          'Биология как наука': 'biology as a science',
           'Генетика': 'genetics',
           'Биология как наука': 'biology as a science',
           'Задачи на закон Харди-Вайнберга': 'problems with the Hardy-Weinberg law',
@@ -152,12 +155,29 @@ export default {
           'Экология': 'ecology',
           'Анализ информации': 'information analysis',
           'Методология эксперимента': 'experimental methodology'
+        },
+        'Химия ОГЭ': {
+          'Основные понятия. Строение атома и периодический закон': 'Basic Concepts. Atomic Structure and the Periodic Law',
+          'Химическая связь и свойства элементов': 'Chemical Bond and Properties of Elements',
+          'Неорганическая химия': 'Inorganic Chemistry',
+          'Химические реакции': 'Chemical Reactions',
+          'Электролитическая диссоциация': 'Electrolytic Dissociation',
+          'Расчёты в химии': 'Calculations in Chemistry',
+          'Практические и экспериментальные задания': 'Practical and Experimental Tasks'
+        },
+        'Биология ОГЭ': {
+          'Биология – наука о живой природе. Методы научного познания': 'Biology - The Science of Living Nature. Methods of Scientific Knowledge',
+          'Среда обитания. Природные и искусственные сообщества. Человек и окружающая среда': 'Habitat. Natural and Artificial Communities',
+          'Эволюционное развитие растений, животных и человека': 'Evolutionary Development of Plants, Animals, and Humans',
+          'Организмы бактерий, грибов и лишайников': 'Organisms of Bacteria, Fungi, and Lichens',
+          'Растительный организм. Систематические группы растений': 'The Plant Organism. Systematic Groups of Plants',
+          'Животный организм. Систематические группы животных': 'The Animal Organism. Systematic Groups of Animals',
+          'Человек и его здоровье': 'Humans and Their Health'
         }
       }
     };
   },
   computed: {
-    
     hasActiveFilters() {
       return this.selectedSubject || 
              this.selectedSections.length || 
@@ -180,34 +200,44 @@ export default {
       // Удаляем дубликаты и возвращаем
       return [...new Set(topics)];
     },
-filteredTaskNumbers() {
-  if (!this.selectedSubject) return [];
-  
-  // Конфигурация для разных предметов
-  const config = {
-    'Химия ЕГЭ': { 
-      maxTasks: 34, 
-      firstPart: Array.from({length: 28}, (_, i) => i + 1),
-      secondPart: Array.from({length: 6}, (_, i) => i + 29)
-    },
-    'Биология ЕГЭ': { 
-      maxTasks: 28,
-      firstPart: Array.from({length: 21}, (_, i) => i + 1),
-      secondPart: Array.from({length: 7}, (_, i) => i + 22)
+    filteredTaskNumbers() {
+      if (!this.selectedSubject) return [];
+      
+      // Конфигурация для разных предметов
+      const config = {
+        'Химия ЕГЭ': { 
+          maxTasks: 34, 
+          firstPart: Array.from({length: 28}, (_, i) => i + 1),
+          secondPart: Array.from({length: 6}, (_, i) => i + 29)
+        },
+        'Биология ЕГЭ': { 
+          maxTasks: 28,
+          firstPart: Array.from({length: 21}, (_, i) => i + 1),
+          secondPart: Array.from({length: 7}, (_, i) => i + 22)
+        },
+        'Химия ОГЭ': { 
+          maxTasks: 23,
+          firstPart: Array.from({length: 19}, (_, i) => i + 1),
+          secondPart: Array.from({length: 4}, (_, i) => i + 20)
+        },
+        'Биология ОГЭ': { 
+          maxTasks: 26,
+          firstPart: Array.from({length: 21}, (_, i) => i + 1),
+          secondPart: Array.from({length: 5}, (_, i) => i + 22)
+        }
+      };
+      
+      const subjectConfig = config[this.selectedSubject];
+      if (!subjectConfig) return [];
+      
+      // Если часть не выбрана - возвращаем все номера
+      if (!this.selectedPart) {
+        return Array.from({length: subjectConfig.maxTasks}, (_, i) => i + 1);
+      }
+      
+      const isFirstPart = this.selectedPart === 'Первая часть';
+      return isFirstPart ? subjectConfig.firstPart : subjectConfig.secondPart;
     }
-  };
-  
-  const subjectConfig = config[this.selectedSubject];
-  if (!subjectConfig) return [];
-  
-  // Если часть не выбрана - возвращаем все номера
-  if (!this.selectedPart) {
-    return Array.from({length: subjectConfig.maxTasks}, (_, i) => i + 1);
-  }
-  
-  const isFirstPart = this.selectedPart === 'Первая часть';
-  return isFirstPart ? subjectConfig.firstPart : subjectConfig.secondPart;
-}
   },
   watch: {
     selectedTopics() {
@@ -237,6 +267,8 @@ filteredTaskNumbers() {
       this.subjects = subjects;
       this.topicsData['Химия ЕГЭ'] = processModules(chemTopicsModules);
       this.topicsData['Биология ЕГЭ'] = processModules(bioTopicsModules);
+      this.topicsData['Химия ОГЭ'] = processModules(chemOgeTopicsModules);
+      this.topicsData['Биология ОГЭ'] = processModules(bioOgeTopicsModules);
     },
     handleSubjectChange(subject) {
       if (subject === 'Химия ЕГЭ') {
@@ -246,7 +278,15 @@ filteredTaskNumbers() {
       else if (subject === 'Биология ЕГЭ') {
         this.availableSections = Object.keys(this.sectionMappings['Биология ЕГЭ']);
         this.allTopics = Object.values(this.topicsData['Биология ЕГЭ']).flat();
-      } 
+      }
+      else if (subject === 'Химия ОГЭ') {
+        this.availableSections = Object.keys(this.sectionMappings['Химия ОГЭ']);
+        this.allTopics = Object.values(this.topicsData['Химия ОГЭ']).flat();
+      }
+      else if (subject === 'Биология ОГЭ') {
+        this.availableSections = Object.keys(this.sectionMappings['Биология ОГЭ']);
+        this.allTopics = Object.values(this.topicsData['Биология ОГЭ']).flat();
+      }
       else {
         this.availableSections = [];
         this.allTopics = [];
@@ -259,18 +299,18 @@ filteredTaskNumbers() {
       this.selectedTopics = [];
       this.emitFiltersChanged();
     },
-emitFiltersChanged() {
-  this.$nextTick(() => {
-    const filters = this.getCurrentFilters();
-    // Преобразуем номера заданий в числа, если они есть
-    if (filters.taskNumber) {
-      filters.taskNumber = filters.taskNumber.map(num => 
-        typeof num === 'string' ? parseInt(num, 10) : num
-      );
-    }
-    this.$emit('filters-changed', filters);
-  });
-},
+    emitFiltersChanged() {
+      this.$nextTick(() => {
+        const filters = this.getCurrentFilters();
+        // Преобразуем номера заданий в числа, если они есть
+        if (filters.taskNumber) {
+          filters.taskNumber = filters.taskNumber.map(num => 
+            typeof num === 'string' ? parseInt(num, 10) : num
+          );
+        }
+        this.$emit('filters-changed', filters);
+      });
+    },
     resetFilters(level) {
       if (level === 'subject') {
         this.selectedSections = [];
@@ -279,15 +319,15 @@ emitFiltersChanged() {
         this.selectedTaskNumber = null;
       }
     },
-resetAllFilters() {
-  this.selectedSubject = null;
-  this.selectedSections = [];
-  this.selectedTopics = [];
-  this.selectedPart = null;
-  this.selectedTaskNumber = null;
-  this.selectedDifficulty = null;
-  this.emitFiltersChanged();
-},
+    resetAllFilters() {
+      this.selectedSubject = null;
+      this.selectedSections = [];
+      this.selectedTopics = [];
+      this.selectedPart = null;
+      this.selectedTaskNumber = null;
+      this.selectedDifficulty = null;
+      this.emitFiltersChanged();
+    },
     getCurrentFilters() {
       return {
         subject: this.selectedSubject,
@@ -407,6 +447,3 @@ resetAllFilters() {
   }
 }
 </style>
-
-
-

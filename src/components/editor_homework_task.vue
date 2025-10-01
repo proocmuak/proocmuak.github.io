@@ -305,6 +305,8 @@ import { supabase } from '../supabase';
 
 const chemTopicsModules = import.meta.glob('../assets/arrays/topics/chem_ege/*.js', { eager: true });
 const bioTopicsModules = import.meta.glob('../assets/arrays/topics/biology_ege/*.js', { eager: true });
+const chemOgeTopicsModules = import.meta.glob('../assets/arrays/topics/chem_oge/*.js', { eager: true });
+const bioOgeTopicsModules = import.meta.glob('../assets/arrays/topics/biology_oge/*.js', { eager: true });
 
 const processModules = (modules) => {
   const result = {};
@@ -336,13 +338,15 @@ export default {
   },
   data() {
     return {
-      subjects: ['Химия ЕГЭ', 'Биология ЕГЭ'],
+      subjects: ['Химия ЕГЭ', 'Биология ЕГЭ', 'Химия ОГЭ', 'Биология ОГЭ'],
       selectedSubject: null,
       availableSections: [],
       allTopics: [],
       topicsData: {
         'Химия ЕГЭ': {},
-        'Биология ЕГЭ': {}
+        'Биология ЕГЭ': {},
+        'Химия ОГЭ': {},
+        'Биология ОГЭ': {}
       },
       parts: ['Первая часть', 'Вторая часть'],
       sectionMappings: {
@@ -371,6 +375,24 @@ export default {
           'Экология': 'ecology',
           'Анализ информации': 'information analysis',
           'Методология эксперимента': 'experimental methodology'
+        },
+        'Химия ОГЭ': {
+          'Основные понятия. Строение атома и периодический закон': 'Basic Concepts. Atomic Structure and the Periodic Law',
+          'Химическая связь и свойства элементов': 'Chemical Bond and Properties of Elements',
+          'Неорганическая химия': 'Inorganic Chemistry',
+          'Химические реакции': 'Chemical Reactions',
+          'Электролитическая диссоциация': 'Electrolytic Dissociation',
+          'Расчёты в химии': 'Calculations in Chemistry',
+          'Практические и экспериментальные задания': 'Practical and Experimental Tasks'
+        },
+        'Биология ОГЭ': {
+          'Биология – наука о живой природе. Методы научного познания': 'Biology - The Science of Living Nature. Methods of Scientific Knowledge',
+          'Среда обитания. Природные и искусственные сообщества. Человек и окружающая среда': 'Habitat. Natural and Artificial Communities',
+          'Эволюционное развитие растений, животных и человека': 'Evolutionary Development of Plants, Animals, and Humans',
+          'Организмы бактерий, грибов и лишайников': 'Organisms of Bacteria, Fungi, and Lichens',
+          'Растительный организм. Систематические группы растений': 'The Plant Organism. Systematic Groups of Plants',
+          'Животный организм. Систематические группы животных': 'The Animal Organism. Systematic Groups of Animals',
+          'Человек и его здоровье': 'Humans and Their Health'
         }
       },
       newTask: {
@@ -420,14 +442,30 @@ export default {
         return this.newTask.part === 'Первая часть'
           ? Array.from({length: 28}, (_, i) => i + 1)
           : Array.from({length: 6}, (_, i) => i + 29);
-      } else {
+      } else if (this.selectedSubject === 'Биология ЕГЭ') {
         if (!this.newTask.part) {
           return Array.from({length: 28}, (_, i) => i + 1);
         }
         return this.newTask.part === 'Первая часть'
           ? Array.from({length: 21}, (_, i) => i + 1)
           : Array.from({length: 7}, (_, i) => i + 22);
+      } else if (this.selectedSubject === 'Химия ОГЭ') {
+        if (!this.newTask.part) {
+          return Array.from({length: 23}, (_, i) => i + 1);
+        }
+        return this.newTask.part === 'Первая часть'
+          ? Array.from({length: 19}, (_, i) => i + 1)
+          : Array.from({length: 4}, (_, i) => i + 20);
+      } else if (this.selectedSubject === 'Биология ОГЭ') {
+        if (!this.newTask.part) {
+          return Array.from({length: 26}, (_, i) => i + 1);
+        }
+        return this.newTask.part === 'Первая часть'
+          ? Array.from({length: 21}, (_, i) => i + 1)
+          : Array.from({length: 5}, (_, i) => i + 22);
       }
+      
+      return [];
     },
     isFormValid() {
       return (
@@ -466,6 +504,8 @@ export default {
     initializeTopics() {
       this.topicsData['Химия ЕГЭ'] = processModules(chemTopicsModules);
       this.topicsData['Биология ЕГЭ'] = processModules(bioTopicsModules);
+      this.topicsData['Химия ОГЭ'] = processModules(chemOgeTopicsModules);
+      this.topicsData['Биология ОГЭ'] = processModules(bioOgeTopicsModules);
     },
     handleSubjectChange(subject) {
       if (subject === 'Химия ЕГЭ') {
@@ -474,6 +514,12 @@ export default {
       } else if (subject === 'Биология ЕГЭ') {
         this.availableSections = Object.keys(this.sectionMappings['Биология ЕГЭ']);
         this.allTopics = Object.values(this.topicsData['Биология ЕГЭ']).flat();
+      } else if (subject === 'Химия ОГЭ') {
+        this.availableSections = Object.keys(this.sectionMappings['Химия ОГЭ']);
+        this.allTopics = Object.values(this.topicsData['Химия ОГЭ']).flat();
+      } else if (subject === 'Биология ОГЭ') {
+        this.availableSections = Object.keys(this.sectionMappings['Биология ОГЭ']);
+        this.allTopics = Object.values(this.topicsData['Биология ОГЭ']).flat();
       } else {
         this.availableSections = [];
         this.allTopics = [];
@@ -504,6 +550,8 @@ export default {
         if (this.$refs.explanationEditor) this.$refs.explanationEditor.innerHTML = '';
       });
     },
+    
+    // Методы для работы с таблицей
     initializeTableContent(rows, cols) {
       const content = [];
       for (let i = 0; i < rows; i++) {
@@ -515,6 +563,7 @@ export default {
       }
       return content;
     },
+    
     updateTableSize() {
       const newContent = [];
       
@@ -536,6 +585,7 @@ export default {
         this.updateTableCellContents();
       });
     },
+    
     updateTableCellContents() {
       const cells = this.$refs.tableCells;
       if (!cells) return;
@@ -549,9 +599,142 @@ export default {
         }
       });
     },
+    
     resetTableContent() {
       this.tableContent = this.initializeTableContent(this.tableRows, this.tableCols);
     },
+    
+    handleTableCellInput(rowIndex, colIndex, event) {
+      this.tableContent[rowIndex][colIndex] = event.target.innerHTML;
+    },
+    
+    handleTableCellBlur(rowIndex, colIndex, event) {
+      const cleanedContent = this.cleanHtmlContent(event.target.innerHTML);
+      this.tableContent[rowIndex][colIndex] = cleanedContent;
+      
+      if (event.target.innerHTML !== cleanedContent) {
+        event.target.innerHTML = cleanedContent;
+      }
+    },
+    
+    cleanHtmlContent(html) {
+      let cleaned = html
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+      
+      cleaned = cleaned.replace(/<br\s*\/?>/g, '');
+      
+      return cleaned;
+    },
+    
+    getCursorPosition(element) {
+      const selection = window.getSelection();
+      if (selection.rangeCount === 0) return 0;
+      
+      const range = selection.getRangeAt(0);
+      const preRange = range.cloneRange();
+      preRange.selectNodeContents(element);
+      preRange.setEnd(range.endContainer, range.endOffset);
+      
+      return preRange.toString().length;
+    },
+    
+    setCursorPosition(element, position) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      
+      let currentPos = 0;
+      let foundNode = null;
+      let foundOffset = 0;
+      
+      function findPosition(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const length = node.textContent.length;
+          if (currentPos + length >= position) {
+            foundNode = node;
+            foundOffset = position - currentPos;
+            return true;
+          }
+          currentPos += length;
+        } else {
+          for (let i = 0; i < node.childNodes.length; i++) {
+            if (findPosition(node.childNodes[i])) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+      
+      if (findPosition(element)) {
+        range.setStart(foundNode, foundOffset);
+        range.setEnd(foundNode, foundOffset);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    },
+    
+    formatTableCell(formatType) {
+      if (!this.activeTableCell) return;
+      
+      const cursorPosition = this.getCursorPosition(this.activeTableCell);
+      const selection = window.getSelection();
+      const selectedText = selection.toString();
+      
+      this.activeTableCell.focus();
+      
+      if (selectedText.trim()) {
+        if (formatType === 'sub') {
+          document.execCommand('subscript');
+        } else if (formatType === 'sup') {
+          document.execCommand('superscript');
+        }
+      } else {
+        const exampleText = formatType === 'sub' ? 'индекс' : 'степень';
+        const tag = formatType === 'sub' ? 'sub' : 'sup';
+        document.execCommand('insertHTML', false, `<${tag}>${exampleText}</${tag}>`);
+      }
+      
+      this.$nextTick(() => {
+        this.setCursorPosition(this.activeTableCell, cursorPosition);
+        
+        const cells = this.$refs.tableCells;
+        if (cells) {
+          const index = cells.indexOf(this.activeTableCell);
+          if (index !== -1) {
+            const rowIndex = Math.floor(index / this.tableCols);
+            const colIndex = index % this.tableCols;
+            this.tableContent[rowIndex][colIndex] = this.activeTableCell.innerHTML;
+          }
+        }
+      });
+    },
+    
+    clearTableFormatting() {
+      if (!this.activeTableCell) return;
+      
+      const cursorPosition = this.getCursorPosition(this.activeTableCell);
+      
+      this.activeTableCell.focus();
+      document.execCommand('removeFormat');
+      document.execCommand('unlink');
+      
+      this.$nextTick(() => {
+        this.setCursorPosition(this.activeTableCell, cursorPosition);
+        
+        const cells = this.$refs.tableCells;
+        if (cells) {
+          const index = cells.indexOf(this.activeTableCell);
+          if (index !== -1) {
+            const rowIndex = Math.floor(index / this.tableCols);
+            const colIndex = index % this.tableCols;
+            this.tableContent[rowIndex][colIndex] = this.activeTableCell.innerHTML;
+          }
+        }
+      });
+    },
+    
     insertTable(editorType) {
       this.currentTextarea = editorType;
       const editor = this.$refs[`${editorType}Editor`];
@@ -688,137 +871,6 @@ export default {
       return html;
     },
     
-    handleTableCellInput(rowIndex, colIndex, event) {
-      this.tableContent[rowIndex][colIndex] = event.target.innerHTML;
-    },
-    
-    handleTableCellBlur(rowIndex, colIndex, event) {
-      const cleanedContent = this.cleanHtmlContent(event.target.innerHTML);
-      this.tableContent[rowIndex][colIndex] = cleanedContent;
-      
-      if (event.target.innerHTML !== cleanedContent) {
-        event.target.innerHTML = cleanedContent;
-      }
-    },
-    
-    cleanHtmlContent(html) {
-      let cleaned = html
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
-      
-      cleaned = cleaned.replace(/<br\s*\/?>/g, '');
-      
-      return cleaned;
-    },
-    
-    getCursorPosition(element) {
-      const selection = window.getSelection();
-      if (selection.rangeCount === 0) return 0;
-      
-      const range = selection.getRangeAt(0);
-      const preRange = range.cloneRange();
-      preRange.selectNodeContents(element);
-      preRange.setEnd(range.endContainer, range.endOffset);
-      
-      return preRange.toString().length;
-    },
-    
-    setCursorPosition(element, position) {
-      const selection = window.getSelection();
-      const range = document.createRange();
-      
-      let currentPos = 0;
-      let foundNode = null;
-      let foundOffset = 0;
-      
-      function findPosition(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const length = node.textContent.length;
-          if (currentPos + length >= position) {
-            foundNode = node;
-            foundOffset = position - currentPos;
-            return true;
-          }
-          currentPos += length;
-        } else {
-          for (let i = 0; i < node.childNodes.length; i++) {
-            if (findPosition(node.childNodes[i])) {
-              return true;
-            }
-          }
-        }
-        return false;
-      }
-      
-      if (findPosition(element)) {
-        range.setStart(foundNode, foundOffset);
-        range.setEnd(foundNode, foundOffset);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-    },
-    
-    formatTableCell(formatType) {
-      if (!this.activeTableCell) return;
-      
-      const cursorPosition = this.getCursorPosition(this.activeTableCell);
-      const selection = window.getSelection();
-      const selectedText = selection.toString();
-      
-      this.activeTableCell.focus();
-      
-      if (selectedText.trim()) {
-        if (formatType === 'sub') {
-          document.execCommand('subscript');
-        } else if (formatType === 'sup') {
-          document.execCommand('superscript');
-        }
-      } else {
-        const exampleText = formatType === 'sub' ? 'индекс' : 'степень';
-        const tag = formatType === 'sub' ? 'sub' : 'sup';
-        document.execCommand('insertHTML', false, `<${tag}>${exampleText}</${tag}>`);
-      }
-      
-      this.$nextTick(() => {
-        this.setCursorPosition(this.activeTableCell, cursorPosition);
-        
-        const cells = this.$refs.tableCells;
-        if (cells) {
-          const index = cells.indexOf(this.activeTableCell);
-          if (index !== -1) {
-            const rowIndex = Math.floor(index / this.tableCols);
-            const colIndex = index % this.tableCols;
-            this.tableContent[rowIndex][colIndex] = this.activeTableCell.innerHTML;
-          }
-        }
-      });
-    },
-    
-    clearTableFormatting() {
-      if (!this.activeTableCell) return;
-      
-      const cursorPosition = this.getCursorPosition(this.activeTableCell);
-      
-      this.activeTableCell.focus();
-      document.execCommand('removeFormat');
-      document.execCommand('unlink');
-      
-      this.$nextTick(() => {
-        this.setCursorPosition(this.activeTableCell, cursorPosition);
-        
-        const cells = this.$refs.tableCells;
-        if (cells) {
-          const index = cells.indexOf(this.activeTableCell);
-          if (index !== -1) {
-            const rowIndex = Math.floor(index / this.tableCols);
-            const colIndex = index % this.tableCols;
-            this.tableContent[rowIndex][colIndex] = this.activeTableCell.innerHTML;
-          }
-        }
-      });
-    },
-    
     formatText(editorType, formatType) {
       const editor = this.$refs[`${editorType}Editor`];
       if (!editor) return;
@@ -904,23 +956,19 @@ export default {
           } else {
             this.uploadedImages.push(imageData);
           }
+          
+          await this.insertImageToText(imageData);
         }
         
-        this.updateUploadStatus();
+        this.uploadStatus = `Успешно загружено ${files.length} файла(ов)`;
+        
       } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        this.uploadStatus = 'Ошибка при загрузке файлов';
+        console.error('Ошибка загрузки файлов:', error);
+        this.uploadStatus = 'Ошибка загрузки файлов';
       } finally {
         this.isUploading = false;
-        this.$refs.fileInput.value = '';
+        event.target.value = '';
       }
-    },
-    
-    updateUploadStatus() {
-      const textCount = this.uploadedImages.length;
-      const explanationCount = this.explanationImages.length;
-      
-      this.uploadStatus = `Текст: ${textCount}, Пояснение: ${explanationCount}`;
     },
     
     getImagePreview(file) {
@@ -931,147 +979,89 @@ export default {
       });
     },
     
+    insertImageToText(imageData) {
+      const editor = this.$refs[`${this.currentUploadType}Editor`];
+      if (!editor) return;
+      
+      editor.focus();
+      
+      const imgHtml = `<img src="${imageData.preview}" alt="${imageData.name}" style="max-width: 100%; height: auto; margin: 5px 0;" data-image-id="${imageData.id}">`;
+      document.execCommand('insertHTML', false, imgHtml);
+      
+      this.updateNewTask(this.currentUploadType, { target: editor });
+    },
+    
     removeImage(index) {
-      this.uploadedImages.splice(index, 1);
-      this.updateUploadStatus();
+      if (this.isUploading) return;
+      
+      const removedImage = this.uploadedImages.splice(index, 1)[0];
+      this.removeImageFromText(removedImage.id);
     },
-
+    
     removeExplanationImage(index) {
-      this.explanationImages.splice(index, 1);
-      this.updateUploadStatus();
-    },
-
-    async uploadImagesToStorage(images, folder) {
-      if (!images.length) return [];
+      if (this.isUploading) return;
       
-      const uploadedUrls = [];
-      
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !session) throw new Error('Not authenticated');
-        
-        for (const img of images) {
-          const fileExt = img.name.split('.').pop();
-          const fileName = `${uuidv4()}.${fileExt}`;
-          const subjectFolder = this.selectedSubject === 'Химия ЕГЭ' ? 'chemistry' : 'biology';
-          const filePath = `tasks/${subjectFolder}/${folder}/${fileName}`;
-          
-          const { error } = await supabase
-            .storage
-            .from('task-images')
-            .upload(filePath, img.file, {
-              upsert: false,
-              contentType: img.file.type
-            });
-          
-          if (error) throw error;
-          
-          const { data: { publicUrl } } = supabase
-            .storage
-            .from('task-images')
-            .getPublicUrl(filePath);
-            
-          uploadedUrls.push(publicUrl);
-        }
-        
-        return uploadedUrls;
-      } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        throw error;
-      }
+      const removedImage = this.explanationImages.splice(index, 1)[0];
+      this.removeImageFromText(removedImage.id, 'explanation');
     },
-
+    
+    removeImageFromText(imageId, editorType = 'text') {
+      const editor = this.$refs[`${editorType}Editor`];
+      if (!editor) return;
+      
+      const images = editor.querySelectorAll(`img[data-image-id="${imageId}"]`);
+      images.forEach(img => img.remove());
+      
+      this.updateNewTask(editorType, { target: editor });
+    },
+    
     async saveTask() {
+      if (!this.isFormValid) return;
+      
+      this.isUploading = true;
+      
       try {
-        this.isUploading = true;
-        
-        const [textImageUrls, explanationImageUrls] = await Promise.all([
-          this.uploadImagesToStorage(this.uploadedImages, 'text'),
-          this.uploadImagesToStorage(this.explanationImages, 'explanation')
-        ]);
-        
-        const tableName = this.selectedSubject === 'Химия ЕГЭ' 
-          ? 'chemistry_ege_task_bank' 
-          : 'biology_ege_task_bank';
-        
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
+        const taskData = {
+          homework_id: this.homeworkId,
+          homework_name: this.homeworkName,
+          subject: this.selectedSubject,
+          section: this.newTask.section,
+          topic: this.newTask.topic,
+          part: this.newTask.part,
+          number: this.newTask.number,
+          points: this.newTask.points,
+          difficulty: parseInt(this.newTask.difficulty),
+          text: this.newTask.text,
+          answer: this.newTask.answer,
+          explanation: this.newTask.explanation || '',
+          has_table: this.newTask.has_table,
+          table_data: this.newTask.table_data,
+          created_at: new Date().toISOString()
+        };
         
         const { data, error } = await supabase
-          .from(tableName)
-          .insert([{
-            text: this.newTask.text,
-            answer: this.newTask.answer,
-            explanation: this.newTask.explanation || null,
-            section: this.newTask.section,
-            topic: this.newTask.topic,
-            part: this.newTask.part,
-            number: this.newTask.number,
-            points: this.newTask.points,
-            difficulty: parseInt(this.newTask.difficulty),
-            images: textImageUrls.length ? textImageUrls : null,
-            image_explanation: explanationImageUrls.length ? explanationImageUrls : null,
-            has_table: this.newTask.has_table,
-            table_data: this.newTask.table_data,
-          }])
+          .from('homework_tasks')
+          .insert([taskData])
           .select();
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          const taskId = data[0].id;
-          
-          const homeworkTableName = this.selectedSubject === 'Химия ЕГЭ' 
-            ? 'chemistry_ege_homework_tasks' 
-            : 'biology_ege_homework_tasks';
-          
-          const { data: existingTasks, error: fetchError } = await supabase
-            .from(homeworkTableName)
-            .select('number')
-            .eq('homework_id', this.homeworkId);
-          
-          if (fetchError) {
-            console.error('Ошибка получения заданий:', fetchError);
-          }
-          
-          let nextNumber = 1;
-          if (existingTasks && existingTasks.length > 0) {
-            const maxNumber = Math.max(...existingTasks.map(task => task.number || 0));
-            nextNumber = maxNumber + 1;
-          }
-          
-          const { error: homeworkError } = await supabase
-            .from(homeworkTableName)
-            .insert([{
-              task_id: taskId,
-              homework_id: this.homeworkId,
-              homework_name: this.homeworkName,
-              number: nextNumber,
-            }]);
-
-          if (homeworkError) {
-            console.error('Ошибка при добавлении в homework_tasks:', homeworkError);
-          } else {
-            console.log(`Задание добавлено в домашнюю работу под номером ${nextNumber}`);
-          }
-        }
-
-        this.showSuccess = true;
-        this.uploadedImages = [];
-        this.explanationImages = [];
-        this.uploadStatus = 'Файлы не выбраны';
         
-        setTimeout(() => {
-          this.showSuccess = false;
-          this.resetForm();
-        }, 3000);
-
+        if (error) throw error;
+        
+        this.showSuccessNotification();
+        this.resetForm();
+        
       } catch (error) {
-        console.error('Ошибка при сохранении:', error);
-        alert(`Не удалось сохранить задание: ${error.message}`);
+        console.error('Ошибка сохранения задания:', error);
+        alert('Ошибка сохранения задания: ' + error.message);
       } finally {
         this.isUploading = false;
       }
+    },
+    
+    showSuccessNotification() {
+      this.showSuccess = true;
+      setTimeout(() => {
+        this.showSuccess = false;
+      }, 3000);
     }
   }
 };
@@ -1079,450 +1069,101 @@ export default {
 
 <style scoped>
 .editor-container {
-  width: 100%;
-  min-height: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
   padding: 20px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  background-color: #f8f9fa;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .subject-selector {
-  width: 100%;
-  margin-bottom: 20px;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #eee;
 }
 
 .subject-selector h2 {
-  margin: 0 0 15px 0;
-  font-size: 24px;
-  font-weight: 600;
+  margin-bottom: 15px;
   color: #333;
+  font-size: 24px;
 }
 
 .editor-form {
-  width: 100%;
-  flex: 1;
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  margin-top: 20px;
 }
 
 .form-grid {
-  width: 100%;
   display: grid;
-  grid-template-columns: repeat(4, minmax(110px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
 }
 
 .form-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-family: Evolventa;
 }
 
 .form-item label {
-  font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   color: #555;
+  font-size: 14px;
+}
+
+.points-select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  font-size: 14px;
 }
 
 .text-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  margin-bottom: 25px;
+}
+
+.text-editor label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #555;
 }
 
 .editor-toolbar {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
-  flex-wrap: wrap;
+  padding: 8px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
 }
 
 .toolbar-button {
   padding: 6px 10px;
-  background-color: #f0f0f0;
   border: 1px solid #ddd;
+  background: white;
   border-radius: 4px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 14px;
   transition: all 0.2s;
 }
 
 .toolbar-button:hover {
-  background-color: #e0e0e0;
+  background: #e9ecef;
+  border-color: #adb5bd;
 }
 
-.task-editor {
-  width: 100%;
-  min-height: 150px;
-  padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 16px;
-  resize: vertical;
-  font-family: inherit;
-  overflow-y: auto;
-  background: white;
-}
-
-.task-editor:focus {
-  outline: none;
-  border-color: #b241d1;
-  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
-}
-
-.task-editor[placeholder]:empty:before {
-  content: attr(placeholder);
-  color: #6c757d;
-  font-style: italic;
-}
-
-.answer-editor {
-  min-height: 80px;
-}
-
-sub, sup {
-  font-size: 0.75em;
-  line-height: 0;
-  position: relative;
-  vertical-align: baseline;
-}
-
-sub {
-  bottom: -0.25em;
-}
-
-sup {
-  top: -0.5em;
-}
-
-.points-select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 16px;
-}
-
-.points-select:focus {
-  outline: none;
-  border-color: #b241d1;
-  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
-}
-
-.table-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.table-modal-content {
-  background-color: white;
-  padding: 20px;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 800px;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-.table-modal-content h3 {
-  margin-top: 0;
-  color: #333;
-}
-
-.table-controls {
-  margin: 20px 0;
-}
-
-.control-row {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.control-row label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: 600;
-  min-width: auto;
-}
-
-.table-input {
-  width: 60px;
-  padding: 6px 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.table-preview-section,
-.editable-table-section {
-  margin: 15px 0;
-}
-
-.table-preview-section h4,
-.editable-table-section h4 {
-  margin-bottom: 8px;
-  color: #333;
-}
-
-.preview-table-container {
-  padding: 10px;
-  border: 1px solid #eee;
-  border-radius: 6px;
-  background: #fafafa;
-  overflow-x: auto;
-}
-
-.preview-table-container table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.preview-table-container td {
-  padding: 8px;
-  border: 1px solid #ddd;
-  min-height: 40px;
-  vertical-align: top;
-}
-
-.editable-table-container {
-  margin: 10px 0;
-  overflow-x: auto;
-}
-
-.editable-table-container table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.editable-table-container table.with-borders td {
-  border: 1px solid #ddd;
-}
-
-.editable-table-container td {
-  padding: 0;
-}
-
-.table-cell-editor {
-  padding: 8px;
-  min-height: 40px;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
-  background: white;
-  outline: none;
-  font-family: inherit;
-  font-size: 0.9rem;
-}
-
-.table-cell-editor:focus {
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
-}
-
-.table-toolbar {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  flex-wrap: wrap;
-}
-
-.modal-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-
-.modal-button {
-  padding: 8px 16px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s;
-}
-
-.modal-button.primary {
-  background: #007bff;
-  color: white;
-  border-color: #007bff;
-}
-
-.modal-button.primary:hover {
-  background: #0056b3;
-  border-color: #0056b3;
-}
-
-.modal-button:hover {
-  background: #f8f9fa;
-}
-
-.image-uploader {
-  margin-bottom: 20px;
-}
-
-.image-uploader label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #555;
-}
-
-.upload-controls {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  margin-bottom: 15px;
-}
-
-.upload-button {
-  padding: 8px 16px;
-  background-color: #e9ecef;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.upload-button:hover:not(:disabled) {
-  background-color: #dee2e6;
-}
-
-.upload-button:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.file-info {
-  font-size: 14px;
-  color: #666;
-}
-
-.image-preview {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 15px;
-}
-
-.preview-item {
-  position: relative;
-  border: 1px solid #eee;
-  border-radius: 6px;
-  overflow: hidden;
-  height: 120px;
-}
-
-.preview-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.remove-image-btn {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 25px;
-  height: 25px;
-  background-color: #ff6b6b;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.remove-image-btn:hover:not(:disabled) {
-  background-color: #ff5252;
-}
-
-.remove-image-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.success-notification {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  background-color: #f0faf0;
-  border: 1px solid #4caf50;
-  border-radius: 6px;
-  color: #2e7d32;
-  margin-bottom: 20px;
-  animation: fadeIn 0.3s ease-out;
-}
-
-.success-icon {
-  font-size: 24px;
-  font-weight: bold;
-}
-
-.success-text {
-  font-size: 16px;
-  font-weight: 500;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.action-buttons {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.save-button {
-  padding: 10px 20px;
-  background-color: #b241d1;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 16px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.save-button:hover:not(:disabled) {
-  background-color: #9a36b8;
-}
-
-.save-button:disabled {
-  background-color: #ddd;
+.toolbar-button:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
 .button-text {
-  font-style: italic;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .subscript {
@@ -1535,6 +1176,340 @@ sup {
   font-size: 0.7em;
 }
 
+.task-editor {
+  min-height: 120px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  background: white;
+  overflow-y: auto;
+}
+
+.task-editor:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.task-editor[contenteditable="true"]:empty:before {
+  content: attr(placeholder);
+  color: #6c757d;
+  font-style: italic;
+}
+
+.answer-editor {
+  min-height: 80px;
+  background: #f8f9fa;
+}
+
+.image-uploader {
+  margin-bottom: 25px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.image-uploader label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: #555;
+}
+
+.upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.upload-button {
+  padding: 8px 16px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.upload-button:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.upload-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.file-info {
+  font-size: 14px;
+  color: #6c757d;
+}
+
+.image-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.preview-item {
+  position: relative;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 5px;
+  background: white;
+}
+
+.preview-image {
+  max-width: 150px;
+  max-height: 150px;
+  object-fit: contain;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.remove-image-btn:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.remove-image-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.action-buttons {
+  margin-top: 30px;
+  text-align: center;
+}
+
+.save-button {
+  padding: 12px 30px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.save-button:hover:not(:disabled) {
+  background: #218838;
+}
+
+.save-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.success-notification {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px;
+  margin-bottom: 20px;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 4px;
+  color: #155724;
+}
+
+.success-icon {
+  width: 24px;
+  height: 24px;
+  background: #28a745;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.success-text {
+  font-weight: 600;
+}
+
+/* Стили для модального окна таблицы */
+.table-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.table-modal-content {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+  width: 90%;
+}
+
+.table-modal-content h3 {
+  margin-bottom: 20px;
+  color: #333;
+  text-align: center;
+}
+
+.table-controls {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 10px;
+}
+
+.control-row:last-child {
+  margin-bottom: 0;
+}
+
+.control-row label {
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+
+.table-input {
+  width: 60px;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.table-preview-section,
+.editable-table-section {
+  margin-bottom: 20px;
+}
+
+.table-preview-section h4,
+.editable-table-section h4 {
+  margin-bottom: 10px;
+  color: #555;
+}
+
+.preview-table-container,
+.editable-table-container {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 15px;
+  background: white;
+  overflow-x: auto;
+}
+
+.preview-table-container table,
+.editable-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.preview-table-container table.with-borders td,
+.editable-table-container table.with-borders td {
+  border: 1px solid #ddd;
+}
+
+.preview-table-container table td,
+.editable-table-container table td {
+  padding: 8px;
+  min-width: 80px;
+  height: 40px;
+  vertical-align: top;
+}
+
+.table-cell-editor {
+  min-height: 30px;
+  padding: 4px;
+  border: 1px solid #e9ecef;
+  border-radius: 2px;
+  font-size: 14px;
+  line-height: 1.4;
+  background: white;
+}
+
+.table-cell-editor:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.table-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.modal-button {
+  padding: 10px 20px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.modal-button.primary {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.modal-button.primary:hover {
+  background: #0056b3;
+}
+
+.modal-button:hover {
+  background: #e9ecef;
+}
+
+/* Адаптивность */
 @media (max-width: 768px) {
   .editor-container {
     padding: 15px;
@@ -1542,90 +1517,28 @@ sup {
   
   .form-grid {
     grid-template-columns: 1fr;
-  }
-  
-  .subject-selector h2 {
-    font-size: 20px;
-  }
-  
-  .task-editor {
-    min-height: 120px;
-  }
-  
-  .save-button {
-    width: 100%;
-    padding: 12px;
-  }
-
-  .success-notification {
-    flex-direction: column;
-    text-align: center;
-    padding: 12px;
-  }
-  
-  .upload-controls {
-    flex-direction: column;
-    align-items: flex-start;
+    gap: 15px;
   }
   
   .table-modal-content {
+    padding: 20px;
     width: 95%;
-    padding: 15px;
   }
   
   .control-row {
     flex-direction: column;
     align-items: flex-start;
+    gap: 8px;
   }
   
   .modal-buttons {
-    justify-content: center;
+    flex-direction: column;
   }
   
-  .editable-table-container {
-    max-height: 200px;
+  .upload-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
-  
-  .table-cell-editor {
-    height: 40px;
-    font-size: 12px;
-  }
-}
-
-:deep(.dropdown-header) {
-  padding: 10px 15px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-:deep(.selected-value) {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
-  max-width: 100%;
-}
-
-:deep(.dropdown-options) {
-  max-width: 100%;
-}
-
-:deep(.dropdown-option) {
-  white-space: normal;
-  word-break: break-word;
-  padding: 10px 15px;
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-}
-
-:deep(.dropdown-option:hover) {
-  background-color: #f5f5f5;
-}
-
-:deep(.dropdown-option.is-selected) {
-  background-color: #f0e6ff;
 }
 </style>
