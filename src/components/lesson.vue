@@ -109,6 +109,11 @@ import { ref, onMounted, watch, computed, onUnmounted } from 'vue'
 import { supabase } from '../supabase.js'
 
 const props = defineProps({
+  tableName: {
+    type: String,
+    required: true,
+    validator: value => value && typeof value === 'string'
+  },
   subject: {
     type: String,
     required: true,
@@ -124,7 +129,7 @@ const props = defineProps({
 const emit = defineEmits(['back-to-calendar'])
 
 const lesson = ref(null)
-const homeworkData = ref([]) // Теперь массив для нескольких домашних заданий
+const homeworkData = ref([])
 const loading = ref(false)
 const error = ref(null)
 const showMessage = ref(false)
@@ -136,6 +141,15 @@ const user = ref(null)
 const isAuthenticated = ref(false)
 
 let messageTimer = null
+
+// Определяем тип экзамена и предмета
+const examType = computed(() => {
+  return props.tableName.includes('_ege') ? 'ege' : 'oge'
+})
+
+const subjectType = computed(() => {
+  return props.tableName.includes('biology') ? 'biology' : 'chemistry'
+})
 
 // Компьютеды для работы с массивами
 const allVideos = computed(() => {
@@ -206,7 +220,7 @@ const handleBack = () => emit('back-to-calendar')
 const openHomeworkSimple = (homework) => {
   try {
     const params = new URLSearchParams({
-      subject: `${props.subject}_ege`,
+      subject: `${subjectType.value}_${examType.value}`,
       homework_id: homework.homework_id,
       homework_name: homework.homework_name || 'Домашнее задание',
       lesson_number: homework.lesson_number || lesson.value?.number || '',
@@ -299,12 +313,12 @@ async function fetchLesson() {
     loading.value = true
     error.value = null
     lesson.value = null
-    homeworkData.value = [] // Инициализируем как пустой массив
+    homeworkData.value = []
     
-    const tableName = `${props.subject}_ege`
+    console.log(`Загрузка урока из таблицы: ${props.tableName}, номер: ${props.lessonNumber}`)
     
     const { data, error: supabaseError } = await supabase
-      .from(tableName)
+      .from(props.tableName)
       .select('number, title, date, video, homework, workbook, practice')
       .eq('number', props.lessonNumber)
       .single()
@@ -375,14 +389,16 @@ async function fetchHomework(lessonName) {
   }
   
   try {
-    const homeworkTable = `${props.subject}_ege_homework_list`
+    // Формируем название таблицы домашних заданий
+    const homeworkTable = `${subjectType.value}_${examType.value}_homework_list`
     
-    // Теперь используем select() без maybeSingle() чтобы получить все записи
+    console.log(`Загрузка домашних заданий из таблицы: ${homeworkTable}, урок: ${lessonName}`)
+    
     const { data, error: homeworkError } = await supabase
       .from(homeworkTable)
       .select('homework_id, homework_name, lesson_number, lesson_name, deadline')
       .eq('lesson_name', lessonName)
-      .order('created_at', { ascending: true }) // Сортируем по дате создания
+      .order('created_at', { ascending: true })
 
     if (homeworkError) {
       console.log('Ошибка загрузки домашнего задания:', homeworkError.message)
@@ -390,7 +406,6 @@ async function fetchHomework(lessonName) {
       return
     }
     
-    // data теперь массив (может быть пустым)
     homeworkData.value = data || []
     
   } catch (err) {
@@ -420,6 +435,12 @@ onMounted(() => {
 
 watch(() => props.lessonNumber, (newLessonNumber) => {
   if (newLessonNumber && isAuthenticated.value) {
+    fetchLesson()
+  }
+})
+
+watch(() => props.tableName, () => {
+  if (isAuthenticated.value) {
     fetchLesson()
   }
 })
@@ -473,7 +494,7 @@ const formattedDate = computed(() => {
 .video-wrapper {
   position: relative;
   width: 100%;
-  min-height: 400px; /* Достаточно места для iframe 360px + отступы */
+  min-height: 400px;
   display: flex;
   justify-content: center;
   align-items: center;

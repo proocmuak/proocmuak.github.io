@@ -418,8 +418,7 @@ export default {
             userAnswer: this.userAnswer
           });
         } else {
-          console.log('Перерешивание задания. Баллы не добавлены в рейтинг.');
-          this.$emit('answer-retried', {
+                     this.$emit('answer-retried', {
             taskId: this.task.id,
             awardedPoints: this.awardedPoints,
             userAnswer: this.userAnswer,

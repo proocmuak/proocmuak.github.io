@@ -260,8 +260,7 @@ export default {
     loadMoreTasks() {
       if (this.hasMoreTasks) {
         this.visibleCount += 50;
-        console.log('Загружено заданий:', this.visibleCount, 'из', this.filteredTasks.length);
-      }
+               }
     },
     
     handleScroll() {

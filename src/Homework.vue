@@ -500,7 +500,7 @@ export default {
         task.saving = true;
         const userAnswer = task.editAnswerInput.trim();
         
-        task.userAnswer = userAnswer;
+        task.userAnswer = userAnswer; 
         task.userAnswerInput = userAnswer;
         task.isEditing = false;
         

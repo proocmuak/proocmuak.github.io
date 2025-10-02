@@ -48,7 +48,6 @@ const studentAccessFrom = ref(null)
 const studentData = ref(null)
 
 const selectLesson = (number) => {
-  console.log('Выбран урок:', number)
   selectedLesson.value = number
 }
 
@@ -105,9 +104,7 @@ async function fetchStudentData() {
     } else {
       studentAccessFrom.value = null
     }
-    
-    console.log('Данные студента загружены:', data)
-    console.log('Дата доступа к биологии:', studentAccessFrom.value)
+
   } catch (err) {
     console.error('Ошибка загрузки данных студента:', err)
     // Если нет доступа к данным студента, показываем все уроки
@@ -120,7 +117,6 @@ async function fetchLessons() {
     loading.value = true
     error.value = null
     
-    console.log('Загрузка списка уроков...')
     
     const { data, error: supabaseError } = await supabase
       .from('biology_ege')
@@ -130,7 +126,7 @@ async function fetchLessons() {
     if (supabaseError) throw supabaseError
     
     lessons.value = data || []
-    console.log('Уроки загружены:', data)
+
   } catch (err) {
     error.value = err.message
     console.error('Ошибка загрузки уроков:', err)

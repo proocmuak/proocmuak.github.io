@@ -219,8 +219,7 @@ export default {
 
     const openStudentHomework = async (notification) => {
       try {
-        console.log('Открываем домашние работы для студента:', notification.student_id);
-        
+                 
         // Получаем полные данные о студенте
         const { data: studentData, error: studentError } = await supabase
           .from('personalities')
@@ -259,8 +258,7 @@ export default {
           score: score
         };
 
-        console.log('Данные студента:', student);
-
+         
         // Получаем subject и examType из уведомления
         const [subject, examTypeFromSubject] = notification.subject.split('_');
         
@@ -269,12 +267,7 @@ export default {
         selectedSubject.value = subject;
         selectedExamType.value = examTypeFromSubject;
 
-        console.log('Параметры для StudentHomework:', {
-          subject: subject,
-          examType: examTypeFromSubject,
-          student: student
-        });
-
+         
         // Блокируем прокрутку фона
         document.body.style.overflow = 'hidden';
 

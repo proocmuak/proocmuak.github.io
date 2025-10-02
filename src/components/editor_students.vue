@@ -340,8 +340,7 @@ const updateStudent = async (student) => {
     access: student.access
   };
 
-  console.log('Отправляемые данные:', updateData);
-
+   
   try {
     const { error } = await supabase
       .from('students')
@@ -352,8 +351,7 @@ const updateStudent = async (student) => {
       console.error('Ошибка обновления:', error);
       alert('Не удалось сохранить изменения! Ошибка: ' + error.message);
     } else {
-      console.log('Данные студента обновлены:', student);
-    }
+           }
   } catch (error) {
     console.error('Неожиданная ошибка:', error);
     alert('Не удалось сохранить изменения!');

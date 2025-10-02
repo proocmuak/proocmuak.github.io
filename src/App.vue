@@ -52,9 +52,7 @@ const handleLogin = async () => {
     }
     
     // Если записи нет, создаем ее
-    if (!existingData) {
-      console.log('Создаем новую запись в personalities для пользователя:', email.value)
-      
+    if (!existingData) {      
       const { error: insertError } = await supabase
         .from('personalities')
         .insert([
@@ -151,8 +149,7 @@ const handleSignUp = async () => {
           }
         }
       } else {
-        console.log('Профиль уже существует для email:', email.value)
-        successMessage.value = 'Аккаунт уже существует. Проверьте вашу почту для подтверждения!'
+       successMessage.value = 'Аккаунт уже существует. Проверьте вашу почту для подтверждения!'
       }
     }
     

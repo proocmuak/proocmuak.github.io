@@ -255,8 +255,7 @@ export default {
       this.emitFiltersChanged();
     },
     selectedDifficulty(newVal) {
-      console.log('Выбрана сложность:', newVal);
-      this.emitFiltersChanged();
+             this.emitFiltersChanged();
     },
   },
   created() {

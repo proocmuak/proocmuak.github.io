@@ -45,8 +45,7 @@ export default {
       this.allStudents = [];
       
       try {
-        console.log('Загрузка данных для таблицы:', this.ratingTable);
-        
+                 
         // 1. Сначала получаем данные из рейтинговой таблицы
         const { data: ratingData, error: ratingError } = await supabase
           .from(this.ratingTable)
@@ -58,20 +57,16 @@ export default {
           throw ratingError;
         }
         
-        console.log('Данные рейтинга:', ratingData);
-        
+                 
         if (!ratingData || ratingData.length === 0) {
-          console.log('Нет данных в таблице рейтинга');
-          return;
+                     return;
         }
         
         // 2. Получаем ID пользователей
         const userIds = ratingData.map(item => item.user_id).filter(id => id);
-        console.log('User IDs:', userIds);
-        
+                 
         if (userIds.length === 0) {
-          console.log('Нет user_id в данных рейтинга');
-          return;
+                     return;
         }
         
         // 3. Получаем данные пользователей из таблицы personalities
@@ -85,8 +80,7 @@ export default {
           throw personalitiesError;
         }
         
-        console.log('Данные personalities:', personalitiesData);
-        
+                 
         // 4. Объединяем данные
         const mergedData = ratingData.map(ratingItem => {
           const personalityData = personalitiesData?.find(person => person.user_id === ratingItem.user_id);
@@ -99,8 +93,7 @@ export default {
           };
         });
         
-        console.log('Объединенные данные:', mergedData);
-        this.allStudents = mergedData;
+                 this.allStudents = mergedData;
         
       } catch (err) {
         console.error('Полная ошибка загрузки:', err);

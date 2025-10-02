@@ -25,9 +25,7 @@ export default {
   },
   computed: {
     filteredTasks() {
-      console.log('Current filters:', this.filters);
-console.log('Task number filter:', this.filters.taskNumber);
-      if (!this.filters.subject) return [];
+              if (!this.filters.subject) return [];
       
       // Конфигурация для разных предметов
       const partConfig = {
@@ -189,8 +187,7 @@ console.log('Task number filter:', this.filters.taskNumber);
     loadMoreTasks() {
       if (this.hasMoreTasks) {
         this.visibleCount += 50;
-        console.log('Загружено заданий:', this.visibleCount, 'из', this.filteredTasks.length);
-      }
+               }
     },
     
     handleScroll() {

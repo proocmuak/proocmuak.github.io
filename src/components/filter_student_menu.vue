@@ -299,8 +299,7 @@ export default {
             { value: 'Химия ОГЭ', label: 'Химия ОГЭ' },
             { value: 'Биология ОГЭ', label: 'Биология ОГЭ' }
           ];
-          console.log('Показаны все предметы для роли:', personalityData.role);
-        } else {
+                   } else {
           // Для student и других ролей показываем только назначенные предметы
           await this.fetchStudentSubjects(user.id);
         }

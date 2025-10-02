@@ -18,8 +18,7 @@ if (!DEFAULT_BUCKET) console.warn("WARNING: S3_BUCKET is not set");
 try {
   const { S3Client } = await import("npm:@aws-sdk/client-s3");
   const { getSignedUrl } = await import("npm:@aws-sdk/s3-request-presigner");
-  console.log("✅ Все модули успешно загружены");
-} catch (error) {
+   } catch (error) {
   console.error("❌ Ошибка загрузки модулей:", error.message);
 }
 const s3 = new S3Client({
