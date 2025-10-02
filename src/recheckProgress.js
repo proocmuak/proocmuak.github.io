@@ -149,7 +149,7 @@ async function getAllProgressRows(progressTable) {
   while (true) {
     const { data, error } = await supabase
       .from(progressTable)
-      .select('id, user_id, task_id, is_completed, score, user_answer')
+      .select('id, user_id, task_id, is_completed, score, user_answer, counted_in_raiting')
       .range(from, from + pageSize - 1)
 
     if (error) {
@@ -172,22 +172,29 @@ async function recheckSubjectProgress(subject, supabase) {
   const taskBank = `${subject}_task_bank`
   const shortSubject = shortSubjectFromProgressTable(progressTable)
 
-  console.log(`\n=== Перепроверка ${subject} ===`)
+  console.log(`\n=== Перепроверка ${subject} (только первая часть) ===`)
 
   const progresses = await getAllProgressRows(progressTable)
   console.log(`Всего найдено ${progresses.length} записей в ${progressTable}`)
 
   let updatedCount = 0
   let unchangedCount = 0
+  let skippedCount = 0
 
   for (const prog of progresses) {
+    // Получаем информацию о задании с фильтром по части
     const { data: taskRows, error: taskError } = await supabase
       .from(taskBank)
-      .select('id, answer, points, number')
+      .select('id, answer, points, number, part')
       .eq('id', prog.task_id)
+      .eq('part', 'Первая часть') // ФИЛЬТР: только первая часть
       .maybeSingle()
 
-    if (taskError || !taskRows) continue
+    if (taskError || !taskRows) {
+      skippedCount++
+      continue // Пропускаем задания не из первой части или с ошибками
+    }
+    
     const task = taskRows
 
     const result = checkAnswer(
@@ -199,11 +206,20 @@ async function recheckSubjectProgress(subject, supabase) {
       prog.task_id
     )
 
-    if (result.score !== prog.score || result.isCorrect !== prog.is_completed) {
+    // Определяем, нужно ли обновлять counted_in_raiting
+    const newCountedInRaiting = result.isCorrect // true только если задание полностью решено верно
+
+    // Проверяем, нужно ли обновлять запись
+    const needsUpdate = 
+      result.score !== prog.score || 
+      result.isCorrect !== prog.is_completed ||
+      newCountedInRaiting !== prog.counted_in_raiting
+
+    if (needsUpdate) {
       updatedCount++
       console.log(
         `UPDATE: user_id=${prog.user_id}, task_id=${prog.task_id}, number=${task.number}, ` +
-        `старый=${prog.score}/${prog.is_completed} → новый=${result.score}/${result.isCorrect}`
+        `старый=${prog.score}/${prog.is_completed}/${prog.counted_in_raiting} → новый=${result.score}/${result.isCorrect}/${newCountedInRaiting}`
       )
       console.log(`   user_answer="${prog.user_answer}", correct_answer="${task.answer}"`)
 
@@ -212,6 +228,7 @@ async function recheckSubjectProgress(subject, supabase) {
         .update({
           score: result.score,
           is_completed: result.isCorrect,
+          counted_in_raiting: newCountedInRaiting, // ОБНОВЛЕНО: выставляем true только для полностью верных решений
           last_updated: new Date().toISOString()
         })
         .eq('id', prog.id)
@@ -227,7 +244,11 @@ async function recheckSubjectProgress(subject, supabase) {
     }
   }
 
-  console.log(`\n✅ Перепроверка ${subject} завершена. Изменено: ${updatedCount}, без изменений: ${unchangedCount}`)
+  console.log(`\n✅ Перепроверка ${subject} завершена.`)
+  console.log(`📊 Статистика:`)
+  console.log(`   - Изменено: ${updatedCount}`)
+  console.log(`   - Без изменений: ${unchangedCount}`)
+  console.log(`   - Пропущено (не первая часть): ${skippedCount}`)
 }
 
 // === запуск ===

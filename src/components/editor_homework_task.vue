@@ -956,19 +956,23 @@ export default {
           } else {
             this.uploadedImages.push(imageData);
           }
-          
-          await this.insertImageToText(imageData);
         }
         
-        this.uploadStatus = `Успешно загружено ${files.length} файла(ов)`;
-        
+        this.updateUploadStatus();
       } catch (error) {
-        console.error('Ошибка загрузки файлов:', error);
-        this.uploadStatus = 'Ошибка загрузки файлов';
+        console.error('Ошибка загрузки:', error);
+        this.uploadStatus = 'Ошибка при загрузке файлов';
       } finally {
         this.isUploading = false;
-        event.target.value = '';
+        this.$refs.fileInput.value = '';
       }
+    },
+    
+    updateUploadStatus() {
+      const textCount = this.uploadedImages.length;
+      const explanationCount = this.explanationImages.length;
+      
+      this.uploadStatus = `Текст: ${textCount}, Пояснение: ${explanationCount}`;
     },
     
     getImagePreview(file) {
@@ -979,191 +983,618 @@ export default {
       });
     },
     
-    insertImageToText(imageData) {
-      const editor = this.$refs[`${this.currentUploadType}Editor`];
-      if (!editor) return;
-      
-      editor.focus();
-      
-      const imgHtml = `<img src="${imageData.preview}" alt="${imageData.name}" style="max-width: 100%; height: auto; margin: 5px 0;" data-image-id="${imageData.id}">`;
-      document.execCommand('insertHTML', false, imgHtml);
-      
-      this.updateNewTask(this.currentUploadType, { target: editor });
-    },
-    
     removeImage(index) {
-      if (this.isUploading) return;
-      
-      const removedImage = this.uploadedImages.splice(index, 1)[0];
-      this.removeImageFromText(removedImage.id);
+      this.uploadedImages.splice(index, 1);
+      this.updateUploadStatus();
     },
-    
+
     removeExplanationImage(index) {
-      if (this.isUploading) return;
-      
-      const removedImage = this.explanationImages.splice(index, 1)[0];
-      this.removeImageFromText(removedImage.id, 'explanation');
+      this.explanationImages.splice(index, 1);
+      this.updateUploadStatus();
     },
-    
-    removeImageFromText(imageId, editorType = 'text') {
-      const editor = this.$refs[`${editorType}Editor`];
-      if (!editor) return;
+
+    async uploadImagesToStorage(images, folder) {
+      if (!images.length) return [];
       
-      const images = editor.querySelectorAll(`img[data-image-id="${imageId}"]`);
-      images.forEach(img => img.remove());
-      
-      this.updateNewTask(editorType, { target: editor });
-    },
-    
-    async saveTask() {
-      if (!this.isFormValid) return;
-      
-      this.isUploading = true;
+      const uploadedUrls = [];
       
       try {
-        const taskData = {
-          homework_id: this.homeworkId,
-          homework_name: this.homeworkName,
-          subject: this.selectedSubject,
-          section: this.newTask.section,
-          topic: this.newTask.topic,
-          part: this.newTask.part,
-          number: this.newTask.number,
-          points: this.newTask.points,
-          difficulty: parseInt(this.newTask.difficulty),
-          text: this.newTask.text,
-          answer: this.newTask.answer,
-          explanation: this.newTask.explanation || '',
-          has_table: this.newTask.has_table,
-          table_data: this.newTask.table_data,
-          created_at: new Date().toISOString()
-        };
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session) throw new Error('Not authenticated');
+        
+        for (const img of images) {
+          const fileExt = img.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExt}`;
+          const subjectFolder = this.getSubjectFolderName();
+          const filePath = `tasks/${subjectFolder}/${folder}/${fileName}`;
+          
+          const { error } = await supabase
+            .storage
+            .from('task-images')
+            .upload(filePath, img.file, {
+              upsert: false,
+              contentType: img.file.type
+            });
+          
+          if (error) throw error;
+          
+          const { data: { publicUrl } } = supabase
+            .storage
+            .from('task-images')
+            .getPublicUrl(filePath);
+            
+          uploadedUrls.push(publicUrl);
+        }
+        
+        return uploadedUrls;
+      } catch (error) {
+        console.error('Ошибка загрузки:', error);
+        throw error;
+      }
+    },
+
+    getSubjectFolderName() {
+      switch (this.selectedSubject) {
+        case 'Химия ЕГЭ': return 'chemistry_ege';
+        case 'Биология ЕГЭ': return 'biology_ege';
+        case 'Химия ОГЭ': return 'chemistry_oge';
+        case 'Биология ОГЭ': return 'biology_oge';
+        default: return 'other';
+      }
+    },
+
+    getTableNames() {
+      switch (this.selectedSubject) {
+        case 'Химия ЕГЭ': 
+          return { taskBank: 'chemistry_ege_task_bank', homeworkTasks: 'chemistry_ege_homework_tasks' };
+        case 'Биология ЕГЭ': 
+          return { taskBank: 'biology_ege_task_bank', homeworkTasks: 'biology_ege_homework_tasks' };
+        case 'Химия ОГЭ': 
+          return { taskBank: 'chemistry_oge_task_bank', homeworkTasks: 'chemistry_oge_homework_tasks' };
+        case 'Биология ОГЭ': 
+          return { taskBank: 'biology_oge_task_bank', homeworkTasks: 'biology_oge_homework_tasks' };
+        default: 
+          return { taskBank: 'chemistry_ege_task_bank', homeworkTasks: 'chemistry_ege_homework_tasks' };
+      }
+    },
+
+    async saveTask() {
+      try {
+        this.isUploading = true;
+        
+        const [textImageUrls, explanationImageUrls] = await Promise.all([
+          this.uploadImagesToStorage(this.uploadedImages, 'text'),
+          this.uploadImagesToStorage(this.explanationImages, 'explanation')
+        ]);
+        
+        const { taskBank, homeworkTasks } = this.getTableNames();
+        
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
         
         const { data, error } = await supabase
-          .from('homework_tasks')
-          .insert([taskData])
+          .from(taskBank)
+          .insert([{
+            text: this.newTask.text,
+            answer: this.newTask.answer,
+            explanation: this.newTask.explanation || null,
+            section: this.newTask.section,
+            topic: this.newTask.topic,
+            part: this.newTask.part,
+            number: this.newTask.number,
+            points: this.newTask.points,
+            difficulty: parseInt(this.newTask.difficulty),
+            images: textImageUrls.length ? textImageUrls : null,
+            image_explanation: explanationImageUrls.length ? explanationImageUrls : null,
+            has_table: this.newTask.has_table,
+            table_data: this.newTask.table_data,
+          }])
           .select();
-        
+
         if (error) throw error;
+
+        if (data && data.length > 0) {
+          const taskId = data[0].id;
+          
+          const { data: existingTasks, error: fetchError } = await supabase
+            .from(homeworkTasks)
+            .select('number')
+            .eq('homework_id', this.homeworkId);
+          
+          if (fetchError) {
+            console.error('Ошибка получения заданий:', fetchError);
+          }
+          
+          let nextNumber = 1;
+          if (existingTasks && existingTasks.length > 0) {
+            const maxNumber = Math.max(...existingTasks.map(task => task.number || 0));
+            nextNumber = maxNumber + 1;
+          }
+          
+          const { error: homeworkError } = await supabase
+            .from(homeworkTasks)
+            .insert([{
+              task_id: taskId,
+              homework_id: this.homeworkId,
+              homework_name: this.homeworkName,
+              number: nextNumber,
+            }]);
+
+          if (homeworkError) {
+            console.error('Ошибка при добавлении в homework_tasks:', homeworkError);
+          } else {
+            console.log(`Задание добавлено в домашнюю работу под номером ${nextNumber}`);
+          }
+        }
+
+        this.showSuccess = true;
+        this.uploadedImages = [];
+        this.explanationImages = [];
+        this.uploadStatus = 'Файлы не выбраны';
         
-        this.showSuccessNotification();
-        this.resetForm();
-        
+        setTimeout(() => {
+          this.showSuccess = false;
+          this.resetForm();
+        }, 3000);
+
       } catch (error) {
-        console.error('Ошибка сохранения задания:', error);
-        alert('Ошибка сохранения задания: ' + error.message);
+        console.error('Ошибка при сохранении:', error);
+        alert(`Не удалось сохранить задание: ${error.message}`);
       } finally {
         this.isUploading = false;
       }
-    },
-    
-    showSuccessNotification() {
-      this.showSuccess = true;
-      setTimeout(() => {
-        this.showSuccess = false;
-      }, 3000);
     }
   }
 };
 </script>
 
 <style scoped>
+/* Стили остаются без изменений */
 .editor-container {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  min-height: 100%;
   padding: 20px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background-color: #f8f9fa;
 }
 
 .subject-selector {
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #eee;
+  width: 100%;
+  margin-bottom: 20px;
 }
 
 .subject-selector h2 {
-  margin-bottom: 15px;
-  color: #333;
+  margin: 0 0 15px 0;
   font-size: 24px;
+  font-weight: 600;
+  color: #333;
 }
 
 .editor-form {
-  margin-top: 20px;
+  width: 100%;
+  flex: 1;
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .form-grid {
+  width: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: 15px;
 }
 
 .form-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  font-family: Evolventa;
 }
 
 .form-item label {
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   color: #555;
-  font-size: 14px;
-}
-
-.points-select {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background: white;
-  font-size: 14px;
 }
 
 .text-editor {
-  margin-bottom: 25px;
-}
-
-.text-editor label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-  color: #555;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .editor-toolbar {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
-  padding: 8px;
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
+  flex-wrap: wrap;
 }
 
 .toolbar-button {
   padding: 6px 10px;
+  background-color: #f0f0f0;
   border: 1px solid #ddd;
-  background: white;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.2s;
 }
 
 .toolbar-button:hover {
-  background: #e9ecef;
-  border-color: #adb5bd;
+  background-color: #e0e0e0;
 }
 
-.toolbar-button:disabled {
-  opacity: 0.6;
+.task-editor {
+  width: 100%;
+  min-height: 150px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 16px;
+  resize: vertical;
+  font-family: inherit;
+  overflow-y: auto;
+  background: white;
+}
+
+.task-editor:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
+}
+
+.task-editor[placeholder]:empty:before {
+  content: attr(placeholder);
+  color: #6c757d;
+  font-style: italic;
+}
+
+.answer-editor {
+  min-height: 80px;
+}
+
+sub, sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+sub {
+  bottom: -0.25em;
+}
+
+sup {
+  top: -0.5em;
+}
+
+.points-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 16px;
+}
+
+.points-select:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
+}
+
+.table-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.table-modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.table-modal-content h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.table-controls {
+  margin: 20px 0;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.control-row label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  min-width: auto;
+}
+
+.table-input {
+  width: 60px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.table-preview-section,
+.editable-table-section {
+  margin: 15px 0;
+}
+
+.table-preview-section h4,
+.editable-table-section h4 {
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.preview-table-container {
+  padding: 10px;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  background: #fafafa;
+  overflow-x: auto;
+}
+
+.preview-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.preview-table-container td {
+  padding: 8px;
+  border: 1px solid #ddd;
+  min-height: 40px;
+  vertical-align: top;
+}
+
+.editable-table-container {
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.editable-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.editable-table-container table.with-borders td {
+  border: 1px solid #ddd;
+}
+
+.editable-table-container td {
+  padding: 0;
+}
+
+.table-cell-editor {
+  padding: 8px;
+  min-height: 40px;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  background: white;
+  outline: none;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.table-cell-editor:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.table-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.modal-button {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.modal-button.primary {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.modal-button.primary:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+.modal-button:hover {
+  background: #f8f9fa;
+}
+
+.image-uploader {
+  margin-bottom: 20px;
+}
+
+.image-uploader label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #555;
+}
+
+.upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.upload-button {
+  padding: 8px 16px;
+  background-color: #e9ecef;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-button:hover:not(:disabled) {
+  background-color: #dee2e6;
+}
+
+.upload-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.file-info {
+  font-size: 14px;
+  color: #666;
+}
+
+.image-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.preview-item {
+  position: relative;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  overflow: hidden;
+  height: 120px;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 25px;
+  height: 25px;
+  background-color: #ff6b6b;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.remove-image-btn:hover:not(:disabled) {
+  background-color: #ff5252;
+}
+
+.remove-image-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.success-notification {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background-color: #f0faf0;
+  border: 1px solid #4caf50;
+  border-radius: 6px;
+  color: #2e7d32;
+  margin-bottom: 20px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.success-icon {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.success-text {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.save-button {
+  padding: 10px 20px;
+  background-color: #b241d1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.save-button:hover:not(:disabled) {
+  background-color: #9a36b8;
+}
+
+.save-button:disabled {
+  background-color: #ddd;
   cursor: not-allowed;
 }
 
 .button-text {
-  font-size: 14px;
-  line-height: 1;
+  font-style: italic;
 }
 
 .subscript {
@@ -1176,340 +1607,6 @@ export default {
   font-size: 0.7em;
 }
 
-.task-editor {
-  min-height: 120px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 12px;
-  font-size: 14px;
-  line-height: 1.5;
-  background: white;
-  overflow-y: auto;
-}
-
-.task-editor:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
-}
-
-.task-editor[contenteditable="true"]:empty:before {
-  content: attr(placeholder);
-  color: #6c757d;
-  font-style: italic;
-}
-
-.answer-editor {
-  min-height: 80px;
-  background: #f8f9fa;
-}
-
-.image-uploader {
-  margin-bottom: 25px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 4px;
-}
-
-.image-uploader label {
-  display: block;
-  margin-bottom: 10px;
-  font-weight: 600;
-  color: #555;
-}
-
-.upload-controls {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.upload-button {
-  padding: 8px 16px;
-  background: #007bff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-.upload-button:hover:not(:disabled) {
-  background: #0056b3;
-}
-
-.upload-button:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
-.file-info {
-  font-size: 14px;
-  color: #6c757d;
-}
-
-.image-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 15px;
-}
-
-.preview-item {
-  position: relative;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 5px;
-  background: white;
-}
-
-.preview-image {
-  max-width: 150px;
-  max-height: 150px;
-  object-fit: contain;
-}
-
-.remove-image-btn {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 24px;
-  height: 24px;
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.remove-image-btn:hover:not(:disabled) {
-  background: #c82333;
-}
-
-.remove-image-btn:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
-.action-buttons {
-  margin-top: 30px;
-  text-align: center;
-}
-
-.save-button {
-  padding: 12px 30px;
-  background: #28a745;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.save-button:hover:not(:disabled) {
-  background: #218838;
-}
-
-.save-button:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
-.success-notification {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 15px;
-  margin-bottom: 20px;
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  border-radius: 4px;
-  color: #155724;
-}
-
-.success-icon {
-  width: 24px;
-  height: 24px;
-  background: #28a745;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-}
-
-.success-text {
-  font-weight: 600;
-}
-
-/* Стили для модального окна таблицы */
-.table-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.table-modal-content {
-  background: white;
-  padding: 30px;
-  border-radius: 8px;
-  max-width: 800px;
-  max-height: 90vh;
-  overflow-y: auto;
-  width: 90%;
-}
-
-.table-modal-content h3 {
-  margin-bottom: 20px;
-  color: #333;
-  text-align: center;
-}
-
-.table-controls {
-  margin-bottom: 20px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 4px;
-}
-
-.control-row {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  margin-bottom: 10px;
-}
-
-.control-row:last-child {
-  margin-bottom: 0;
-}
-
-.control-row label {
-  font-weight: 600;
-  color: #555;
-  white-space: nowrap;
-}
-
-.table-input {
-  width: 60px;
-  padding: 4px 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  text-align: center;
-}
-
-.table-preview-section,
-.editable-table-section {
-  margin-bottom: 20px;
-}
-
-.table-preview-section h4,
-.editable-table-section h4 {
-  margin-bottom: 10px;
-  color: #555;
-}
-
-.preview-table-container,
-.editable-table-container {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 15px;
-  background: white;
-  overflow-x: auto;
-}
-
-.preview-table-container table,
-.editable-table-container table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.preview-table-container table.with-borders td,
-.editable-table-container table.with-borders td {
-  border: 1px solid #ddd;
-}
-
-.preview-table-container table td,
-.editable-table-container table td {
-  padding: 8px;
-  min-width: 80px;
-  height: 40px;
-  vertical-align: top;
-}
-
-.table-cell-editor {
-  min-height: 30px;
-  padding: 4px;
-  border: 1px solid #e9ecef;
-  border-radius: 2px;
-  font-size: 14px;
-  line-height: 1.4;
-  background: white;
-}
-
-.table-cell-editor:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
-}
-
-.table-toolbar {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px;
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
-}
-
-.modal-buttons {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 20px;
-}
-
-.modal-button {
-  padding: 10px 20px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background: white;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.modal-button.primary {
-  background: #007bff;
-  color: white;
-  border-color: #007bff;
-}
-
-.modal-button.primary:hover {
-  background: #0056b3;
-}
-
-.modal-button:hover {
-  background: #e9ecef;
-}
-
-/* Адаптивность */
 @media (max-width: 768px) {
   .editor-container {
     padding: 15px;
@@ -1517,28 +1614,90 @@ export default {
   
   .form-grid {
     grid-template-columns: 1fr;
-    gap: 15px;
   }
   
-  .table-modal-content {
-    padding: 20px;
-    width: 95%;
+  .subject-selector h2 {
+    font-size: 20px;
   }
   
-  .control-row {
+  .task-editor {
+    min-height: 120px;
+  }
+  
+  .save-button {
+    width: 100%;
+    padding: 12px;
+  }
+
+  .success-notification {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
-  .modal-buttons {
-    flex-direction: column;
+    text-align: center;
+    padding: 12px;
   }
   
   .upload-controls {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
   }
+  
+  .table-modal-content {
+    width: 95%;
+    padding: 15px;
+  }
+  
+  .control-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .modal-buttons {
+    justify-content: center;
+  }
+  
+  .editable-table-container {
+    max-height: 200px;
+  }
+  
+  .table-cell-editor {
+    height: 40px;
+    font-size: 12px;
+  }
+}
+
+:deep(.dropdown-header) {
+  padding: 10px 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+:deep(.selected-value) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  max-width: 100%;
+}
+
+:deep(.dropdown-options) {
+  max-width: 100%;
+}
+
+:deep(.dropdown-option) {
+  white-space: normal;
+  word-break: break-word;
+  padding: 10px 15px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+
+:deep(.dropdown-option:hover) {
+  background-color: #f5f5f5;
+}
+
+:deep(.dropdown-option.is-selected) {
+  background-color: #f0e6ff;
 }
 </style>
