@@ -14,6 +14,7 @@
     
     <div class="block_of_content">
       <HomeworkEditor
+        :key="componentKey" 
         :subject="getSubjectKey(selectedSubject)"
         :exam-type="getExamType(selectedSubject)"
         @homework-selected="handleHomeworkSelect"
@@ -32,7 +33,17 @@ export default {
   data() {
     return {
       selectedSubject: 'biology_ege',
-      selectedHomeworkData: null
+      selectedHomeworkData: null,
+      componentKey: 0 // Добавляем ключ для принудительного обновления компонента
+    }
+  },
+  watch: {
+    // Отслеживаем изменение выбранного предмета
+    selectedSubject(newSubject, oldSubject) {
+      if (newSubject !== oldSubject) {
+        // Увеличиваем ключ для принудительного пересоздания компонента
+        this.componentKey += 1
+      }
     }
   },
   methods: {
