@@ -200,16 +200,14 @@ export default {
       return tables;
     },
 
-    // Текст без таблиц (для случаев, когда таблицы рендерятся отдельно)
+    // Текст без таблиц (всегда удаляем таблицы)
     taskTextWithoutTables() {
       if (!this.task.text) return '';
       
       let text = this.task.text;
       
-      // Удаляем таблицы только если они будут рендериться отдельно
-      if (this.hasStructuredTableData || this.extractedHtmlTables.length > 0) {
-        text = text.replace(/<table[\s\S]*?<\/table>/gi, '');
-      }
+      // Всегда удаляем таблицы, так как они рендерятся отдельно
+      text = text.replace(/<table[\s\S]*?<\/table>/gi, '');
       
       return this.formatTextWithParagraphs(text);
     },
@@ -418,7 +416,7 @@ export default {
             userAnswer: this.userAnswer
           });
         } else {
-                     this.$emit('answer-retried', {
+          this.$emit('answer-retried', {
             taskId: this.task.id,
             awardedPoints: this.awardedPoints,
             userAnswer: this.userAnswer,
@@ -537,23 +535,26 @@ export default {
       <!-- Основной текст задания -->
       <div class="task-text" v-html="sanitizeHtml(taskTextWithoutTables)" @copy.prevent></div>
       
-      <!-- Структурированные таблицы из table_data -->
-      <div v-if="hasStructuredTableData" class="task-table-container">
-        <table :class="{ 'with-borders': task.table_data.borders }">
-          <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
-            <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
-              <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
-            </td>
-          </tr>
-        </table>
-      </div>
-      
-      <!-- HTML таблицы из текста задания -->
-      <div v-if="extractedHtmlTables.length > 0" class="html-tables-container">
-        <div v-for="(tableHtml, index) in extractedHtmlTables" 
-             :key="'html-table-'+index" 
-             class="html-table-wrapper">
-          <div v-html="sanitizeHtml(tableHtml)" class="html-table-content"></div>
+      <!-- Единый блок для таблиц -->
+      <div v-if="hasAnyTableData" class="tables-container">
+        <!-- Приоритет: сначала структурированные таблицы -->
+        <div v-if="hasStructuredTableData" class="task-table-container">
+          <table :class="{ 'with-borders': task.table_data.borders }">
+            <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
+              <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
+                <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
+              </td>
+            </tr>
+          </table>
+        </div>
+        
+        <!-- Если нет структурированных, показываем HTML таблицы -->
+        <div v-else-if="extractedHtmlTables.length > 0" class="html-tables-container">
+          <div v-for="(tableHtml, index) in extractedHtmlTables" 
+               :key="'html-table-'+index" 
+               class="html-table-wrapper">
+            <div v-html="sanitizeHtml(tableHtml)" class="html-table-content"></div>
+          </div>
         </div>
       </div>
       
@@ -698,8 +699,6 @@ export default {
 </template>
 
 <style scoped>
-/* Все существующие стили остаются */
-
 *{
   font-family: Evolventa;
 }

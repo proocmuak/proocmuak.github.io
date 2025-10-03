@@ -187,7 +187,8 @@ export default {
           finalExamType = 'ege'
         }
       }
-      
+
+
       return {
         subject: finalSubject,
         exam_type: finalExamType,
@@ -200,6 +201,77 @@ export default {
       }
     }
 
+// Функция для получения tutor_name
+const getTutorName = async (studentId) => {
+  try {
+    console.log('🔍 Поиск tutor для student_id:', studentId);
+    
+    // Ищем в таблице students в столбце tutor
+    const { data, error } = await supabase
+      .from('students')
+      .select('tutor')
+      .eq('user_id', studentId)
+      .single();
+
+    if (error) {
+      console.error('❌ Ошибка запроса tutor из students:', error);
+      throw error;
+    }
+    
+    console.log('✅ Найденные данные из students:', data);
+    console.log('📝 tutor:', data?.tutor);
+    
+    return data?.tutor || null;
+  } catch (err) {
+    console.error('❌ Ошибка получения tutor:', err);
+    return null;
+  }
+}
+
+// Затем createHomeworkNotification
+// Функция создания уведомления
+const createHomeworkNotification = async (score) => {
+  if (!user_id.value) {
+    console.error('❌ user_id не установлен');
+    return;
+  }
+
+  try {
+    console.log('👤 Создание уведомления для user_id:', user_id.value);
+    
+    const tutorName = await getTutorName(user_id.value);
+    
+    console.log('🎯 Полученный tutor:', tutorName);
+    
+    const notificationData = {
+      student_id: user_id.value,
+      homework_id: parseInt(homeworkId.value),
+      subject: `${subject.value}_${examType.value}`,
+      completed_at: new Date().toISOString(),
+      score: score,
+      is_read: false,
+      tutor_name: tutorName
+    };
+
+    console.log('📨 Данные для уведомления:', notificationData);
+
+    const { error } = await supabase
+      .from('homework_notifications')
+      .upsert(notificationData, {
+        onConflict: 'tutor_name,student_id,homework_id'
+      });
+
+    if (error) {
+      console.error('❌ Ошибка сохранения уведомления:', error);
+      throw error;
+    }
+    
+    console.log('✅ Уведомление создано успешно');
+    
+  } catch (err) {
+    console.error('❌ Ошибка создания уведомления:', err);
+  }
+}
     const urlParams = getUrlParams()
     subject.value = urlParams.subject
     examType.value = urlParams.exam_type
@@ -560,7 +632,7 @@ const saveTaskProgress = async (task, checkCorrectness = false) => {
       task.answer,
       task.points,
       subject.value,
-      task.number
+      task.exam_task_number
     );
 
     score = result.score;
@@ -645,33 +717,38 @@ const setTutorScore = async (task, manualScore) => {
 };
 
     // Обновление общего балла домашнего задания
-    const updateHomeworkTotalScore = async () => {
-      if (!user_id.value) return;
-      
-      const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
-      
-      try {
-        const tableNames = getTableNames();
-        const { error } = await supabase
-          .from(tableNames.homeworkCompleted)
-          .upsert({
-            homework_id: parseInt(homeworkId.value),
-            user_id: user_id.value,
-            is_completed: true,
-            score: newTotalScore,
-            completed_at: new Date().toISOString(),
-          }, {
-            onConflict: 'user_id,homework_id'
-          });
+const updateHomeworkTotalScore = async () => {
+  if (!user_id.value) return;
+  
+  const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
+  
+  try {
+    const tableNames = getTableNames();
+    
+    // 1. Обновляем homework_completed
+    const { error } = await supabase
+      .from(tableNames.homeworkCompleted)
+      .upsert({
+        homework_id: parseInt(homeworkId.value),
+        user_id: user_id.value,
+        is_completed: true,
+        score: newTotalScore,
+        completed_at: new Date().toISOString(),
+      }, {
+        onConflict: 'user_id,homework_id'
+      });
 
-        if (error) throw error;
-        
-        totalScore.value = newTotalScore;
-        
-      } catch (err) {
-        console.error('Ошибка обновления общего балла:', err);
-      }
-    };
+    if (error) throw error;
+    
+    // 2. Создаем/обновляем уведомление
+    await createHomeworkNotification(newTotalScore);
+    
+    totalScore.value = newTotalScore;
+    
+  } catch (err) {
+    console.error('Ошибка обновления общего балла:', err);
+  }
+};
 
 // Завершение домашнего задания
 const completeHomework = async () => {
@@ -680,15 +757,18 @@ const completeHomework = async () => {
     
     updateTotalScore();
 
+    // Сохраняем прогресс по всем заданиям
     for (const task of tasks.value) {
       if (task.userAnswer || (task.answerImages && task.answerImages.length > 0)) {
-        await saveTaskProgress(task, true); // Теперь здесь будет устанавливаться counted_in_rating
+        await saveTaskProgress(task, true);
       }
     }
 
     updateTotalScore();
 
     const tableNames = getTableNames();
+    
+    // 1. Сохраняем в homework_completed
     const completionData = {
       homework_id: parseInt(homeworkId.value),
       user_id: user_id.value,
@@ -707,6 +787,9 @@ const completeHomework = async () => {
       console.error('Ошибка Supabase:', completionError);
       throw new Error(completionError.message);
     }
+
+    // 2. Создаем уведомление
+    await createHomeworkNotification(totalScore.value);
 
     isCompleted.value = true;
     showAnswers.value = true;
@@ -737,6 +820,14 @@ const completeHomework = async () => {
 
         const tableNames = getTableNames();
 
+
+            // ДОБАВИМ ОТЛАДКУ ДЛЯ OGE
+    console.log('=== OGE DEBUG INFO ===');
+    console.log('subject:', subject.value);
+    console.log('examType:', examType.value); 
+    console.log('homeworkId:', homeworkId.value);
+    console.log('tableNames:', tableNames);
+    console.log('=====================');
         const { data: homeworkInfo, error: homeworkInfoError } = await supabase
           .from(tableNames.homeworkList)
           .select('deadline, homework_name, lesson_number, lesson_name')
@@ -779,12 +870,19 @@ const completeHomework = async () => {
           throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
         }
 
+ console.log('taskDetails:', taskDetails);
+    if (taskDetails && taskDetails.length > 0) {
+      console.log('Первая задача из task_bank:', taskDetails[0]);
+      console.log('Доступные поля:', Object.keys(taskDetails[0]));
+    }
+
         tasks.value = homeworkTasks.map(homeworkTask => {
           const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
           return {
             ...homeworkTask,
             ...taskDetail,
-            number: homeworkTask.number,
+            number: homeworkTask.number, 
+            exam_task_number: taskDetail.number, // ← глобальный номер из task_bank для проверки
             userAnswerInput: '',
             userAnswer: null,
             answerImages: [],
