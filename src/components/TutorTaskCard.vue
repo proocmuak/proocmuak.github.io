@@ -158,10 +158,15 @@ export default {
       document.body.style.overflow = '';
     },
 
-    async handleTaskUpdated(updatedTask) {
-      this.$emit('task-updated', updatedTask);
-      this.closeEditor();
-    },
+ async handleTaskUpdated(updatedTask) {
+    if (!updatedTask || !updatedTask.id) {
+      console.error('Получена невалидная задача:', updatedTask);
+      return;
+    }
+    
+    this.$emit('task-updated', updatedTask);
+    this.closeEditor();
+  },
 
     async handleTaskDeleted() {
       this.$emit('task-deleted', this.task.id);

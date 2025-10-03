@@ -154,15 +154,13 @@ export default {
             <tr>
               <th>Место</th>
               <th>ФИО</th>
-              <th>Email</th>
               <th>Баллы</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(student, index) in filteredStudents" :key="student.user_id || index">
               <td class="position-cell">{{ index + 1 }}</td>
-              <td class="name-cell">{{ formatFullName(student) }}</td>
-              <td class="email-cell">{{ student.email }}</td>
+              <td class="name-cell">{{ formatFullName(student) }}</td>  
               <td class="score-cell">{{ student.total_score }}</td>
             </tr>
             

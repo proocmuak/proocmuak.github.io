@@ -200,12 +200,17 @@ export default {
       }
     },
     
-    handleTaskUpdated(updatedTask) {
-      const index = this.allTasks.findIndex(t => t.id === updatedTask.id);
-      if (index !== -1) {
-        this.allTasks[index] = { ...updatedTask, subject: this.filters.subject };
-      }
-    },
+  handleTaskUpdated(updatedTask) {
+    if (!updatedTask || !updatedTask.id) {
+      console.error('Получена невалидная задача:', updatedTask);
+      return;
+    }
+    
+    const index = this.allTasks.findIndex(t => t.id === updatedTask.id);
+    if (index !== -1) {
+      this.allTasks[index] = { ...updatedTask, subject: this.filters.subject };
+    }
+  },
     
     handleTaskDeleted(taskId) {
       this.allTasks = this.allTasks.filter(t => t.id !== taskId);

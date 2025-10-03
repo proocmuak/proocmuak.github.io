@@ -20,6 +20,10 @@ export default {
     subject: {
       type: String,
       required: true,
+    },
+    examType: {
+      type: String,
+      required: true
     }
   },
   data() {
@@ -40,7 +44,7 @@ export default {
       return this.hasTableData ? this.task.text.replace(/<table[\s\S]*?<\/table>/gi, '') : this.task.text;
     },
     homeworkTableName() {
-      return `${this.subject}_ege_homework_tasks`;
+      return `${this.subject}_${this.examType}_homework_tasks`;
     }
   },
   methods: {
@@ -60,106 +64,89 @@ export default {
       
       return publicUrl;
     },
-async checkIfAlreadyAdded() {
-  try {
-    // ИСПРАВЛЕНО: Запрашиваем любое поле вместо несуществующего 'id'
-    const { data, error } = await supabase
-      .from(this.homeworkTableName)
-      .select('task_id') // ← используем существующее поле
-      .eq('homework_id', this.homeworkId)
-      .eq('task_id', this.task.id)
-      .maybeSingle();
-    
-    if (data) {
-      this.isAdded = true;
-    }
-  } catch (error) {
-    console.error('Ошибка проверки:', error);
-  }
-},
+    async checkIfAlreadyAdded() {
+      try {
+        const { data, error } = await supabase
+          .from(this.homeworkTableName)
+          .select('task_id')
+          .eq('homework_id', this.homeworkId)
+          .eq('task_id', this.task.id)
+          .maybeSingle();
+        
+        if (data) {
+          this.isAdded = true;
+        }
+      } catch (error) {
+        console.error('Ошибка проверки:', error);
+      }
+    },
 
-async addToHomework() {
-  try {
-    // Проверяем, не добавлено ли уже задание
-    const { data: existingTask, error: checkError } = await supabase
-      .from(this.homeworkTableName)
-      .select('task_id')
-      .eq('homework_id', this.homeworkId)
-      .eq('task_id', this.task.id)
-      .maybeSingle();
-    
-    if (existingTask) {
-      this.isAdded = true;
-      alert('Это задание уже добавлено в домашнюю работу');
-      return;
-    }
-    
-    // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ - исправленный запрос
-    const { data: tasksData, error: tasksError } = await supabase
-      .from(this.homeworkTableName)
-      .select('number')
-      .eq('homework_id', this.homeworkId)
-      .order('number', { ascending: false });
-    
-    if (tasksError) {
-      console.error('Ошибка получения максимального номера:', tasksError);
-      // Если ошибка, устанавливаем номер 1
-      var nextNumber = 1;
-    } else {
-      // Определяем следующий номер
-      var nextNumber = tasksData && tasksData.length > 0 
-        ? Math.max(...tasksData.map(task => task.number || 0)) + 1 
-        : 1;
-    }
-    
-    // Добавляем задание с вычисленным номером
-    const { error } = await supabase
-      .from(this.homeworkTableName)
-      .insert({
-        task_id: this.task.id,
-        homework_id: this.homeworkId,
-        homework_name: this.homeworkName,
-        number: nextNumber,
-      });
-    
-    if (error) {
-      if (error.code === '23505') {
-        this.isAdded = true;
-        alert('Это задание уже есть в домашней работе');
-      } else {
-        throw error;
+    async addToHomework() {
+      try {
+        // Проверяем, не добавлено ли уже задание
+        const { data: existingTask, error: checkError } = await supabase
+          .from(this.homeworkTableName)
+          .select('task_id')
+          .eq('homework_id', this.homeworkId)
+          .eq('task_id', this.task.id)
+          .maybeSingle();
+        
+        if (existingTask) {
+          this.isAdded = true;
+          alert('Это задание уже добавлено в домашнюю работу');
+          return;
+        }
+        
+        // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ - исправленный запрос
+        const { data: tasksData, error: tasksError } = await supabase
+          .from(this.homeworkTableName)
+          .select('number')
+          .eq('homework_id', this.homeworkId)
+          .order('number', { ascending: false });
+        
+        if (tasksError) {
+          console.error('Ошибка получения максимального номера:', tasksError);
+          // Если ошибка, устанавливаем номер 1
+          var nextNumber = 1;
+        } else {
+          // Определяем следующий номер
+          var nextNumber = tasksData && tasksData.length > 0 
+            ? Math.max(...tasksData.map(task => task.number || 0)) + 1 
+            : 1;
+        }
+        
+        // Добавляем задание с вычисленным номером
+        const { error } = await supabase
+          .from(this.homeworkTableName)
+          .insert({
+            task_id: this.task.id,
+            homework_id: this.homeworkId,
+            homework_name: this.homeworkName,
+            number: nextNumber,
+          });
+        
+        if (error) {
+          if (error.code === '23505') {
+            this.isAdded = true;
+            alert('Это задание уже есть в домашней работе');
+          } else {
+            throw error;
+          }
+        } else {
+          this.isAdded = true;
+          this.$emit('task-added', this.task.id);
+          alert(`Задание добавлено под номером ${nextNumber}!`);
+        }
+        
+      } catch (error) {
+        console.error('Ошибка добавления:', error);
+        alert('Ошибка при добавлении задания: ' + error.message);
       }
-    } else {
-      this.isAdded = true;
-      this.$emit('task-added', this.task.id);
-      alert(`Задание добавлено под номером ${nextNumber}!`);
-    }
-    
-  } catch (error) {
-    console.error('Ошибка добавления:', error);
-    alert('Ошибка при добавлении задания: ' + error.message);
-  }
-},
-async created() {
-  // Проверяем, добавлено ли уже это задание
-  await this.checkIfAlreadyAdded();
-},
- async checkIfAlreadyAdded() {
-    try {
-      const { data, error } = await supabase
-        .from(this.homeworkTableName)
-        .select('id')
-        .eq('homework_id', this.homeworkId)
-        .eq('task_id', this.task.id)
-        .maybeSingle();
-      
-      if (data) {
-        this.isAdded = true;
-      }
-    } catch (error) {
-      console.error('Ошибка проверки:', error);
-    }
-  },
+    },
+    async created() {
+      // Проверяем, добавлено ли уже это задание
+      await this.checkIfAlreadyAdded();
+    },
     openImageModal(imageUrl) {
       this.selectedImage = imageUrl;
       this.showImageModal = true;
@@ -180,13 +167,13 @@ async created() {
         <span class="task-topic">Тема: {{ task.topic }}</span>
         <span class="task-id">#{{ task.id }}</span>
       </div>
-<button 
-  @click="addToHomework" 
-  class="add-button"
-  :disabled="isAdded"
->
-  {{ isAdded ? '✓ Уже в домашке' : '➕ Добавить' }}
-</button>
+      <button 
+        @click="addToHomework" 
+        class="add-button"
+        :disabled="isAdded"
+      >
+        {{ isAdded ? '✓ Уже в домашке' : '➕ Добавить' }}
+      </button>
     </div>
     
     <div class="task-content">

@@ -13,43 +13,40 @@
     </div>
     
     <div class="block_of_content">
-      <EgeHomeworkEditor
-      :subject="getSubjectKey(selectedSubject)"
-      :exam-type="getExamType(selectedSubject)"
-      @homework-selected="handleHomeworkSelect"
+      <HomeworkEditor
+        :subject="getSubjectKey(selectedSubject)"
+        :exam-type="getExamType(selectedSubject)"
+        @homework-selected="handleHomeworkSelect"
       />
     </div>
   </div>
 </template>
 
 <script>
-import EgeHomeworkEditor from './EgeHomeworkEditor.vue'
+import HomeworkEditor from './HomeworkEditor.vue'
 
 export default {
   components: {
-    EgeHomeworkEditor
+    HomeworkEditor
   },
   data() {
     return {
-      selectedSubject: 'biology_ege' // По умолчанию выбрана биология ЕГЭ
+      selectedSubject: 'biology_ege',
+      selectedHomeworkData: null
     }
   },
   methods: {
     handleHomeworkSelect(homeworkData) {
       console.log('Выбрана домашняя работа:', homeworkData)
-      // Здесь можно сохранить данные или выполнить другие действия
+      this.selectedHomeworkData = homeworkData
     },
     
     getSubjectKey(subjectValue) {
-      if (subjectValue.includes('biology')) return 'biology'
-      if (subjectValue.includes('chemistry')) return 'chemistry'
-      return 'biology'
+      return subjectValue.split('_')[0]
     },
     
     getExamType(subjectValue) {
-      if (subjectValue.includes('ege')) return 'ege'
-      if (subjectValue.includes('oge')) return 'oge'
-      return 'ege'
+      return subjectValue.split('_')[1]
     }
   }
 }

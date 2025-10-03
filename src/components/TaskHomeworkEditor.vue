@@ -31,17 +31,19 @@
 
     <div class="editor-content">
       <TeacherTaskBank
-      v-if="mode === 'existing'"
-      :homework-id="homeworkId"
-      :subject="subject"
-      :homework-name="homeworkName"
-    />
-    <EditorHomeworkTask
-      v-if="mode === 'new'"
-      :homework-id="homeworkId"
-      :subject="subject"
-      :homework-name="homeworkName"
-    />
+        v-if="mode === 'existing'"
+        :homework-id="homeworkId"
+        :homework-name="homeworkName"
+        :subject="subject"
+        :exam-type="examType"
+      />
+      <EditorHomeworkTask
+        v-if="mode === 'new'"
+        :homework-id="homeworkId"
+        :homework-name="homeworkName"
+        :subject="subject"
+        :exam-type="examType"
+      />
     </div>
   </div>
 </template>
@@ -51,7 +53,7 @@ import TeacherTaskBank from '../TeacherTaskBank.vue'
 import EditorHomeworkTask from './editor_homework_task.vue'
 
 export default {
-  name: 'EgeTaskHomeworkEditor',
+  name: 'TaskHomeworkEditor',
   components: {
     TeacherTaskBank,
     EditorHomeworkTask
@@ -68,38 +70,36 @@ export default {
     subject: {
       type: String,
       required: true
+    },
+    examType: {
+      type: String,
+      required: true
     }
   },
   data() {
     return {
-      mode: 'existing' // 'existing' или 'new'
+      mode: 'existing'
     }
   },
   methods: {
     setMode(mode) {
       this.mode = mode
     },
-    closeEditor() {
-      this.$emit('close')
-    },
     openHomeworkSimple() {
-try {
-    const params = new URLSearchParams({
-      subject: `${props.subject}_ege`,
-      homework_id: homework.homework_id,
-      homework_name: homework.homework_name || 'Домашнее задание',
-      lesson_number: homework.lesson_number || lesson.value?.number || '',
-      lesson_name: homework.lesson_name || lesson.value?.title || '',
-      view_mode: 'student'
-    })
-    
-    // Используем относительный путь
-    window.location.href = `homework.html?${params.toString()}`
-    
-  } catch (error) {
-    console.error('Ошибка открытия домашнего задания:', error)
-    alert('Не удалось открыть домашнее задание.')
-  }
+      try {
+        const params = new URLSearchParams({
+          subject: `${this.subject}_${this.examType}`,
+          homework_id: this.homeworkId,
+          homework_name: this.homeworkName,
+          view_mode: 'student'
+        })
+        
+        window.location.href = `homework.html?${params.toString()}`
+        
+      } catch (error) {
+        console.error('Ошибка открытия домашнего задания:', error)
+        alert('Не удалось открыть домашнее задание.')
+      }
     }
   }
 }
@@ -204,4 +204,4 @@ try {
     text-align: center;
   }
 }
-</style>
+</style>  

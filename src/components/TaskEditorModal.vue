@@ -573,6 +573,17 @@ export default {
     });
   },
   methods: {
+    // Новый метод для определения имени таблицы
+    getTaskTableName() {
+      const subjectMap = {
+        'Химия ЕГЭ': 'chemistry_ege_task_bank',
+        'Химия ОГЭ': 'chemistry_oge_task_bank',
+        'Биология ЕГЭ': 'biology_ege_task_bank',
+        'Биология ОГЭ': 'biology_oge_task_bank'
+      };
+      return subjectMap[this.subject] || 'tasks';
+    },
+
     initializeTopics() {
       this.topicsData['Химия ЕГЭ'] = processModules(chemTopicsModules);
       this.topicsData['Биология ЕГЭ'] = processModules(bioTopicsModules);
@@ -1067,6 +1078,7 @@ export default {
       this.isLoading = true;
       
       try {
+        const tableName = this.getTaskTableName();
         const imageFieldMap = {
           text: 'images',
           answer: 'image_answer',
@@ -1077,7 +1089,7 @@ export default {
         if (!field) return;
         
         const { data: taskData, error: fetchError } = await supabase
-          .from('tasks')
+          .from(tableName)
           .select(field)
           .eq('id', this.task.id)
           .single();
@@ -1100,7 +1112,7 @@ export default {
         await Promise.all(deletePromises);
         
         const { error: updateError } = await supabase
-          .from('tasks')
+          .from(tableName)
           .update({ [field]: [] })
           .eq('id', this.task.id);
         
@@ -1117,67 +1129,141 @@ export default {
       }
     },
     
-    async saveTask() {
-      if (!this.isFormValid) return;
-      
-      this.isLoading = true;
-      
-      try {
-        const updatedTask = {
-          section: this.editedTask.section,
-          topic: this.editedTask.topic,
-          part: this.editedTask.part,
-          number: this.editedTask.number,
-          points: this.editedTask.points,
-          difficulty: this.editedTask.difficulty,
-          text: this.editedTask.text,
-          answer: this.editedTask.answer,
-          explanation: this.editedTask.explanation,
-          has_table: this.editedTask.has_table,
-          table_data: this.editedTask.table_data
-        };
-        
-        const { error } = await supabase
-          .from('tasks')
-          .update(updatedTask)
-          .eq('id', this.task.id);
-        
-        if (error) throw error;
-        
-        this.$emit('task-updated');
-        this.closeModal();
-        
-      } catch (error) {
-        console.error('Ошибка сохранения задания:', error);
-        alert('Ошибка сохранения задания');
-      } finally {
-        this.isLoading = false;
-      }
-    },
+  async saveTask() {
+    if (!this.isFormValid) return;
     
-    async deleteTask() {
-      if (!confirm('Вы уверены, что хотите удалить это задание?')) return;
+    this.isLoading = true;
+    
+    try {
+      const tableName = this.getTaskTableName();
+      const updatedTask = {
+        section: this.editedTask.section,
+        topic: this.editedTask.topic,
+        part: this.editedTask.part,
+        number: this.editedTask.number,
+        points: this.editedTask.points,
+        difficulty: this.editedTask.difficulty,
+        text: this.editedTask.text,
+        answer: this.editedTask.answer,
+        explanation: this.editedTask.explanation,
+        has_table: this.editedTask.has_table,
+        table_data: this.editedTask.table_data
+      };
       
-      this.isLoading = true;
+      const { data, error } = await supabase
+        .from(tableName)
+        .update(updatedTask)
+        .eq('id', this.task.id)
+        .select(); // ← ДОБАВИТЬ .select() для получения обновленных данных
       
-      try {
-        const { error } = await supabase
-          .from('tasks')
-          .delete()
-          .eq('id', this.task.id);
+      if (error) throw error;
+      
+      // Передаем обновленную задачу с сохраненным ID
+      const updatedTaskWithId = {
+        ...data[0],
+        id: this.task.id // гарантируем, что ID сохранится
+      };
+      
+      this.$emit('task-updated', updatedTaskWithId);
+      this.closeModal();
+      
+    } catch (error) {
+      console.error('Ошибка сохранения задания:', error);
+      alert('Ошибка сохранения задания');
+    } finally {
+      this.isLoading = false;
+    }
+  },
+  
+  async deleteTask() {
+    if (!confirm('Вы уверены, что хотите удалить это задание?')) return;
+    
+    this.isLoading = true;
+    
+    try {
+      const tableName = this.getTaskTableName();
+      
+      const { error } = await supabase
+        .from(tableName)
+        .delete()
+        .eq('id', this.task.id);
+      
+      if (error) throw error;
+      
+      this.$emit('task-deleted', this.task.id);
+      this.closeModal();
+      
+    } catch (error) {
+      console.error('Ошибка удаления задания:', error);
+      alert('Ошибка удаления задания');
+    } finally {
+      this.isLoading = false;
+    }
+  },
+  
+  async removeExistingImages(type) {
+    if (!this.task.id) return;
+    
+    this.isLoading = true;
+    
+    try {
+      const tableName = this.getTaskTableName();
+      const imageFieldMap = {
+        text: 'images',
+        answer: 'image_answer',
+        explanation: 'image_explanation'
+      };
+      
+      const field = imageFieldMap[type];
+      if (!field) return;
+      
+      const { data: taskData, error: fetchError } = await supabase
+        .from(tableName)
+        .select(field)
+        .eq('id', this.task.id)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      const imagesToRemove = taskData[field] || [];
+      
+      const deletePromises = imagesToRemove.map(async (imageUrl) => {
+        const fileName = imageUrl.split('/').pop();
+        const { error: deleteError } = await supabase.storage
+          .from('images')
+          .remove([`task-images/${fileName}`]);
         
-        if (error) throw error;
-        
-        this.$emit('task-deleted');
-        this.closeModal();
-        
-      } catch (error) {
-        console.error('Ошибка удаления задания:', error);
-        alert('Ошибка удаления задания');
-      } finally {
-        this.isLoading = false;
-      }
-    },
+        if (deleteError) {
+          console.error('Ошибка удаления файла:', deleteError);
+        }
+      });
+      
+      await Promise.all(deletePromises);
+      
+      const { data, error: updateError } = await supabase
+        .from(tableName)
+        .update({ [field]: [] })
+        .eq('id', this.task.id)
+        .select(); // ← ДОБАВИТЬ .select()
+      
+      if (updateError) throw updateError;
+      
+      // Передаем обновленную задачу
+      const updatedTask = {
+        ...data[0],
+        id: this.task.id
+      };
+      
+      this.$emit('task-updated', updatedTask);
+      this.closeModal();
+      
+    } catch (error) {
+      console.error('Ошибка удаления изображений:', error);
+      alert('Ошибка удаления изображений');
+    } finally {
+      this.isLoading = false;
+    }
+  },
     
     closeModal() {
       this.$emit('close');

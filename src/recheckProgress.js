@@ -140,119 +140,166 @@ function checkAnswer(userAnswerRaw, correctAnswerRaw, points, shortSubject, task
   return { score, isCorrect, isPartiallyCorrect }
 }
 
-// === утилита: выборка всех строк с пагинацией ===
-async function getAllProgressRows(progressTable) {
-  let allRows = []
-  let from = 0
-  const pageSize = 1000
-
-  while (true) {
-    const { data, error } = await supabase
-      .from(progressTable)
-      .select('id, user_id, task_id, is_completed, score, user_answer, counted_in_raiting')
-      .range(from, from + pageSize - 1)
-
-    if (error) {
-      console.error(`Ошибка выборки из ${progressTable}:`, error)
-      break
+// === простой прогресс-бар ===
+function createProgressBar(total, description = 'Processing') {
+  let current = 0
+  const startTime = Date.now()
+  
+  return {
+    tick: () => {
+      current++
+      const percent = Math.min(100, Math.round((current / total) * 100))
+      const elapsed = Date.now() - startTime
+      const rate = current / (elapsed / 1000)
+      
+      if (current % 100 === 0 || current === total) {
+        process.stdout.write(`\r${description}: ${percent}% | ${current}/${total} | ${rate.toFixed(1)}/sec`)
+      }
+      
+      if (current === total) {
+        process.stdout.write('\n')
+      }
     }
-
-    if (!data || data.length === 0) break
-
-    allRows = allRows.concat(data)
-    from += pageSize
   }
-
-  return allRows
 }
 
 // === основная функция перепроверки ===
-async function recheckSubjectProgress(subject, supabase) {
+async function recheckSubjectProgress(subject) {
   const progressTable = `${subject}_progress`
   const taskBank = `${subject}_task_bank`
   const shortSubject = shortSubjectFromProgressTable(progressTable)
 
   console.log(`\n=== Перепроверка ${subject} (только первая часть) ===`)
 
-  const progresses = await getAllProgressRows(progressTable)
-  console.log(`Всего найдено ${progresses.length} записей в ${progressTable}`)
-
-  let updatedCount = 0
-  let unchangedCount = 0
-  let skippedCount = 0
-
-  for (const prog of progresses) {
-    // Получаем информацию о задании с фильтром по части
-    const { data: taskRows, error: taskError } = await supabase
+  try {
+    // 1. Получаем все задания первой части
+    console.log('📚 Загрузка заданий первой части...')
+    const { data: firstPartTasks, error: tasksError } = await supabase
       .from(taskBank)
       .select('id, answer, points, number, part')
-      .eq('id', prog.task_id)
-      .eq('part', 'Первая часть') // ФИЛЬТР: только первая часть
-      .maybeSingle()
+      .eq('part', 'Первая часть')
 
-    if (taskError || !taskRows) {
-      skippedCount++
-      continue // Пропускаем задания не из первой части или с ошибками
+    if (tasksError) {
+      console.error('❌ Ошибка загрузки заданий:', tasksError)
+      return
     }
+
+    if (!firstPartTasks || firstPartTasks.length === 0) {
+      console.log('⚠️ Нет заданий первой части')
+      return
+    }
+
+    console.log(`✅ Загружено ${firstPartTasks.length} заданий первой части`)
+
+    // Создаем Map для быстрого поиска
+    const tasksMap = new Map(firstPartTasks.map(task => [task.id, task]))
+
+    // 2. Получаем все записи прогресса (пагинация)
+    let allProgress = []
+    let from = 0
+    const pageSize = 1000
+
+    console.log('📥 Загрузка записей прогресса...')
     
-    const task = taskRows
-
-    const result = checkAnswer(
-      prog.user_answer,
-      task.answer,
-      task.points,
-      shortSubject,
-      task.number,
-      prog.task_id
-    )
-
-    // Определяем, нужно ли обновлять counted_in_raiting
-    const newCountedInRaiting = result.isCorrect // true только если задание полностью решено верно
-
-    // Проверяем, нужно ли обновлять запись
-    const needsUpdate = 
-      result.score !== prog.score || 
-      result.isCorrect !== prog.is_completed ||
-      newCountedInRaiting !== prog.counted_in_raiting
-
-    if (needsUpdate) {
-      updatedCount++
-      console.log(
-        `UPDATE: user_id=${prog.user_id}, task_id=${prog.task_id}, number=${task.number}, ` +
-        `старый=${prog.score}/${prog.is_completed}/${prog.counted_in_raiting} → новый=${result.score}/${result.isCorrect}/${newCountedInRaiting}`
-      )
-      console.log(`   user_answer="${prog.user_answer}", correct_answer="${task.answer}"`)
-
-      const { data: updated, error: updateError } = await supabase
+    while (true) {
+      const { data, error } = await supabase
         .from(progressTable)
-        .update({
-          score: result.score,
-          is_completed: result.isCorrect,
-          counted_in_raiting: newCountedInRaiting, // ОБНОВЛЕНО: выставляем true только для полностью верных решений
-          last_updated: new Date().toISOString()
-        })
-        .eq('id', prog.id)
-        .select('*')
+        .select('id, user_id, task_id, is_completed, score, user_answer, counted_in_rating')
+        .range(from, from + pageSize - 1)
 
-      if (updateError) {
-        console.error('Ошибка обновления:', updateError)
-      } else {
-        console.log('DEBUG Обновлено:', updated)
+      if (error) {
+        console.error('❌ Ошибка загрузки прогресса:', error)
+        break
       }
-    } else {
-      unchangedCount++
+
+      if (!data || data.length === 0) break
+
+      allProgress = allProgress.concat(data)
+      from += pageSize
+      
+      process.stdout.write(`\rЗагружено записей: ${allProgress.length}`)
     }
+
+    console.log(`\n✅ Всего загружено ${allProgress.length} записей прогресса`)
+
+    // 3. Фильтруем только записи для первой части
+    const relevantProgress = allProgress.filter(prog => tasksMap.has(prog.task_id))
+    console.log(`🔍 Из них относятся к первой части: ${relevantProgress.length}`)
+
+    if (relevantProgress.length === 0) {
+      console.log('⚠️ Нет записей для перепроверки')
+      return
+    }
+
+    // 4. Перепроверяем записи
+    const progressBar = createProgressBar(relevantProgress.length, 'Перепроверка')
+    let updatedCount = 0
+    let unchangedCount = 0
+
+    for (const prog of relevantProgress) {
+      const task = tasksMap.get(prog.task_id)
+      
+      const result = checkAnswer(
+        prog.user_answer,
+        task.answer,
+        task.points,
+        shortSubject,
+        task.number,
+        prog.task_id
+      )
+
+      const newCountedInrating = result.isCorrect
+
+      const needsUpdate = 
+        result.score !== prog.score || 
+        result.isCorrect !== prog.is_completed ||
+        newCountedInrating !== prog.counted_in_rating
+
+      if (needsUpdate) {
+        // Обновляем каждую запись отдельно (для надежности)
+        const { error } = await supabase
+          .from(progressTable)
+          .update({
+            score: result.score,
+            is_completed: result.isCorrect,
+            counted_in_rating: newCountedInrating,
+            last_updated: new Date().toISOString()
+          })
+          .eq('id', prog.id)
+
+        if (!error) {
+          updatedCount++
+        }
+      } else {
+        unchangedCount++
+      }
+
+      progressBar.tick()
+    }
+
+    console.log(`\n✅ Перепроверка ${subject} завершена!`)
+    console.log(`📊 Результаты:`)
+    console.log(`   - Обновлено: ${updatedCount}`)
+    console.log(`   - Без изменений: ${unchangedCount}`)
+    console.log(`   - Пропущено: ${allProgress.length - relevantProgress.length}`)
+
+  } catch (error) {
+    console.error(`💥 Критическая ошибка в ${subject}:`, error)
   }
-
-  console.log(`\n✅ Перепроверка ${subject} завершена.`)
-  console.log(`📊 Статистика:`)
-  console.log(`   - Изменено: ${updatedCount}`)
-  console.log(`   - Без изменений: ${unchangedCount}`)
-  console.log(`   - Пропущено (не первая часть): ${skippedCount}`)
 }
 
-// === запуск ===
-const subjects = ['biology_ege', 'chemistry_ege'] // можно расширить список предметов
-for (const subj of subjects) {
-  await recheckSubjectProgress(subj, supabase)
+// === последовательный запуск ===
+async function main() {
+  console.log('🚀 Запуск перепроверки...')
+  
+  const subjects = ['biology_ege', 'chemistry_ege']
+  
+  for (const subject of subjects) {
+    await recheckSubjectProgress(subject)
+  }
+  
+  console.log('\n🎉 Все операции завершены!')
 }
+
+// Запускаем
+main().catch(console.error)

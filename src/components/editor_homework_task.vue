@@ -331,6 +331,10 @@ export default {
     subject: {
       type: String,
       required: true
+    },
+    examType: {
+      type: String,
+      required: true
     }
   },
   components: {
@@ -1034,28 +1038,14 @@ export default {
     },
 
     getSubjectFolderName() {
-      switch (this.selectedSubject) {
-        case 'Химия ЕГЭ': return 'chemistry_ege';
-        case 'Биология ЕГЭ': return 'biology_ege';
-        case 'Химия ОГЭ': return 'chemistry_oge';
-        case 'Биология ОГЭ': return 'biology_oge';
-        default: return 'other';
-      }
+      return `${this.subject}_${this.examType}`;
     },
 
     getTableNames() {
-      switch (this.selectedSubject) {
-        case 'Химия ЕГЭ': 
-          return { taskBank: 'chemistry_ege_task_bank', homeworkTasks: 'chemistry_ege_homework_tasks' };
-        case 'Биология ЕГЭ': 
-          return { taskBank: 'biology_ege_task_bank', homeworkTasks: 'biology_ege_homework_tasks' };
-        case 'Химия ОГЭ': 
-          return { taskBank: 'chemistry_oge_task_bank', homeworkTasks: 'chemistry_oge_homework_tasks' };
-        case 'Биология ОГЭ': 
-          return { taskBank: 'biology_oge_task_bank', homeworkTasks: 'biology_oge_homework_tasks' };
-        default: 
-          return { taskBank: 'chemistry_ege_task_bank', homeworkTasks: 'chemistry_ege_homework_tasks' };
-      }
+      return {
+        taskBank: `${this.subject}_${this.examType}_task_bank`,
+        homeworkTasks: `${this.subject}_${this.examType}_homework_tasks`
+      };
     },
 
     async saveTask() {

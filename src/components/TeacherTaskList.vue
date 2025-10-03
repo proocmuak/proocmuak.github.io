@@ -24,6 +24,10 @@ export default {
     subject: {
       type: String,
       required: true
+    },
+    examType: {
+      type: String,
+      required: true
     }
   },
   data() {
@@ -333,8 +337,10 @@ export default {
           :homework-id="homeworkId"
           :homework-name="homeworkName"
           :subject="subject"
+          :exam-type="examType"
           @task-selected="selectTask"
           @answer-checked="handleAnswerChecked"
+          @task-added="handleTaskAdded"
         />
         
         <div v-if="hasMoreTasks" class="load-more-container">
@@ -427,4 +433,4 @@ export default {
     font-size: 0.9rem;
   }
 }
-</style>
+</style>  

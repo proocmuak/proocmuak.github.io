@@ -82,11 +82,12 @@
     </div>
 
     <!-- Редактор заданий (открывается на весь экран) -->
-    <EgeTaskHomeworkEditor
+    <TaskHomeworkEditor
       v-if="showTaskEditor"
       :homework-id="currentHomework.homework_id"
       :homework-name="currentHomework.homework_name"
       :subject="subject"
+      :exam-type="examType"
       @close="closeTaskEditor"
     />
   </div>
@@ -95,16 +96,20 @@
 <script>
 import { supabase } from '../supabase'
 import CustomDropdown from './CustomDropdown.vue'
-import EgeTaskHomeworkEditor from './EgeTaskHomeworkEditor.vue'
+import TaskHomeworkEditor from './TaskHomeworkEditor.vue'
 
 export default {
-  name: 'EgeHomeworkEditor',
+  name: 'HomeworkEditor',
   components: {
     CustomDropdown,
-    EgeTaskHomeworkEditor
+    TaskHomeworkEditor
   },
   props: {
     subject: {
+      type: String,
+      required: true
+    },
+    examType: {
       type: String,
       required: true
     }
@@ -118,7 +123,7 @@ export default {
         homework_name: '',
         lesson_number: '',
         lesson_name: '',
-        deadline: null // Изменено на null для типа date
+        deadline: null
       },
       isLoading: false,
       nextHomeworkId: 1,
@@ -127,10 +132,18 @@ export default {
   },
   computed: {
     tableName() {
-      return `${this.subject}_ege_homework_list`
+      return `${this.subject}_${this.examType}_homework_list`
     },
     subjectName() {
-      return this.subject === 'biology' ? 'биологии' : 'химии'
+      const subjects = {
+        'biology': 'биологии',
+        'chemistry': 'химии'
+      }
+      const examTypes = {
+        'ege': 'ЕГЭ',
+        'oge': 'ОГЭ'
+      }
+      return `${subjects[this.subject]} ${examTypes[this.examType]}`
     },
     dropdownOptions() {
       const options = this.homeworks.map(hw => ({
@@ -145,6 +158,12 @@ export default {
   },
   watch: {
     subject: {
+      immediate: true,
+      handler() {
+        this.fetchHomeworks()
+      }
+    },
+    examType: {
       immediate: true,
       handler() {
         this.fetchHomeworks()
@@ -190,7 +209,6 @@ export default {
         if (selected) {
           this.currentHomework = { 
             ...selected,
-            // Преобразуем дату в формат YYYY-MM-DD для input type="date"
             deadline: selected.deadline ? this.formatDateForInput(selected.deadline) : null
           }
         }
@@ -227,7 +245,7 @@ export default {
           homework_name: this.currentHomework.homework_name.trim(),
           lesson_number: this.currentHomework.lesson_number.trim(),
           lesson_name: this.currentHomework.lesson_name.trim(),
-          deadline: this.currentHomework.deadline || null // Сохраняем дату или null
+          deadline: this.currentHomework.deadline || null
         }
 
         if (this.isEditing) {
@@ -300,6 +318,7 @@ export default {
       
       this.$emit('homework-selected', {
         subject: this.subject,
+        examType: this.examType,
         homeworkId: this.currentHomework.homework_id,
         homeworkName: this.currentHomework.homework_name
       })
