@@ -80,7 +80,7 @@ const filteredLessons = computed(() => {
   })
 })
 
-// Загрузка данных студента - для химии используем subject2_access_from
+// Загрузка данных студента - для химии используем subject1_access_from
 async function fetchStudentData() {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -90,7 +90,7 @@ async function fetchStudentData() {
 
     const { data, error: studentError } = await supabase
       .from('students')
-      .select('subject2_access_from, subject2')
+      .select('subject1_access_from, subject1')
       .eq('user_id', user.id)
       .single()
 
@@ -98,10 +98,10 @@ async function fetchStudentData() {
     
     studentData.value = data
     
-    // Для химии используем subject2_access_from
+    // Для химии используем subject1_access_from
     // Также проверяем, что предмет2 установлен как химия
-    if (data?.subject2 && data.subject2.includes('Химия')) {
-      studentAccessFrom.value = data?.subject2_access_from
+    if (data?.subject1 && data.subject1.includes('Химия')) {
+      studentAccessFrom.value = data?.subject1_access_from
     } else {
       studentAccessFrom.value = null
     }
