@@ -1044,25 +1044,31 @@ export default {
       }
     },
     
-    async uploadImage(file) {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${uuidv4()}.${fileExt}`;
-      const filePath = `task-images/${fileName}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('images')
-        .upload(filePath, file);
-      
-      if (uploadError) {
-        throw new Error(uploadError.message);
-      }
-      
-      const { data } = supabase.storage
-        .from('images')
-        .getPublicUrl(filePath);
-      
-      return data.publicUrl;
-    },
+async uploadImage(file) {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${uuidv4()}.${fileExt}`;
+  
+  // Правильный путь и бакет
+  const filePath = `task-images/${fileName}`;
+  
+  console.log('Uploading to bucket: task-images, path:', filePath); // Для отладки
+  
+  const { error: uploadError } = await supabase.storage
+    .from('task-images')  // ← ИСПРАВЛЕНО: было 'images', должно быть 'task-images'
+    .upload(filePath, file);
+  
+  if (uploadError) {
+    console.error('Upload error details:', uploadError);
+    throw new Error(uploadError.message);
+  }
+  
+  const { data } = supabase.storage
+    .from('task-images')  // ← ИСПРАВЛЕНО: здесь тоже
+    .getPublicUrl(filePath);
+  
+  console.log('Upload successful, public URL:', data.publicUrl);
+  return data.publicUrl;
+},
     
     removeImage(index) {
       this.uploadedImages.splice(index, 1);
@@ -1101,7 +1107,7 @@ export default {
         const deletePromises = imagesToRemove.map(async (imageUrl) => {
           const fileName = imageUrl.split('/').pop();
           const { error: deleteError } = await supabase.storage
-            .from('images')
+            .from('task-images')
             .remove([`task-images/${fileName}`]);
           
           if (deleteError) {
