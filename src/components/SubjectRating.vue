@@ -9,23 +9,22 @@ export default {
   },
   data() {
     return {
-      selectedSubject: 'Химия ЕГЭ',
+      selectedSubject: null,
       allStudents: [],
       loading: false,
       error: null,
-      subjects: [
-        { value: 'Химия ЕГЭ', label: 'Химия ЕГЭ' },
-        { value: 'Химия ОГЭ', label: 'Химия ОГЭ' },
-        { value: 'Биология ЕГЭ', label: 'Биология ЕГЭ' },
-        { value: 'Биология ОГЭ', label: 'Биология ОГЭ' }
-      ]
+      subjects: [],
+      user_id: null,
+      studentData: null
     };
   },
   computed: {
     ratingTitle() {
-      return `Рейтинг всех учеников (${this.selectedSubject})`;
+      return this.selectedSubject ? `Рейтинг всех учеников (${this.selectedSubject})` : 'Рейтинг всех учеников';
     },
     ratingTable() {
+      if (!this.selectedSubject) return null;
+      
       const subjectMap = {
         'Химия ЕГЭ': 'chemistry_ege_rating',
         'Химия ОГЭ': 'chemistry_oge_rating',
@@ -39,13 +38,91 @@ export default {
     }
   },
   methods: {
+    // Получение ID текущего пользователя
+    async getCurrentUserId() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        return user?.id || null;
+      } catch (err) {
+        console.error('Ошибка получения ID пользователя:', err);
+        return null;
+      }
+    },
+
+    // Получение данных студента
+    async fetchStudentData() {
+      try {
+        this.user_id = await this.getCurrentUserId();
+        if (!this.user_id) {
+          throw new Error('Пользователь не авторизован');
+        }
+
+        const { data, error: studentError } = await supabase
+          .from('students')
+          .select('subject1, subject2')
+          .eq('user_id', this.user_id)
+          .single();
+
+        if (studentError) throw studentError;
+
+        this.studentData = data;
+        return data;
+
+      } catch (err) {
+        console.error('Ошибка загрузки данных студента:', err);
+        return null;
+      }
+    },
+
+    // Получение предметов пользователя
+    async fetchUserSubjects() {
+      try {
+        const studentData = await this.fetchStudentData();
+        if (!studentData) {
+          throw new Error('Не удалось загрузить данные студента');
+        }
+
+        const subjects = [];
+        
+        if (studentData.subject1) {
+          subjects.push({
+            value: studentData.subject1,
+            label: studentData.subject1
+          });
+        }
+        
+        if (studentData.subject2) {
+          subjects.push({
+            value: studentData.subject2,
+            label: studentData.subject2
+          });
+        }
+
+        this.subjects = subjects;
+        
+        // Устанавливаем первый предмет по умолчанию, если есть доступные предметы
+        if (subjects.length > 0) {
+          this.selectedSubject = subjects[0].value;
+        }
+
+      } catch (err) {
+        console.error('Ошибка загрузки предметов:', err);
+        this.error = 'Не удалось загрузить список предметов';
+      }
+    },
+
     async fetchAllStudents() {
+      // Если предмет не выбран, не загружаем данные
+      if (!this.selectedSubject) {
+        this.allStudents = [];
+        return;
+      }
+
       this.loading = true;
       this.error = null;
       this.allStudents = [];
       
       try {
-                 
         // 1. Сначала получаем данные из рейтинговой таблицы
         const { data: ratingData, error: ratingError } = await supabase
           .from(this.ratingTable)
@@ -57,16 +134,15 @@ export default {
           throw ratingError;
         }
         
-                 
         if (!ratingData || ratingData.length === 0) {
-                     return;
+          return;
         }
         
         // 2. Получаем ID пользователей
         const userIds = ratingData.map(item => item.user_id).filter(id => id);
-                 
+        
         if (userIds.length === 0) {
-                     return;
+          return;
         }
         
         // 3. Получаем данные пользователей из таблицы personalities
@@ -80,7 +156,6 @@ export default {
           throw personalitiesError;
         }
         
-                 
         // 4. Объединяем данные
         const mergedData = ratingData.map(ratingItem => {
           const personalityData = personalitiesData?.find(person => person.user_id === ratingItem.user_id);
@@ -93,7 +168,7 @@ export default {
           };
         });
         
-                 this.allStudents = mergedData;
+        this.allStudents = mergedData;
         
       } catch (err) {
         console.error('Полная ошибка загрузки:', err);
@@ -119,12 +194,19 @@ export default {
       this.fetchAllStudents();
     }
   },
-  mounted() {
-    this.fetchAllStudents();
+  async mounted() {
+    // Сначала загружаем предметы пользователя
+    await this.fetchUserSubjects();
+    // Затем загружаем студентов для выбранного предмета
+    if (this.selectedSubject) {
+      this.fetchAllStudents();
+    }
   },
   watch: {
     ratingTable() {
-      this.fetchAllStudents();
+      if (this.selectedSubject) {
+        this.fetchAllStudents();
+      }
     }
   }
 };
@@ -143,32 +225,43 @@ export default {
     
     <div class="rating-container">
       <h3 class="rating-title">{{ ratingTitle }}</h3>
-      <p class="students-count">Всего учеников: {{ filteredStudents.length }}</p>
       
-      <div v-if="loading" class="loading-indicator">Загрузка рейтинга...</div>
-      <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
+      <div v-if="subjects.length === 0 && !loading" class="no-subjects-message">
+        У вас нет доступных предметов для просмотра рейтинга
+      </div>
       
-      <div v-if="!loading && !error" class="table-wrapper">
-        <table class="rating-table">
-          <thead>
-            <tr>
-              <th>Место</th>
-              <th>ФИО</th>
-              <th>Баллы</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(student, index) in filteredStudents" :key="student.user_id || index">
-              <td class="position-cell">{{ index + 1 }}</td>
-              <td class="name-cell">{{ formatFullName(student) }}</td>  
-              <td class="score-cell">{{ student.total_score }}</td>
-            </tr>
-            
-            <tr v-if="filteredStudents.length === 0">
-              <td colspan="4" class="no-data">Нет данных для отображения</td>
-            </tr>
-          </tbody>
-        </table>
+      <div v-else>
+        <p class="students-count">Всего учеников: {{ filteredStudents.length }}</p>
+        
+        <div v-if="loading" class="loading-indicator">Загрузка рейтинга...</div>
+        <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
+        
+        <div v-if="!loading && !error && selectedSubject" class="table-wrapper">
+          <table class="rating-table">
+            <thead>
+              <tr>
+                <th>Место</th>
+                <th>ФИО</th>
+                <th>Баллы</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(student, index) in filteredStudents" :key="student.user_id || index">
+                <td class="position-cell">{{ index + 1 }}</td>
+                <td class="name-cell">{{ formatFullName(student) }}</td>  
+                <td class="score-cell">{{ student.total_score }}</td>
+              </tr>
+              
+              <tr v-if="filteredStudents.length === 0">
+                <td colspan="4" class="no-data">Нет данных для отображения</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-else-if="!loading && !error && !selectedSubject" class="select-subject-prompt">
+          <p>Пожалуйста, выберите предмет для просмотра рейтинга</p>
+        </div>
       </div>
     </div>
   </div>
@@ -298,6 +391,17 @@ export default {
   background-color: #fef2f2;
   border: 1px solid #fecaca;
   border-radius: 0.5rem;
+}
+
+.no-subjects-message,
+.select-subject-prompt {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-size: 1.1rem;
+  background-color: rgba(178, 65, 209, 0.1);
+  border-radius: 0.5rem;
+  margin: 1rem 0;
 }
 
 /* Стили для первых трех мест */
