@@ -519,19 +519,24 @@ export default {
       immediate: true,
       handler(newTask) {
         if (newTask) {
-          this.editedTask = {
-            section: newTask.section || '',
-            topic: newTask.topic || '',
-            part: newTask.part || '',
-            number: newTask.number || null,
-            points: newTask.points || 1,
-            difficulty: newTask.difficulty || 2,
-            text: newTask.text || '',
-            answer: newTask.answer || '',
-            explanation: newTask.explanation || '',
-            has_table: newTask.has_table || false,
-            table_data: newTask.table_data || null
-          };
+// В методе watch -> task добавьте:
+this.editedTask = {
+  section: newTask.section || '',
+  topic: newTask.topic || '',
+  part: newTask.part || '',
+  number: newTask.number || null,
+  points: newTask.points || 1,
+  difficulty: newTask.difficulty || 2,
+  text: newTask.text || '',
+  answer: newTask.answer || '',
+  explanation: newTask.explanation || '',
+  has_table: newTask.has_table || false,
+  table_data: newTask.table_data || null,
+  
+  // ДОБАВИТЬ:
+  images: newTask.images || [],
+  image_explanation: newTask.image_explanation || []
+};;
           
           this.$nextTick(() => {
             if (this.$refs.textEditor) this.$refs.textEditor.innerHTML = this.editedTask.text;
@@ -1135,51 +1140,62 @@ async uploadImage(file) {
       }
     },
     
-  async saveTask() {
-    if (!this.isFormValid) return;
+// ИСПРАВЛЕННЫЙ КОД:
+async saveTask() {
+  if (!this.isFormValid) return;
+  
+  this.isLoading = true;
+  
+  try {
+    const tableName = this.getTaskTableName();
     
-    this.isLoading = true;
+    // Собираем URL всех загруженных изображений
+    const updatedTask = {
+      section: this.editedTask.section,
+      topic: this.editedTask.topic,
+      part: this.editedTask.part,
+      number: this.editedTask.number,
+      points: this.editedTask.points,
+      difficulty: this.editedTask.difficulty,
+      text: this.editedTask.text,
+      answer: this.editedTask.answer,
+      explanation: this.editedTask.explanation,
+      has_table: this.editedTask.has_table,
+      table_data: this.editedTask.table_data,
+      
+      // ДОБАВИТЬ ЭТИ ПОЛЯ:
+      images: [
+        ...(this.task.images || []), // существующие изображения
+        ...this.uploadedImages.map(img => img.url) // новые изображения
+      ],
+      image_explanation: [
+        ...(this.task.image_explanation || []), // существующие
+        ...this.explanationImages.map(img => img.url) // новые
+      ]
+    };
     
-    try {
-      const tableName = this.getTaskTableName();
-      const updatedTask = {
-        section: this.editedTask.section,
-        topic: this.editedTask.topic,
-        part: this.editedTask.part,
-        number: this.editedTask.number,
-        points: this.editedTask.points,
-        difficulty: this.editedTask.difficulty,
-        text: this.editedTask.text,
-        answer: this.editedTask.answer,
-        explanation: this.editedTask.explanation,
-        has_table: this.editedTask.has_table,
-        table_data: this.editedTask.table_data
-      };
-      
-      const { data, error } = await supabase
-        .from(tableName)
-        .update(updatedTask)
-        .eq('id', this.task.id)
-        .select(); // ← ДОБАВИТЬ .select() для получения обновленных данных
-      
-      if (error) throw error;
-      
-      // Передаем обновленную задачу с сохраненным ID
-      const updatedTaskWithId = {
-        ...data[0],
-        id: this.task.id // гарантируем, что ID сохранится
-      };
-      
-      this.$emit('task-updated', updatedTaskWithId);
-      this.closeModal();
-      
-    } catch (error) {
-      console.error('Ошибка сохранения задания:', error);
-      alert('Ошибка сохранения задания');
-    } finally {
-      this.isLoading = false;
-    }
-  },
+    const { data, error } = await supabase
+      .from(tableName)
+      .update(updatedTask)
+      .eq('id', this.task.id)
+      .select();
+    
+    if (error) throw error;
+    
+    // Очищаем временные массивы после успешного сохранения
+    this.uploadedImages = [];
+    this.explanationImages = [];
+    
+    this.$emit('task-updated', { ...data[0], id: this.task.id });
+    this.closeModal();
+    
+  } catch (error) {
+    console.error('Ошибка сохранения задания:', error);
+    alert('Ошибка сохранения задания');
+  } finally {
+    this.isLoading = false;
+  }
+},
   
   async deleteTask() {
     if (!confirm('Вы уверены, что хотите удалить это задание?')) return;
