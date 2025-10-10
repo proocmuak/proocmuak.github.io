@@ -519,24 +519,23 @@ export default {
       immediate: true,
       handler(newTask) {
         if (newTask) {
-// В методе watch -> task добавьте:
-this.editedTask = {
-  section: newTask.section || '',
-  topic: newTask.topic || '',
-  part: newTask.part || '',
-  number: newTask.number || null,
-  points: newTask.points || 1,
-  difficulty: newTask.difficulty || 2,
-  text: newTask.text || '',
-  answer: newTask.answer || '',
-  explanation: newTask.explanation || '',
-  has_table: newTask.has_table || false,
-  table_data: newTask.table_data || null,
-  
-  // ДОБАВИТЬ:
-  images: newTask.images || [],
-  image_explanation: newTask.image_explanation || []
-};;
+          this.editedTask = {
+            section: newTask.section || '',
+            topic: newTask.topic || '',
+            part: newTask.part || '',
+            number: newTask.number || null,
+            points: newTask.points || 1,
+            difficulty: newTask.difficulty || 2,
+            text: newTask.text || '',
+            answer: newTask.answer || '',
+            explanation: newTask.explanation || '',
+            has_table: newTask.has_table || false,
+            table_data: newTask.table_data || null,
+            
+            // ДОБАВИТЬ:
+            images: newTask.images || [],
+            image_explanation: newTask.image_explanation || []
+          };
           
           this.$nextTick(() => {
             if (this.$refs.textEditor) this.$refs.textEditor.innerHTML = this.editedTask.text;
@@ -1049,31 +1048,25 @@ this.editedTask = {
       }
     },
     
-async uploadImage(file) {
-  const fileExt = file.name.split('.').pop();
-  const fileName = `${uuidv4()}.${fileExt}`;
-  
-  // Правильный путь и бакет
-  const filePath = `task-images/${fileName}`;
-  
-  console.log('Uploading to bucket: task-images, path:', filePath); // Для отладки
-  
-  const { error: uploadError } = await supabase.storage
-    .from('task-images')  // ← ИСПРАВЛЕНО: было 'images', должно быть 'task-images'
-    .upload(filePath, file);
-  
-  if (uploadError) {
-    console.error('Upload error details:', uploadError);
-    throw new Error(uploadError.message);
-  }
-  
-  const { data } = supabase.storage
-    .from('task-images')  // ← ИСПРАВЛЕНО: здесь тоже
-    .getPublicUrl(filePath);
-  
-  console.log('Upload successful, public URL:', data.publicUrl);
-  return data.publicUrl;
-},
+    async uploadImage(file) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
+      const filePath = `task-images/${fileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('task-images')
+        .upload(filePath, file);
+      
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+      
+      const { data } = supabase.storage
+        .from('task-images')
+        .getPublicUrl(filePath);
+      
+      return data.publicUrl;
+    },
     
     removeImage(index) {
       this.uploadedImages.splice(index, 1);
@@ -1112,7 +1105,7 @@ async uploadImage(file) {
         const deletePromises = imagesToRemove.map(async (imageUrl) => {
           const fileName = imageUrl.split('/').pop();
           const { error: deleteError } = await supabase.storage
-            .from('task-images')
+            .from('images')
             .remove([`task-images/${fileName}`]);
           
           if (deleteError) {
@@ -1140,31 +1133,26 @@ async uploadImage(file) {
       }
     },
     
-// ИСПРАВЛЕННЫЙ КОД:
-async saveTask() {
-  if (!this.isFormValid) return;
-  
-  this.isLoading = true;
-  
-  try {
-    const tableName = this.getTaskTableName();
-    
-    // Собираем URL всех загруженных изображений
-    const updatedTask = {
-      section: this.editedTask.section,
-      topic: this.editedTask.topic,
-      part: this.editedTask.part,
-      number: this.editedTask.number,
-      points: this.editedTask.points,
-      difficulty: this.editedTask.difficulty,
-      text: this.editedTask.text,
-      answer: this.editedTask.answer,
-      explanation: this.editedTask.explanation,
-      has_table: this.editedTask.has_table,
-      table_data: this.editedTask.table_data,
+    async saveTask() {
+      if (!this.isFormValid) return;
       
-      // ДОБАВИТЬ ЭТИ ПОЛЯ:
-      images: [
+      this.isLoading = true;
+      
+      try {
+        const tableName = this.getTaskTableName();
+        const updatedTask = {
+          section: this.editedTask.section,
+          topic: this.editedTask.topic,
+          part: this.editedTask.part,
+          number: this.editedTask.number,
+          points: this.editedTask.points,
+          difficulty: this.editedTask.difficulty,
+          text: this.editedTask.text,
+          answer: this.editedTask.answer,
+          explanation: this.editedTask.explanation,
+          has_table: this.editedTask.has_table,
+          table_data: this.editedTask.table_data, 
+                images: [
         ...(this.task.images || []), // существующие изображения
         ...this.uploadedImages.map(img => img.url) // новые изображения
       ],
@@ -1172,58 +1160,58 @@ async saveTask() {
         ...(this.task.image_explanation || []), // существующие
         ...this.explanationImages.map(img => img.url) // новые
       ]
-    };
+        };
+        
+        const { data, error } = await supabase
+          .from(tableName)
+          .update(updatedTask)
+          .eq('id', this.task.id)
+          .select();
+        
+        if (error) throw error;
+        
+        const updatedTaskWithId = {
+          ...data[0],
+          id: this.task.id
+        };
+        
+        this.$emit('task-updated', updatedTaskWithId);
+        this.closeModal();
+        
+      } catch (error) {
+        console.error('Ошибка сохранения задания:', error);
+        alert('Ошибка сохранения задания');
+      } finally {
+        this.isLoading = false;
+      }
+    },
     
-    const { data, error } = await supabase
-      .from(tableName)
-      .update(updatedTask)
-      .eq('id', this.task.id)
-      .select();
-    
-    if (error) throw error;
-    
-    // Очищаем временные массивы после успешного сохранения
-    this.uploadedImages = [];
-    this.explanationImages = [];
-    
-    this.$emit('task-updated', { ...data[0], id: this.task.id });
-    this.closeModal();
-    
-  } catch (error) {
-    console.error('Ошибка сохранения задания:', error);
-    alert('Ошибка сохранения задания');
-  } finally {
-    this.isLoading = false;
-  }
-},
-  
-  async deleteTask() {
-    if (!confirm('Вы уверены, что хотите удалить это задание?')) return;
-    
-    this.isLoading = true;
-    
-    try {
-      const tableName = this.getTaskTableName();
+    async deleteTask() {
+      if (!confirm('Вы уверены, что хотите удалить это задание?')) return;
       
-      const { error } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('id', this.task.id);
+      this.isLoading = true;
       
-      if (error) throw error;
-      
-      this.$emit('task-deleted', this.task.id);
-      this.closeModal();
-      
-    } catch (error) {
-      console.error('Ошибка удаления задания:', error);
-      alert('Ошибка удаления задания');
-    } finally {
-      this.isLoading = false;
-    }
-  },
-  
-  async removeExistingImages(type) {
+      try {
+        const tableName = this.getTaskTableName();
+        
+        const { error } = await supabase
+          .from(tableName)
+          .delete()
+          .eq('id', this.task.id);
+        
+        if (error) throw error;
+        
+        this.$emit('task-deleted', this.task.id);
+        this.closeModal();
+        
+      } catch (error) {
+        console.error('Ошибка удаления задания:', error);
+        alert('Ошибка удаления задания');
+      } finally {
+        this.isLoading = false;
+      }
+    },
+    async removeExistingImages(type) {
     if (!this.task.id) return;
     
     this.isLoading = true;
@@ -1286,7 +1274,6 @@ async saveTask() {
       this.isLoading = false;
     }
   },
-    
     closeModal() {
       this.$emit('close');
     }

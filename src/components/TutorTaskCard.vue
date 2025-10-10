@@ -593,7 +593,17 @@ export default {
   z-index: 10000;
   padding: 1rem;
 }
+.task-table-container :deep(sub),
+.html-table-content :deep(sub) {
+  vertical-align: sub;
+  font-size: 0.8em;
+}
 
+.task-table-container :deep(sup),
+.html-table-content :deep(sup) {
+  vertical-align: super;
+  font-size: 0.8em;
+}
 .modal-content {
   position: relative;
   max-width: 90%;
