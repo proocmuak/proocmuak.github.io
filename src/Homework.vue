@@ -155,7 +155,6 @@ export default {
     const tasks = ref([])
     const loading = ref(true)
     const error = ref(null)
-    const authError = ref(null)
     const user_id = ref(null)
     const isCompleted = ref(false)
     const totalScore = ref(0)
@@ -166,11 +165,7 @@ export default {
     const examType = ref('') // ege или oge
     const homeworkId = ref('')
     const editInput = ref(null)
-    const globalLoading = ref(false)
-    const saveQueue = ref(Promise.resolve())
-    const authSubscription = ref(null)
-    const memoryInterval = ref(null)
-    const saveTimeouts = ref({})
+    const authCheckInterval = ref(null)
 
     // Получаем параметры из URL
     const getUrlParams = () => {
@@ -204,6 +199,39 @@ export default {
         view_mode: params.get('view_mode'),
         student_id: params.get('student_id')
       }
+    }
+
+    // Функция для проверки и обновления аутентификации
+    const checkAndRefreshAuth = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        
+        if (sessionError) {
+          console.error('Ошибка проверки сессии:', sessionError)
+          // Пытаемся обновить сессию
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+          
+          if (refreshError) {
+            console.error('Ошибка обновления сессии:', refreshError)
+            // Если не удалось обновить, перенаправляем на логин
+            redirectToLogin()
+            return false
+          }
+          
+          return refreshData.session !== null
+        }
+        
+        return session !== null
+      } catch (err) {
+        console.error('Ошибка при проверке аутентификации:', err)
+        return false
+      }
+    }
+
+    // Перенаправление на страницу логина
+    const redirectToLogin = () => {
+      console.log('Перенаправление на страницу логина...')
+      window.location.href = '/login.html'
     }
 
     // Функция для получения tutor_name
@@ -289,59 +317,34 @@ export default {
       deadline: null
     }
 
-    // Retry механизм для запросов с авторизацией
-    const authRetry = async (operation, retries = 2) => {
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-          return await operation()
-        } catch (error) {
-          console.log(`Attempt ${attempt + 1} failed:`, error)
-          
-          // Если это ошибка аутентификации и не последняя попытка
-          if ((error.message?.includes('Auth') || error.message?.includes('session')) && attempt < retries) {
-            console.log('Attempting to refresh session...')
-            // Пытаемся обновить сессию
-            const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
-            if (refreshError) {
-              console.error('Failed to refresh session:', refreshError)
-              continue
-            }
-            // Ждем немного перед повторной попыткой
-            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)))
-          } else {
-            throw error
-          }
-        }
-      }
-    }
-
-    // Получение ID текущего пользователя с улучшенной обработкой аутентификации
+    // Получение ID текущего пользователя с проверкой аутентификации
     const getCurrentUserId = async () => {
+      // Проверяем аутентификацию перед выполнением запроса
+      const isAuthenticated = await checkAndRefreshAuth()
+      if (!isAuthenticated) {
+        console.error('Пользователь не аутентифицирован')
+        return null
+      }
+
       if (urlParams.view_mode === 'tutor' && urlParams.student_id) {
         return urlParams.student_id;
       }
       
       try {
         const { data: { user }, error: authError } = await supabase.auth.getUser()
-        
-        // Добавлена проверка на истекшую сессию
-        if (authError || !user) {
-          console.error('Ошибка аутентификации:', authError)
-          
+        if (authError) {
+          console.error('Ошибка получения пользователя:', authError)
           // Пытаемся обновить сессию
-          const { data: { session }, error: refreshError } = await supabase.auth.getSession()
-          if (refreshError || !session) {
-            // Если не удалось обновить - редирект на логин
-            authError.value = 'Сессия истекла. Пожалуйста, войдите заново.'
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+          if (refreshError) {
+            console.error('Ошибка обновления сессии:', refreshError)
             return null
           }
-          return session.user.id
+          return refreshData.user?.id || null
         }
-        
         return user?.id || null
       } catch (err) {
         console.error('Ошибка получения ID пользователя:', err)
-        authError.value = 'Ошибка авторизации'
         return null
       }
     }
@@ -373,6 +376,13 @@ export default {
     // Метод для перенаправления в меню
     async function redirectToMenu() {
       try {
+        // Проверяем аутентификацию перед перенаправлением
+        const isAuthenticated = await checkAndRefreshAuth()
+        if (!isAuthenticated) {
+          redirectToLogin()
+          return
+        }
+
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError) throw userError;
@@ -409,84 +419,6 @@ export default {
       } catch (err) {
         console.error('Ошибка при перенаправлении:', err);
         alert('Произошла ошибка при переходе на главную');
-      }
-    }
-
-    // Инициализация аутентификации
-    const initializeAuth = async () => {
-      const { data: { subscription } } = await supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          console.log('Auth event:', event)
-          
-          if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
-            authError.value = 'Вы вышли из системы'
-            setTimeout(() => {
-              window.location.href = '/login.html'
-            }, 2000)
-          } else if (event === 'TOKEN_REFRESHED') {
-            console.log('Token refreshed successfully')
-            authError.value = null
-          } else if (event === 'SIGNED_IN') {
-            // Обновляем user_id
-            user_id.value = session.user.id
-            authError.value = null
-          } else if (event === 'TOKEN_REFRESHED_ERROR') {
-            authError.value = 'Ошибка обновления сессии'
-          }
-        }
-      )
-      
-      authSubscription.value = subscription
-    }
-
-    // Мониторинг памяти
-    const checkMemory = () => {
-      if (performance.memory) {
-        const used = performance.memory.usedJSHeapSize;
-        const limit = performance.memory.jsHeapSizeLimit;
-        const usage = (used / limit) * 100;
-        console.log(`Memory usage: ${(used / 1048576).toFixed(2)} MB of ${(limit / 1048576).toFixed(2)} MB (${usage.toFixed(1)}%)`);
-        
-        if (usage > 80) {
-          console.warn('High memory usage detected');
-          // Очищаем таймеры при высокой загрузке памяти
-          Object.values(saveTimeouts.value).forEach(timeout => {
-            if (timeout) clearTimeout(timeout);
-          });
-          saveTimeouts.value = {};
-        }
-      }
-    };
-
-    // Настройка watchdog для аутентификации
-    const setupAuthWatchdog = () => {
-      const checkAuthInterval = setInterval(async () => {
-        try {
-          const { data: { user }, error } = await supabase.auth.getUser()
-          if (error || !user) {
-            console.warn('Auth session may be expiring soon')
-            authError.value = 'Сессия скоро истечет'
-          }
-        } catch (err) {
-          console.error('Auth watchdog error:', err)
-        }
-      }, 5 * 60 * 1000) // Проверять каждые 5 минут
-
-      return checkAuthInterval
-    }
-
-    // UI функции для ошибок аутентификации
-    const reloadPage = () => {
-      window.location.reload()
-    }
-
-    const goToLogin = () => {
-      window.location.href = '/login.html?return=' + encodeURIComponent(window.location.href)
-    }
-
-    const handleAuthError = (error) => {
-      if (error.message?.includes('Auth') || error.message?.includes('сессия')) {
-        authError.value = error.message
       }
     }
 
@@ -682,23 +614,6 @@ export default {
       task.editAnswerInput = '';
     }
 
-    // Дебаунс для сохранения
-    const debouncedSave = (task, immediate = false) => {
-      // Очищаем предыдущий таймер для этого задания
-      if (saveTimeouts.value[task.task_id]) {
-        clearTimeout(saveTimeouts.value[task.task_id]);
-      }
-      
-      if (immediate) {
-        saveTaskProgress(task, false);
-      } else {
-        saveTimeouts.value[task.task_id] = setTimeout(() => {
-          saveTaskProgress(task, false);
-          delete saveTimeouts.value[task.task_id];
-        }, 1000); // сохранять не чаще чем раз в секунду
-      }
-    };
-
     // Сохранение отредактированного ответа
     const saveEditedAnswer = async (task) => {
       if (!task.editAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
@@ -710,14 +625,6 @@ export default {
         task.saving = true;
         const userAnswer = task.editAnswerInput.trim();
         
-        // Проверяем размер ответа
-        const MAX_ANSWER_LENGTH = 10000;
-        if (userAnswer.length > MAX_ANSWER_LENGTH) {
-          alert('Ответ слишком длинный. Пожалуйста, сократите его.');
-          task.saving = false;
-          return;
-        }
-        
         task.userAnswer = userAnswer; 
         task.userAnswerInput = userAnswer;
         task.isEditing = false;
@@ -728,7 +635,6 @@ export default {
         
       } catch (err) {
         console.error('Ошибка сохранения отредактированного ответа:', err);
-        handleAuthError(err);
         task.saving = false;
         error.value = 'Ошибка при сохранении ответа: ' + err.message;
       }
@@ -745,124 +651,106 @@ export default {
         task.saving = true;
         const userAnswer = task.userAnswerInput.trim();
         
-        // Проверяем размер ответа
-        const MAX_ANSWER_LENGTH = 10000;
-        if (userAnswer.length > MAX_ANSWER_LENGTH) {
-          alert('Ответ слишком длинный. Пожалуйста, сократите его.');
-          task.saving = false;
-          return;
-        }
-        
         task.userAnswer = userAnswer;
         
-        // Используем дебаунс для сохранения
-        debouncedSave(task, false);
+        await saveTaskProgress(task, false);
         
         // Устанавливаем флаг, что ответ сохранен
         task.answerSaved = true;
-        const timer = setTimeout(() => {
+        setTimeout(() => {
           task.answerSaved = false;
         }, 3000);
-        
-        // Сохраняем таймер для очистки
-        if (!task.saveTimers) task.saveTimers = [];
-        task.saveTimers.push(timer);
         
         task.saving = false;
 
       } catch (err) {
         console.error('Ошибка сохранения ответа:', err);
-        handleAuthError(err);
         task.saving = false;
         error.value = 'Ошибка при сохранении ответа: ' + err.message;
       }
     }
 
-    // Сохранение прогресса выполнения задания с улучшенной обработкой ошибок
+    // Сохранение прогресса выполнения задания
     const saveTaskProgress = async (task, checkCorrectness = false) => {
-      if (globalLoading.value) return;
+      if (!user_id.value) {
+        // Пытаемся обновить user_id
+        user_id.value = await getCurrentUserId()
+        if (!user_id.value) {
+          console.error('Не удалось получить user_id для сохранения прогресса')
+          return
+        }
+      }
 
-      return await authRetry(async () => {
-        // Проверяем аутентификацию перед сохранением
-        try {
-          const { data: { user }, error: authError } = await supabase.auth.getUser()
-          
-          if (authError) {
-            console.error('Auth error before save:', authError)
-            throw new Error('Сессия истекла. Пожалуйста, войдите заново.')
+      let score = 0;
+      let is_completed = false;
+      let counted_in_rating = false;
+
+      if (checkCorrectness) {
+        const result = checkAnswerComponent(
+          task.userAnswer,
+          task.answer,
+          task.points,
+          subject.value,
+          task.exam_task_number
+        );
+
+        score = result.score;
+        is_completed = result.isCorrect || result.isPartiallyCorrect;
+        
+        counted_in_rating = result.isCorrect;
+
+        task.isCorrect = result.isCorrect;
+        task.isPartiallyCorrect = result.isPartiallyCorrect;
+        task.awardedPoints = score;
+      }
+
+      try {
+        const tableNames = getTableNames();
+        const progressData = {
+          user_id: user_id.value,
+          task_id: task.task_id,
+          is_completed: is_completed,
+          score: score,
+          user_answer: task.userAnswer || '',
+          answer_images: task.answerImages || [],
+          last_updated: new Date().toISOString(),
+          counted_in_rating: counted_in_rating
+        };
+
+        const { error } = await supabase
+          .from(tableNames.progress)
+          .upsert(progressData, {
+            onConflict: 'user_id,task_id'
+          });
+
+        if (error) {
+          // Если ошибка аутентификации, пытаемся обновить сессию
+          if (error.message.includes('auth') || error.code === 'PGRST301') {
+            console.log('Обновление сессии из-за ошибки аутентификации...')
+            const isRefreshed = await checkAndRefreshAuth()
+            if (isRefreshed) {
+              // Повторяем запрос после обновления сессии
+              const { error: retryError } = await supabase
+                .from(tableNames.progress)
+                .upsert(progressData, {
+                  onConflict: 'user_id,task_id'
+                });
+              if (retryError) throw retryError
+            } else {
+              throw new Error('Ошибка аутентификации')
+            }
+          } else {
+            throw error
           }
-          
-          if (!user_id.value) {
-            user_id.value = user?.id || (await getCurrentUserId())
-          }
-          
-          if (!user_id.value) {
-            throw new Error('Пользователь не авторизован')
-          }
-        } catch (err) {
-          if (err.message.includes('Сессия истекла') || err.message.includes('Auth')) {
-            authError.value = err.message;
-          }
-          throw err;
         }
 
-        let score = 0;
-        let is_completed = false;
-        let counted_in_rating = false;
-
-        if (checkCorrectness) {
-          const result = checkAnswerComponent(
-            task.userAnswer,
-            task.answer,
-            task.points,
-            subject.value,
-            task.exam_task_number
-          );
-
-          score = result.score;
-          is_completed = result.isCorrect || result.isPartiallyCorrect;
-          
-          // Устанавливаем counted_in_rating = TRUE только при полном правильном ответе
-          counted_in_rating = result.isCorrect;
-
-          task.isCorrect = result.isCorrect;
-          task.isPartiallyCorrect = result.isPartiallyCorrect;
-          task.awardedPoints = score;
+      } catch (err) {
+        console.error('Ошибка сохранения прогресса:', err)
+        if (err.message.includes('аутентификации') || err.message.includes('auth')) {
+          error.value = 'Сессия истекла. Пожалуйста, перезайдите в систему.'
         }
-
-        try {
-          const tableNames = getTableNames();
-          // Создаем копию данных для сохранения
-          const taskData = {
-            ...task,
-            userAnswer: task.userAnswer || '',
-            answerImages: task.answerImages ? [...task.answerImages] : []
-          };
-
-          const progressData = {
-            user_id: user_id.value,
-            task_id: task.task_id,
-            is_completed: is_completed,
-            score: score,
-            user_answer: taskData.userAnswer,
-            answer_images: taskData.answerImages,
-            last_updated: new Date().toISOString(),
-            counted_in_rating: counted_in_rating
-          };
-
-          const { error } = await supabase
-            .from(tableNames.progress)
-            .upsert(progressData, {
-              onConflict: 'user_id,task_id'
-            });
-
-          if (error) throw error;
-
-        } catch (err) {
-          console.error('Ошибка сохранения прогресса:', err);
-          throw err;
-        }
-      });
+        throw err
+      }
     };
 
     // Функция для выставления баллов куратором
@@ -901,7 +789,6 @@ export default {
         
       } catch (err) {
         console.error('Ошибка сохранения баллов куратора:', err);
-        handleAuthError(err);
         error.value = 'Ошибка при сохранении баллов: ' + err.message;
       } finally {
         task.saving = false;
@@ -939,32 +826,27 @@ export default {
         
       } catch (err) {
         console.error('Ошибка обновления общего балла:', err);
-        handleAuthError(err);
       }
     };
 
-    // Завершение домашнего задания с улучшенной обработкой
+    // Завершение домашнего задания с улучшенной обработкой ошибок
     const completeHomework = async () => {
       try {
         error.value = null;
-        globalLoading.value = true;
         
+        // Проверяем аутентификацию перед завершением
+        const isAuthenticated = await checkAndRefreshAuth()
+        if (!isAuthenticated) {
+          error.value = 'Сессия истекла. Пожалуйста, войдите снова.'
+          return
+        }
+
         updateTotalScore();
 
-        // Сохраняем прогресс по всем заданиям с ограничением параллелизма
-        const tasksToSave = tasks.value.filter(task => 
-          task.userAnswer || (task.answerImages && task.answerImages.length > 0)
-        );
-
-        const BATCH_SIZE = 3;
-        for (let i = 0; i < tasksToSave.length; i += BATCH_SIZE) {
-          const batch = tasksToSave.slice(i, i + BATCH_SIZE);
-          const savePromises = batch.map(task => saveTaskProgress(task, true));
-          await Promise.all(savePromises);
-          
-          // Небольшая пауза между батчами
-          if (i + BATCH_SIZE < tasksToSave.length) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+        // Сохраняем прогресс по всем заданиям
+        for (const task of tasks.value) {
+          if (task.userAnswer || (task.answerImages && task.answerImages.length > 0)) {
+            await saveTaskProgress(task, true);
           }
         }
 
@@ -1002,19 +884,30 @@ export default {
 
       } catch (err) {
         error.value = err.message;
-        handleAuthError(err);
         console.error('Полная ошибка завершения домашнего задания:', err);
-        alert('Ошибка: ' + err.message);
-      } finally {
-        globalLoading.value = false;
+        
+        if (err.message.includes('аутентификации') || err.message.includes('auth')) {
+          alert('Сессия истекла. Пожалуйста, перезайдите в систему и попробуйте снова.');
+        } else {
+          alert('Ошибка: ' + err.message);
+        }
       }
     }
 
-    // Загрузка заданий домашнего задания
+    // Загрузка заданий домашнего задания с улучшенной обработкой аутентификации
     const fetchHomeworkTasks = async () => {
       try {
         loading.value = true
         error.value = null
+        
+        // Проверяем аутентификацию перед загрузкой данных
+        const isAuthenticated = await checkAndRefreshAuth()
+        if (!isAuthenticated) {
+          error.value = 'Сессия истекла. Пожалуйста, войдите снова.'
+          loading.value = false
+          return
+        }
+
         user_id.value = await getCurrentUserId()
 
         if (!user_id.value) {
@@ -1089,7 +982,7 @@ export default {
             ...homeworkTask,
             ...taskDetail,
             number: homeworkTask.number, 
-            exam_task_number: taskDetail.number, // ← глобальный номер из task_bank для проверки
+            exam_task_number: taskDetail.number,
             userAnswerInput: '',
             userAnswer: null,
             answerImages: [],
@@ -1102,8 +995,7 @@ export default {
             editAnswerInput: '',
             manualScore: 0,
             uploadingImages: false,
-            showExplanation: false,
-            saveTimers: [] // Для хранения таймеров
+            showExplanation: false
           }
         })
 
@@ -1119,7 +1011,6 @@ export default {
 
       } catch (err) {
         error.value = err.message
-        handleAuthError(err);
         console.error('Ошибка загрузки заданий:', err)
       } finally {
         loading.value = false
@@ -1172,7 +1063,6 @@ export default {
 
       } catch (err) {
         console.error('Ошибка загрузки прогресса:', err)
-        handleAuthError(err);
       }
     }
 
@@ -1202,7 +1092,6 @@ export default {
 
       } catch (err) {
         console.error('Ошибка проверки статуса выполнения:', err)
-        handleAuthError(err);
       }
     }
 
@@ -1244,17 +1133,13 @@ export default {
           await saveTaskProgress(task, false);
           
           // Скрываем сообщение через 3 секунды
-          const timer = setTimeout(() => {
+          setTimeout(() => {
             task.answerSaved = false;
           }, 3000);
-          
-          if (!task.saveTimers) task.saveTimers = [];
-          task.saveTimers.push(timer);
         }
 
       } catch (err) {
         console.error('Ошибка загрузки изображений:', err);
-        handleAuthError(err);
         error.value = 'Ошибка при загрузке изображений: ' + err.message;
       } finally {
         task.uploadingImages = false;
@@ -1298,7 +1183,6 @@ export default {
         
       } catch (err) {
         console.error('Ошибка удаления изображения:', err);
-        handleAuthError(err);
         error.value = 'Ошибка при удалении изображения: ' + err.message;
       }
     }
@@ -1354,7 +1238,7 @@ export default {
       }
     })
 
-    // Отсортированные задания по номеру
+    // Отсортированные задания по номеру - ПЕРЕМЕЩЕНО В НАЧАЛО computed
     const sortedTasks = computed(() => {
       return [...tasks.value].sort((a, b) => a.number - b.number)
     })
@@ -1419,17 +1303,16 @@ export default {
       return `${subjectName} ${examTypeName}`;
     });
 
-    // Следим за изменениями баллов
-    onMounted(async () => {
-      // Инициализируем аутентификацию
-      await initializeAuth();
-      
-      // Запускаем мониторинг памяти
-      memoryInterval.value = setInterval(checkMemory, 30000);
-      
-      // Запускаем watchdog аутентификации
-      const authWatchdogInterval = setupAuthWatchdog();
-      
+    onMounted(() => {
+      // Запускаем периодическую проверку аутентификации
+      authCheckInterval.value = setInterval(async () => {
+        const isAuthenticated = await checkAndRefreshAuth()
+        if (!isAuthenticated) {
+          console.log('Сессия истекла, перенаправление на логин...')
+          redirectToLogin()
+        }
+      }, 5 * 60 * 1000) // Проверяем каждые 5 минут
+
       if (subject.value && examType.value && homeworkId.value) {
         fetchHomeworkTasks()
       } else {
@@ -1453,32 +1336,13 @@ export default {
           return false
         }
       })
+    })
 
-      // Очистка при размонтировании
-      onUnmounted(() => {
-        if (authSubscription.value) {
-          authSubscription.value.unsubscribe();
-        }
-        if (memoryInterval.value) {
-          clearInterval(memoryInterval.value);
-        }
-        if (authWatchdogInterval) {
-          clearInterval(authWatchdogInterval);
-        }
-        
-        // Очищаем все таймеры сохранения
-        Object.values(saveTimeouts.value).forEach(timeout => {
-          if (timeout) clearTimeout(timeout);
-        });
-        saveTimeouts.value = {};
-        
-        // Очищаем таймеры в задачах
-        tasks.value.forEach(task => {
-          if (task.saveTimers) {
-            task.saveTimers.forEach(timer => clearTimeout(timer));
-          }
-        });
-      });
+    // Очистка интервала при размонтировании компонента
+    onUnmounted(() => {
+      if (authCheckInterval.value) {
+        clearInterval(authCheckInterval.value)
+      }
     })
 
     watch(() => tasks.value.map(t => t.awardedPoints), () => {
@@ -1497,11 +1361,9 @@ export default {
     return {
       homeworkName: homeworkData.value.homework_name,
       homeworkData,
-      sortedTasks,
+      sortedTasks, // Теперь это computed свойство
       loading,
       error,
-      authError,
-      globalLoading,
       isCompleted,
       totalScore,
       maxScore,
@@ -1538,13 +1400,13 @@ export default {
       removeAnswerImage,
       isSecondPartTask,
       toggleExplanation,
-      getDisplaySubjectName,
-      reloadPage,
-      goToLogin
+      getDisplaySubjectName
     }
   }
 }
 </script>
+
+<!-- Остальная часть компонента (template и styles) остается без изменений -->
 
 <template>
   <div class="allpage">
@@ -1555,17 +1417,6 @@ export default {
         <div class="go_back"><a href="index.html">Выйти</a></div>
       </div>
     </div> 
-    
-    <!-- Уведомление об ошибке аутентификации -->
-    <div v-if="authError" class="auth-error-banner">
-      <div class="auth-error-content">
-        <span>⚠️ {{ authError }}</span>
-        <div class="auth-error-buttons">
-          <button @click="reloadPage" class="reload-btn">Обновить</button>
-          <button @click="goToLogin" class="login-btn">Войти заново</button>
-        </div>
-      </div>
-    </div>
     
     <div class="centerpartpage">
       <div class="homework-content">
@@ -1581,11 +1432,6 @@ export default {
               Дедлайн: {{ formatDate(homeworkData.deadline) }}
             </span>
           </div>
-        </div>
-
-        <!-- Глобальный индикатор загрузки -->
-        <div v-if="globalLoading" class="global-loading">
-          ⏳ Сохранение данных...
         </div>
 
         <!-- Список заданий -->
@@ -1981,8 +1827,8 @@ export default {
 
         <!-- Кнопка завершения -->
         <div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
-          <button @click="completeHomework" class="complete-btn" :disabled="globalLoading">
-            {{ globalLoading ? 'Сохранение...' : 'Завершить домашнее задание' }}
+          <button @click="completeHomework" class="complete-btn">
+            Завершить домашнее задание
           </button>
         </div>
 
@@ -2004,60 +1850,7 @@ export default {
 </template>
 
 <style scoped>
-/* Все оригинальные стили остаются без изменений, добавляем только новые */
-
-.auth-error-banner {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
-  color: white;
-  padding: 1rem;
-  text-align: center;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
-
-.auth-error-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  max-width: 1000px;
-  margin: 0 auto;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.auth-error-buttons {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.reload-btn, .login-btn {
-  padding: 0.5rem 1rem;
-  border: 1px solid white;
-  background: transparent;
-  color: white;
-  border-radius: 0.3rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.reload-btn:hover, .login-btn:hover {
-  background: rgba(255,255,255,0.1);
-}
-
-.global-loading {
-  background: #fff3cd;
-  color: #856404;
-  padding: 1rem;
-  border-radius: 0.4rem;
-  text-align: center;
-  margin: 1rem 0;
-  border: 1px solid #ffeaa7;
-  font-weight: 500;
-}
-
-/* Остальные стили остаются без изменений */
+/* Все оригинальные стили остаются без изменений */
 .homework-content {
   max-width: 1000px;
   margin: 0 auto;
@@ -2191,7 +1984,6 @@ export default {
   font-weight: bold;
   align-self: flex-start;
 }
-
 .completion-section {
   margin-top: 2rem;
   text-align: center;
@@ -2212,15 +2004,9 @@ export default {
   min-width: min(100%, 300px);
 }
 
-.complete-btn:hover:not(:disabled) {
+.complete-btn:hover {
   background-color: #218838;
 }
-
-.complete-btn:disabled {
-  background-color: #6c757d;
-  cursor: not-allowed;
-}
-
 .status-not-completed {
   background: #f5f5f5;
   color: #666;
@@ -2450,7 +2236,6 @@ export default {
   object-fit: cover;
   transition: transform 0.3s ease;
 }
-
 .upload-status {
   padding: 0.5rem;
   border-radius: 0.3rem;
@@ -2484,7 +2269,6 @@ export default {
 .save-images-btn:hover {
   background-color: #218838;
 }
-
 .task-image:hover {
   transform: scale(1.03);
 }
@@ -2554,11 +2338,6 @@ export default {
   
   .image-grid {
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  }
-  
-  .auth-error-content {
-    flex-direction: column;
-    text-align: center;
   }
 }
 
@@ -2702,7 +2481,6 @@ export default {
   overflow-x: auto;
   width: 100%;
 }
-
 .completion-result {
   margin-top: 2rem;
   padding: 1.5rem;
@@ -2724,7 +2502,6 @@ export default {
   font-size: clamp(1rem, 2.5vw, 1.1rem);
   font-weight: 500;
 }
-
 .task-table-container table {
   width: 100%;
   border-collapse: collapse;
@@ -2807,7 +2584,6 @@ export default {
   object-fit: cover;
   transition: transform 0.3s ease;
 }
-
 .completion-section {
   margin-top: 2rem;
   text-align: center;
@@ -2831,7 +2607,6 @@ export default {
 .complete-btn:hover {
   background-color: #218838;
 }
-
 .task-image:hover {
   transform: scale(1.03);
 }
