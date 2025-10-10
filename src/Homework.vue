@@ -2032,12 +2032,14 @@ const completeHomework = async () => {
 }
 
 .task-table-container {
+  font-family: Evolventa !important;
   margin: 1.2rem 0;
   overflow-x: auto;
   width: 100%;
 }
 
 .task-table-container table {
+    font-family: Evolventa !important;
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1.2rem;
@@ -2045,15 +2047,18 @@ const completeHomework = async () => {
 }
 
 .task-table-container table.with-borders {
+  font-family: Evolventa !important;
   border: 1px solid #ddd;
 }
 
 .task-table-container table.with-borders td {
+  font-family: Evolventa !important;
   border: 1px solid #ddd;
   padding: 0.6rem;
 }
 
 .task-table-container td {
+  font-family: Evolventa !important;
   padding: 0.6rem;
   vertical-align: top;
   font-size: clamp(0.9rem, 2vw, 1rem);
@@ -2061,6 +2066,7 @@ const completeHomework = async () => {
 
 .task-table-container :deep(sub),
 .task-table-container :deep(sup) {
+  font-family: Evolventa !important;
   font-size: 0.75em;
   line-height: 1;
   position: relative;
@@ -2068,23 +2074,28 @@ const completeHomework = async () => {
 }
 
 .task-table-container :deep(sub) {
+  font-family: Evolventa !important;
   bottom: -0.25em;
 }
 
 .task-table-container :deep(sup) {
+  font-family: Evolventa !important;
   top: -0.5em;
 }
 
 .task-table-container :deep(p) {
+  font-family: Evolventa !important;
   margin: 0;
   padding: 0;
 }
 
 .task-table-container :deep(strong) {
+  font-family: Evolventa !important;
   font-weight: 600;
 }
 
 .task-table-container :deep(em) {
+  font-family: Evolventa !important;
   font-style: italic;
 }
 
@@ -2386,6 +2397,7 @@ const completeHomework = async () => {
   font-weight: 500;
 }
 .task-table-container table {
+  font-family: Evolventa !important;
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1.2rem;
@@ -2393,15 +2405,18 @@ const completeHomework = async () => {
 }
 
 .task-table-container table.with-borders {
+  font-family: Evolventa !important;
   border: 1px solid #ddd;
 }
 
 .task-table-container table.with-borders td {
+  font-family: Evolventa !important;
   border: 1px solid #ddd;
   padding: 0.6rem;
 }
 
 .task-table-container td {
+  font-family: Evolventa !important;
   padding: 0.6rem;
   vertical-align: top;
   font-size: clamp(0.9rem, 2vw, 1rem);
@@ -2409,6 +2424,7 @@ const completeHomework = async () => {
 
 .task-table-container :deep(sub),
 .task-table-container :deep(sup) {
+  font-family: Evolventa !important;
   font-size: 0.75em;
   line-height: 1;
   position: relative;
@@ -2416,23 +2432,28 @@ const completeHomework = async () => {
 }
 
 .task-table-container :deep(sub) {
+  font-family: Evolventa !important;
   bottom: -0.25em;
 }
 
 .task-table-container :deep(sup) {
+  font-family: Evolventa !important;
   top: -0.5em;
 }
 
 .task-table-container :deep(p) {
+  font-family: Evolventa !important;
   margin: 0;
   padding: 0;
 }
 
 .task-table-container :deep(strong) {
+  font-family: Evolventa !important;
   font-weight: 600;
 }
 
 .task-table-container :deep(em) {
+  font-family: Evolventa !important;
   font-style: italic;
 }
 
@@ -3099,6 +3120,19 @@ a {
   display: flex;
   flex-direction: column;
   gap: clamp(1rem, 3vw, 2rem);
+}
+
+table {
+  font-family: Evolventa !important;
+}
+
+td, th {
+  font-family: Evolventa !important;
+}
+
+/* Для всех элементов внутри таблиц */
+table * {
+  font-family: Evolventa !important;
 }
 
 @media (max-width: 768px) {
