@@ -117,7 +117,15 @@ export default {
         'Биология ЕГЭ': {
           taskTable: 'biology_ege_task_bank',
           firstPartMax: 21
-        }
+        },
+        'Биология ОГЭ': {
+          taskTable: 'biology_ege_task_bank',
+          firstPartMax: 21
+        },
+        'Химия ОГЭ': {
+          taskTable: 'chemistry_oge_task_bank',
+          firstPartMax: 19
+        },
       };
       
       return configs[subject];
