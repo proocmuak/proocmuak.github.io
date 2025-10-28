@@ -76,10 +76,10 @@
         </div>
         
         <!-- Домашнее задание -->
-        <div v-if="homeworkData.length > 0" class="homework-section">
+        <div v-if="filteredHomeworkData.length > 0" class="homework-section">
           <h4>Домашние задания:</h4>
           <div class="homework-content">
-            <div v-for="(homework, index) in homeworkData" :key="homework.homework_id || index" class="homework-item">
+            <div v-for="(homework, index) in filteredHomeworkData" :key="homework.homework_id || index" class="homework-item">
               <p class="homework-title">{{ homework.homework_name }}</p>
               <button @click="openHomeworkSimple(homework)" class="download-button homework-button">
                 Посмотреть домашнее задание
@@ -91,13 +91,19 @@
           </div>
         </div>
         
-        <div v-else-if="hasHomework" class="homework-section">
+        <div v-else-if="hasHomework && isLessonPassed" class="homework-section">
           <h4>Домашнее задание:</h4>
           <div class="homework-content">
             <div v-for="(hw, index) in homeworkArray" :key="index" class="homework-item">
               <p class="homework-text">{{ hw }}</p>
             </div>
           </div>
+        </div>
+
+        <!-- Сообщение, если урок еще не прошел -->
+        <div v-else-if="hasHomework && !isLessonPassed" class="no-homework-message">
+          <h4>Домашнее задание:</h4>
+          <p>Домашнее задание станет доступно после проведения урока ({{ formattedDate }})</p>
         </div>
       </div>
     </div>
@@ -149,6 +155,25 @@ const examType = computed(() => {
 
 const subjectType = computed(() => {
   return props.tableName.includes('biology') ? 'biology' : 'chemistry'
+})
+
+// Проверка, прошел ли урок
+const isLessonPassed = computed(() => {
+  if (!lesson.value?.date) return false
+  
+  const today = new Date()
+  const lessonDate = new Date(lesson.value.date)
+  
+  today.setHours(0, 0, 0, 0)
+  lessonDate.setHours(0, 0, 0, 0)
+  
+  return lessonDate <= today
+})
+
+// Фильтруем домашние задания - показываем только для прошедших уроков
+const filteredHomeworkData = computed(() => {
+  if (!isLessonPassed.value) return []
+  return homeworkData.value
 })
 
 // Компьютеды для работы с массивами
@@ -644,6 +669,25 @@ const formattedDate = computed(() => {
 .homework-text {
   margin: 0;
   color: #2c3e50;
+}
+
+/* Сообщение о недоступности домашнего задания */
+.no-homework-message {
+  background-color: #fff3e0;
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #ff9800;
+  color: #e65100;
+}
+
+.no-homework-message h4 {
+  margin: 0 0 10px 0;
+  color: #e65100;
+}
+
+.no-homework-message p {
+  margin: 0;
+  font-style: italic;
 }
 
 /* Кнопки */

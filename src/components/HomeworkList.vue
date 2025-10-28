@@ -135,7 +135,20 @@ export default {
       }
     }
 
-    // Фильтруем домашние задания по дате доступа
+    // Проверка, прошел ли урок
+    const isLessonPassed = (lessonDate) => {
+      if (!lessonDate) return false
+      
+      const today = new Date()
+      const lesson = new Date(lessonDate)
+      
+      today.setHours(0, 0, 0, 0)
+      lesson.setHours(0, 0, 0, 0)
+      
+      return lesson <= today
+    }
+
+    // Фильтруем домашние задания по дате доступа и прошедшим урокам
     const filteredHomeworks = computed(() => {
       if (!hasAccess.value || !studentAccessFrom.value) {
         console.log('Нет доступа или даты доступа')
@@ -162,10 +175,14 @@ export default {
         const lessonDate = new Date(lesson.date)
         lessonDate.setHours(0, 0, 0, 0)
         
+        // Проверяем доступность по дате доступа
         const isAvailable = lessonDate >= accessDate
-        console.log(`Урок ${lessonNumber}: дата урока ${lesson.date}, доступ с ${studentAccessFrom.value}, доступен: ${isAvailable}`)
+        // Проверяем, прошел ли урок
+        const isPassed = isLessonPassed(lesson.date)
         
-        return isAvailable
+        console.log(`Урок ${lessonNumber}: дата урока ${lesson.date}, доступ с ${studentAccessFrom.value}, доступен: ${isAvailable}, прошел: ${isPassed}`)
+        
+        return isAvailable && isPassed
       })
       
       console.log('Отфильтрованные задания:', filtered)
@@ -336,7 +353,8 @@ export default {
             is_completed: completion?.is_completed || false,
             score: completion?.score || null,
             lesson_date: lesson?.date || null,
-            lesson_title: lesson?.title || null
+            lesson_title: lesson?.title || null,
+            lesson_name: homework.lesson_name || lesson?.title || `Урок ${lessonNumber}`
           }
         })
 
@@ -427,6 +445,7 @@ export default {
 </script>
 
 <style scoped>
+/* Стили остаются без изменений */
 .homework-container {
   max-width: 75rem;
   margin: 0 auto;
