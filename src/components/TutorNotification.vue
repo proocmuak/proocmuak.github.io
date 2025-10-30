@@ -32,7 +32,15 @@
             <span v-if="notification.score !== null" class="score">
               Оценка: {{ notification.score }}
             </span>
-            <span class="tutor-name">Для куратора: "{{ notification.tutor_name }}"</span>
+            <span 
+              class="payment-status"
+              :class="{
+                'paid': notification.is_paid,
+                'not-paid': !notification.is_paid
+              }"
+            >
+              {{ notification.is_paid ? '✅ Оплачено' : '❌ Не оплачено' }}
+            </span>
           </div>
         </div>
         <div class="notification-actions">
@@ -166,22 +174,69 @@ export default {
           return
         }
         
-        notifications.value = data.map(notification => ({
-          id: notification.id,
-          student_id: notification.student_id,
-          homework_id: notification.homework_id,
-          subject: notification.subject,
-          completed_at: notification.completed_at,
-          score: notification.score,
-          is_read: notification.is_read,
-          tutor_name: notification.tutor_name,
-          student_first_name: notification.students?.first_name || 'Неизвестный',
-          student_last_name: notification.students?.last_name || 'ученик'
-        }))
+        // Загружаем информацию об оплате для каждого уведомления
+        const notificationsWithPaymentStatus = await Promise.all(
+          data.map(async (notification) => {
+            const isPaid = await checkPaymentStatus(notification.student_id, notification.subject);
+            
+            return {
+              id: notification.id,
+              student_id: notification.student_id,
+              homework_id: notification.homework_id,
+              subject: notification.subject,
+              completed_at: notification.completed_at,
+              score: notification.score,
+              is_read: notification.is_read,
+              tutor_name: notification.tutor_name,
+              student_first_name: notification.students?.first_name || 'Неизвестный',
+              student_last_name: notification.students?.last_name || 'ученик',
+              is_paid: isPaid
+            }
+          })
+        )
+        
+        notifications.value = notificationsWithPaymentStatus
       } catch (error) {
         console.error('Ошибка:', error)
       } finally {
         loading.value = false
+      }
+    }
+
+    const checkPaymentStatus = async (studentId, subject) => {
+      try {
+        // Получаем данные студента из таблицы students
+        const { data: studentData, error } = await supabase
+          .from('students')
+          .select('subject1_payment_date, subject2_payment_date')
+          .eq('user_id', studentId)
+          .single()
+
+        if (error) {
+          console.error('Ошибка загрузки данных студента:', error)
+          return false
+        }
+
+        if (!studentData) {
+          return false
+        }
+
+        // Определяем, какой предмет и какой payment_date использовать
+        const isChemistry = subject.includes('chemistry')
+        const paymentDate = isChemistry ? studentData.subject1_payment_date : studentData.subject2_payment_date
+
+        // Проверяем статус оплаты
+        if (!paymentDate) {
+          return false
+        }
+
+        const today = new Date()
+        const paymentEndDate = new Date(paymentDate)
+        
+        return paymentEndDate >= today
+      } catch (error) {
+        console.error('Ошибка проверки статуса оплаты:', error)
+        return false
       }
     }
 
@@ -440,9 +495,21 @@ export default {
   color: #2196F3;
 }
 
-.tutor-name {
-  color: #888;
-  font-size: 0.8em;
+.payment-status {
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.payment-status.paid {
+  color: #2e7d32;
+  background-color: #e8f5e8;
+}
+
+.payment-status.not-paid {
+  color: #c62828;
+  background-color: #ffebee;
 }
 
 .notification-actions {

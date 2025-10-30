@@ -1,4 +1,4 @@
-  <template>
+<template>
     <div class="homework-container">
       <div class="student-info">
         <h2>Домашние работы ученика</h2>
@@ -7,6 +7,17 @@
           <p><strong>Email:</strong> {{ student.email }}</p>
           <p><strong>Телефон:</strong> {{ student.phone }}</p>
           <p><strong>Общий балл:</strong> <span class="total-score">{{ student.score }}</span></p>
+          <p><strong>Рейтинг:</strong> <span class="rating">{{ student.rating || 0 }}</span></p>
+          
+          <!-- Информация о тарифах и оплате -->
+          <div v-if="subjectTariffInfo" class="tariff-info">
+            <p><strong>Тариф:</strong> {{ subjectTariffInfo.tariff || 'Не указан' }}</p>
+            <p><strong>Оплачено до:</strong> 
+              <span :class="{'expired': subjectTariffInfo.isExpired, 'expiring-soon': subjectTariffInfo.isExpiringSoon}">
+                {{ subjectTariffInfo.paymentDateFormatted }}
+              </span>
+            </p>
+          </div>
         </div>
       </div>
 
@@ -102,38 +113,58 @@
       return {
         homework: [],
         loading: false,
-        error: null
+        error: null,
+        studentDetails: null
       }
     },
     async mounted() {
+      await this.loadStudentDetails();
       await this.loadHomework();
     },
-  name: 'StudentHomework',
-    props: {
-      student: {
-        type: Object,
-        required: true
-      },
-      subject: {
-        type: String,
-        required: true
-      },
-      examType: {
-        type: String,
-        default: 'ЕГЭ'
+    computed: {
+      // Определяем информацию о тарифе в зависимости от предмета
+      subjectTariffInfo() {
+        if (!this.studentDetails) return null;
+
+        const isSubject1 = this.subject.toLowerCase().includes('химия') || 
+                          this.subject.toLowerCase().includes('chemistry');
+        
+        if (isSubject1) {
+          return {
+            tariff: this.studentDetails.subject1_tariff,
+            paymentDate: this.studentDetails.subject1_payment_date,
+            paymentDateFormatted: this.formatPaymentDate(this.studentDetails.subject1_payment_date),
+            isExpired: this.isPaymentExpired(this.studentDetails.subject1_payment_date),
+            isExpiringSoon: this.isPaymentExpiringSoon(this.studentDetails.subject1_payment_date)
+          };
+        } else {
+          return {
+            tariff: this.studentDetails.subject2_tariff,
+            paymentDate: this.studentDetails.subject2_payment_date,
+            paymentDateFormatted: this.formatPaymentDate(this.studentDetails.subject2_payment_date),
+            isExpired: this.isPaymentExpired(this.studentDetails.subject2_payment_date),
+            isExpiringSoon: this.isPaymentExpiringSoon(this.studentDetails.subject2_payment_date)
+          };
+        }
       }
-    },
-    data() {
-      return {
-        homework: [],
-        loading: false,
-        error: null
-      }
-    },
-    async mounted() {
-      await this.loadHomework();
     },
     methods: {
+      async loadStudentDetails() {
+        try {
+          const { data, error } = await supabase
+            .from('students')
+            .select('*')
+            .eq('user_id', this.student.user_id)
+            .single();
+
+          if (error) throw error;
+          
+          this.studentDetails = data;
+        } catch (error) {
+          console.error('Ошибка загрузки деталей студента:', error);
+        }
+      },
+
       async loadHomework() {
         this.loading = true;
         this.error = null;
@@ -228,6 +259,7 @@
           this.loading = false;
         }
       },
+
       // Адаптированная функция для открытия домашнего задания
       openHomeworkSimple(homework) {
         try {
@@ -292,11 +324,41 @@
           hour: '2-digit',
           minute: '2-digit'
         });
+      },
+
+      formatPaymentDate(dateString) {
+        if (!dateString) return 'Не оплачено';
+        
+        const date = new Date(dateString);
+        return date.toLocaleDateString('ru-RU', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      },
+
+      isPaymentExpired(paymentDate) {
+        if (!paymentDate) return true;
+        
+        const today = new Date();
+        const payment = new Date(paymentDate);
+        return payment < today;
+      },
+
+      isPaymentExpiringSoon(paymentDate) {
+        if (!paymentDate) return false;
+        
+        const today = new Date();
+        const payment = new Date(paymentDate);
+        const daysUntilExpiry = Math.ceil((payment - today) / (1000 * 60 * 60 * 24));
+        
+        return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
       }
     },
     watch: {
       student: {
         handler() {
+          this.loadStudentDetails();
           this.loadHomework();
         },
         deep: true
@@ -311,7 +373,6 @@
   </script>
 
   <style scoped>
-  /* Стили остаются без изменений */
   .homework-container {
     padding: 20px;
   }
@@ -348,6 +409,40 @@
     color: white;
     font-weight: 600;
     font-size: 16px;
+  }
+
+  .rating {
+    color: #ffd700;
+    font-weight: 600;
+    font-size: 16px;
+  }
+
+  .tariff-info {
+    grid-column: 1 / -1;
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+  }
+
+  .expired {
+    color: #ff6b6b;
+    font-weight: 600;
+  }
+
+  .expiring-soon {
+    color: #ffd93d;
+    font-weight: 600;
+  }
+
+  .access-active {
+    color: #6bcf7f;
+    font-weight: 600;
+  }
+
+  .access-inactive {
+    color: #ff6b6b;
+    font-weight: 600;
   }
 
   .homework-list h3 {
