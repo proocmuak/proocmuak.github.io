@@ -2,7 +2,7 @@
   <div class="tutor-notifications">
     <h2>Уведомления о сданных домашних заданиях</h2>
     
-    <div v-if="loading" class="loading">
+    <div v-if="loading && notifications.length === 0" class="loading">
       Загрузка уведомлений...
     </div>
     
@@ -10,54 +10,60 @@
       Новых уведомлений нет
     </div>
     
-    <div v-else class="notifications-list">
-      <div 
-        v-for="notification in notifications" 
-        :key="notification.id" 
-        class="notification-item"
-        :class="{ 'new': !notification.is_read }"
-      >
-        <div class="notification-content">
-          <p>
-            <span 
-              class="student-name-link"
-              @click="openStudentHomework(notification)"
+    <div v-else class="notifications-container">
+      <div class="notifications-list">
+        <div 
+          v-for="notification in notifications" 
+          :key="notification.id" 
+          class="notification-item"
+          :class="{ 'new': !notification.is_read }"
+        >
+          <div class="notification-content">
+            <p>
+              <span 
+                class="student-name-link"
+                @click="openStudentHomework(notification)"
+              >
+                <strong>{{ notification.student_first_name }} {{ notification.student_last_name }}</strong>
+              </span>
+              сдал домашку по <strong>{{ getSubjectName(notification.subject) }}</strong>
+            </p>
+            <div class="notification-meta">
+              <span class="timestamp">{{ formatDate(notification.completed_at) }}</span>
+              <span v-if="notification.score !== null" class="score">
+                Оценка: {{ notification.score }}
+              </span>
+              <span class="payment-status">
+                {{ notification.is_paid ? '✅ Оплачено' : '❌ Не оплачено' }}
+              </span>
+            </div>
+          </div>
+          <div class="notification-actions">
+            <button 
+              @click="openHomework(notification)"
+              class="view-homework-btn"
             >
-              <strong>{{ notification.student_first_name }} {{ notification.student_last_name }}</strong>
-            </span>
-            сдал домашку по <strong>{{ getSubjectName(notification.subject) }}</strong>
-          </p>
-          <div class="notification-meta">
-            <span class="timestamp">{{ formatDate(notification.completed_at) }}</span>
-            <span v-if="notification.score !== null" class="score">
-              Оценка: {{ notification.score }}
-            </span>
-            <span 
-              class="payment-status"
-              :class="{
-                'paid': notification.is_paid,
-                'not-paid': !notification.is_paid
-              }"
+              📝 Открыть домашку
+            </button>
+            <button 
+              v-if="!notification.is_read" 
+              @click="markAsRead(notification.id)"
+              class="mark-read-btn"
             >
-              {{ notification.is_paid ? '✅ Оплачено' : '❌ Не оплачено' }}
-            </span>
+              ✓ Прочитано
+            </button>
           </div>
         </div>
-        <div class="notification-actions">
-          <button 
-            @click="openHomework(notification)"
-            class="view-homework-btn"
-          >
-            📝 Открыть домашку
-          </button>
-          <button 
-            v-if="!notification.is_read" 
-            @click="markAsRead(notification.id)"
-            class="mark-read-btn"
-          >
-            ✓ Прочитано
-          </button>
-        </div>
+      </div>
+      
+      <div v-if="hasMoreNotifications" class="load-more-container">
+        <button 
+          @click="loadMoreNotifications" 
+          class="load-more-btn"
+          :disabled="loadingMore"
+        >
+          {{ loadingMore ? 'Загрузка...' : 'Загрузить еще' }}
+        </button>
       </div>
     </div>
 
@@ -99,6 +105,11 @@ export default {
   setup() {
     const notifications = ref([])
     const loading = ref(true)
+    const loadingMore = ref(false)
+    const currentPage = ref(0)
+    const hasMoreNotifications = ref(true)
+    const pageSize = 20 // Количество уведомлений за одну загрузку
+    
     let realtimeSubscription = null
     const currentTutorName = ref('')
     const searchNames = ref([])
@@ -130,9 +141,17 @@ export default {
       }
     }
 
-    const loadNotifications = async () => {
+    const loadNotifications = async (loadMore = false) => {
       try {
-        loading.value = true
+        if (loadMore) {
+          loadingMore.value = true
+          currentPage.value++
+        } else {
+          loading.value = true
+          currentPage.value = 0
+          notifications.value = []
+        }
+
         const tutorName = await getCurrentTutorName()
         currentTutorName.value = tutorName
         
@@ -153,7 +172,10 @@ export default {
           firstName.toUpperCase(),
         ]
 
-        const { data, error } = await supabase
+        const from = currentPage.value * pageSize
+        const to = from + pageSize - 1
+
+        const { data, error, count } = await supabase
           .from('homework_notifications')
           .select(`
             id,
@@ -165,79 +187,112 @@ export default {
             is_read,
             tutor_name,
             students:student_id (first_name, last_name)
-          `)
+          `, { count: 'exact' })
           .in('tutor_name', searchNames.value)
           .order('completed_at', { ascending: false })
+          .range(from, to)
 
         if (error) {
           console.error('Ошибка загрузки уведомлений:', error)
           return
         }
-        
-        // Загружаем информацию об оплате для каждого уведомления
-        const notificationsWithPaymentStatus = await Promise.all(
-          data.map(async (notification) => {
-            const isPaid = await checkPaymentStatus(notification.student_id, notification.subject);
-            
-            return {
-              id: notification.id,
-              student_id: notification.student_id,
-              homework_id: notification.homework_id,
-              subject: notification.subject,
-              completed_at: notification.completed_at,
-              score: notification.score,
-              is_read: notification.is_read,
-              tutor_name: notification.tutor_name,
-              student_first_name: notification.students?.first_name || 'Неизвестный',
-              student_last_name: notification.students?.last_name || 'ученик',
-              is_paid: isPaid
-            }
-          })
-        )
-        
-        notifications.value = notificationsWithPaymentStatus
+
+        // Быстрая загрузка без проверки оплаты для начального отображения
+        const newNotifications = data.map(notification => ({
+          id: notification.id,
+          student_id: notification.student_id,
+          homework_id: notification.homework_id,
+          subject: notification.subject,
+          completed_at: notification.completed_at,
+          score: notification.score,
+          is_read: notification.is_read,
+          tutor_name: notification.tutor_name,
+          student_first_name: notification.students?.first_name || 'Неизвестный',
+          student_last_name: notification.students?.last_name || 'ученик',
+          is_paid: false // Временно false, обновим позже
+        }))
+
+        if (loadMore) {
+          notifications.value = [...notifications.value, ...newNotifications]
+        } else {
+          notifications.value = newNotifications
+        }
+
+        // Проверяем, есть ли еще уведомления для загрузки
+        hasMoreNotifications.value = data.length === pageSize
+
+        // Фоновая загрузка статусов оплаты
+        if (!loadMore) {
+          loadPaymentStatuses()
+        }
+
       } catch (error) {
         console.error('Ошибка:', error)
       } finally {
         loading.value = false
+        loadingMore.value = false
       }
     }
 
-    const checkPaymentStatus = async (studentId, subject) => {
+    const loadMoreNotifications = () => {
+      loadNotifications(true)
+    }
+
+    // Оптимизированная загрузка статусов оплаты для всех уведомлений сразу
+    const loadPaymentStatuses = async () => {
       try {
-        // Получаем данные студента из таблицы students
-        const { data: studentData, error } = await supabase
+        // Собираем все уникальные student_id из уведомлений
+        const studentIds = [...new Set(notifications.value.map(n => n.student_id))]
+        
+        if (studentIds.length === 0) return
+
+        // Загружаем данные всех студентов за один запрос
+        const { data: studentsData, error } = await supabase
           .from('students')
-          .select('subject1_payment_date, subject2_payment_date')
-          .eq('user_id', studentId)
-          .single()
+          .select('user_id, subject1_payment_date, subject2_payment_date')
+          .in('user_id', studentIds)
 
         if (error) {
-          console.error('Ошибка загрузки данных студента:', error)
-          return false
+          console.error('Ошибка загрузки данных студентов:', error)
+          return
         }
 
-        if (!studentData) {
-          return false
-        }
+        // Создаем карту для быстрого доступа
+        const studentsMap = new Map()
+        studentsData.forEach(student => {
+          studentsMap.set(student.user_id, {
+            subject1_payment_date: student.subject1_payment_date,
+            subject2_payment_date: student.subject2_payment_date
+          })
+        })
 
-        // Определяем, какой предмет и какой payment_date использовать
-        const isChemistry = subject.includes('chemistry')
-        const paymentDate = isChemistry ? studentData.subject1_payment_date : studentData.subject2_payment_date
+        // Обновляем статусы оплаты для всех уведомлений
+        notifications.value.forEach(notification => {
+          const studentData = studentsMap.get(notification.student_id)
+          if (studentData) {
+            const isChemistry = notification.subject.includes('chemistry')
+            const paymentDate = isChemistry ? 
+              studentData.subject1_payment_date : 
+              studentData.subject2_payment_date
+            
+            notification.is_paid = checkPaymentStatus(paymentDate)
+          }
+        })
 
-        // Проверяем статус оплаты
-        if (!paymentDate) {
-          return false
-        }
-
-        const today = new Date()
-        const paymentEndDate = new Date(paymentDate)
-        
-        return paymentEndDate >= today
       } catch (error) {
-        console.error('Ошибка проверки статуса оплаты:', error)
+        console.error('Ошибка загрузки статусов оплаты:', error)
+      }
+    }
+
+    const checkPaymentStatus = (paymentDate) => {
+      if (!paymentDate) {
         return false
       }
+
+      const today = new Date()
+      const paymentEndDate = new Date(paymentDate)
+      
+      return paymentEndDate >= today
     }
 
     const subscribeToRealtime = async () => {
@@ -250,7 +305,8 @@ export default {
             table: 'homework_notifications'
           }, 
           (payload) => {
-            loadNotifications()
+            // При новом уведомлении перезагружаем только первую страницу
+            loadNotifications(false)
           }
         )
         .subscribe()
@@ -274,7 +330,6 @@ export default {
 
     const openStudentHomework = async (notification) => {
       try {
-                 
         // Получаем полные данные о студенте
         const { data: studentData, error: studentError } = await supabase
           .from('personalities')
@@ -313,7 +368,6 @@ export default {
           score: score
         };
 
-         
         // Получаем subject и examType из уведомления
         const [subject, examTypeFromSubject] = notification.subject.split('_');
         
@@ -322,7 +376,6 @@ export default {
         selectedSubject.value = subject;
         selectedExamType.value = examTypeFromSubject;
 
-         
         // Блокируем прокрутку фона
         document.body.style.overflow = 'hidden';
 
@@ -388,7 +441,7 @@ export default {
     }
 
     onMounted(async () => {
-      await loadNotifications()
+      await loadNotifications(false)
       await subscribeToRealtime()
     })
 
@@ -403,6 +456,8 @@ export default {
     return {
       notifications,
       loading,
+      loadingMore,
+      hasMoreNotifications,
       selectedStudent,
       selectedSubject,
       selectedExamType,
@@ -410,6 +465,7 @@ export default {
       openStudentHomework,
       closeStudentHomework,
       markAsRead,
+      loadMoreNotifications,
       formatDate,
       getSubjectName
     }
@@ -430,6 +486,10 @@ export default {
   padding: 20px;
   color: #666;
   font-style: italic;
+}
+
+.notifications-container {
+  margin-bottom: 20px;
 }
 
 .notifications-list {
@@ -497,19 +557,7 @@ export default {
 
 .payment-status {
   font-weight: 500;
-  padding: 2px 6px;
-  border-radius: 4px;
   font-size: 0.85em;
-}
-
-.payment-status.paid {
-  color: #2e7d32;
-  background-color: #e8f5e8;
-}
-
-.payment-status.not-paid {
-  color: #c62828;
-  background-color: #ffebee;
 }
 
 .notification-actions {
@@ -546,6 +594,32 @@ export default {
 
 .mark-read-btn:hover {
   background-color: #d4ecd4;
+}
+
+.load-more-container {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.load-more-btn {
+  padding: 10px 20px;
+  border: 1px solid #b241d1;
+  border-radius: 6px;
+  background-color: white;
+  color: #b241d1;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.3s ease;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background-color: #b241d1;
+  color: white;
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Стили для модального окна */
