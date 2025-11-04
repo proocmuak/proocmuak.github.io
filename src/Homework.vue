@@ -1117,6 +1117,10 @@ const completeHomework = async () => {
     const updateTotalScore = () => {
       totalScore.value = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0)
     }
+    const completionPercent = computed(() => {
+    if (maxScore.value === 0) return 0;
+    return Math.round((totalScore.value / maxScore.value) * 100);
+  });
 
     // Статус дедлайна
     const deadlineStatus = computed(() => {
@@ -1285,7 +1289,8 @@ const completeHomework = async () => {
       removeAnswerImage,
       isSecondPartTask,
       toggleExplanation,
-      getDisplaySubjectName
+      getDisplaySubjectName,
+      completionPercent
     }
   }
 }
@@ -1695,30 +1700,35 @@ const completeHomework = async () => {
           </div>
         </div>
 
-        <!-- Блок итоговой оценки куратора -->
-        <div v-if="isTutorMode" class="tutor-final-assessment">
-          <h3>Итоговая оценка</h3>
-          <div class="final-score">
-            Общий балл: {{ totalScore }}/{{ maxScore }}
-          </div>
-          <div class="tutor-actions">
-            <button @click="updateHomeworkTotalScore" class="save-final-score-btn">
-              Сохранить итоговую оценку
-            </button>
-          </div>
-        </div>
+<div v-if="isTutorMode" class="tutor-final-assessment">
+  <h3>Итоговая оценка</h3>
+  <div class="final-score">
+    Общий балл: {{ totalScore }}/{{ maxScore }}
+    <div class="completion-percent">
+      Выполнено на: {{ completionPercent }}%
+    </div>
+  </div>
+  <div class="tutor-actions">
+    <button @click="updateHomeworkTotalScore" class="save-final-score-btn">
+      Сохранить итоговую оценку
+    </button>
+  </div>
+</div>
 
-        <!-- Кнопка завершения -->
-        <div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
-          <button @click="completeHomework" class="complete-btn">
-            Завершить домашнее задание
-          </button>
-        </div>
+<!-- Кнопка завершения -->
+<div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
+  <button @click="completeHomework" class="complete-btn">
+    Завершить домашнее задание
+  </button>
+</div>
 
-        <div v-if="isCompleted" class="completion-result">
-          <h3>Домашнее задание завершено!</h3>
-          <p>Набрано баллов: {{ totalScore }}/{{ maxScore }}</p>
-        </div>
+<div v-if="isCompleted" class="completion-result">
+  <h3>Домашнее задание завершено!</h3>
+  <p>Набрано баллов: {{ totalScore }}/{{ maxScore }}</p>
+  <p>Выполнено на: {{ completionPercent }}%</p>
+</div>
+
+
       </div>
     </div>
 
