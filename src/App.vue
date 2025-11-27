@@ -1,9 +1,6 @@
 <script setup>
 import { ref } from 'vue'
 import { supabase } from './supabase.js'
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
 
 // Состояния формы
 const isLoginForm = ref(true)
@@ -11,6 +8,39 @@ const email = ref('')
 const password = ref('')
 const errorMessage = ref('')
 const successMessage = ref('')
+const isLoading = ref(false)
+
+// Проверка соединения
+const checkNetworkConnection = async () => {
+  try {
+    const response = await fetch('https://www.gstatic.com/generate_204', {
+      method: 'HEAD',
+      mode: 'no-cors'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Улучшенная обработка ошибок
+const handleNetworkError = (error) => {
+  console.error('Network error:', error)
+  
+  if (error.message?.includes('Failed to fetch')) {
+    return 'Ошибка соединения. Проверьте интернет и попробуйте снова.'
+  }
+  
+  if (error.message?.includes('NetworkError')) {
+    return 'Проблемы с сетью. Проверьте подключение к интернету.'
+  }
+  
+  if (error.message?.includes('abort')) {
+    return 'Превышено время ожидания ответа от сервера.'
+  }
+  
+  return error.message || 'Произошла непредвиденная ошибка'
+}
 
 // Переключение между формами
 const toggleForm = () => {
@@ -19,65 +49,121 @@ const toggleForm = () => {
   successMessage.value = ''
 }
 
-// Обработка входа
-const handleLogin = async () => {
+// ИСПРАВЛЕННАЯ функция: создает профиль только если его нет
+const createUserProfileIfNotExists = async (userId, userEmail) => {
   try {
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    // Сначала проверяем существование профиля
+    const { data: existingProfile, error: checkError } = await supabase
+      .from('personalities')
+      .select('user_id, role')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 - не найдено, это нормально
+      console.error('Ошибка при проверке профиля:', checkError)
+      throw checkError
+    }
+
+    // Если профиль уже существует, НЕ перезаписываем его
+    if (existingProfile) {
+      console.log('Профиль уже существует, роль:', existingProfile.role)
+      return { success: true, existing: true, role: existingProfile.role }
+    }
+
+    // Создаем новый профиль только если его нет
+    const { error: insertError } = await supabase
+      .from('personalities')
+      .insert({
+        user_id: userId,
+        email: userEmail,
+        role: 'student', // Только для новых пользователей
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+
+    if (insertError) {
+      console.error('Ошибка при создании профиля:', insertError)
+      // Если это ошибка дублирования, игнорируем (на случай race condition)
+      if (insertError.code !== '23505') {
+        throw insertError
+      }
+    }
+
+    return { success: true, existing: false, role: 'student' }
+  } catch (error) {
+    console.error('Критическая ошибка профиля:', error)
+    return { success: false, error }
+  }
+}
+
+// Обработка входа с улучшенной обработкой ошибок
+const handleLogin = async () => {
+  if (isLoading.value) return
+  
+  isLoading.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    // Проверка соединения
+    const isConnected = await checkNetworkConnection()
+    if (!isConnected) {
+      errorMessage.value = 'Отсутствует интернет-соединение. Проверьте подключение.'
+      return
+    }
+
+    // Аутентификация с таймаутом
+    const authPromise = supabase.auth.signInWithPassword({
       email: email.value,
       password: password.value
     })
     
+    // Таймаут для запроса
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), 15000)
+    )
+    
+    const { data: authData, error: authError } = await Promise.race([
+      authPromise,
+      timeoutPromise
+    ])
+    
     if (authError) {
-      // Проверяем конкретную ошибку о disabled email logins
       if (authError.message.includes('Email logins are disabled')) {
-        errorMessage.value = 'Вход по email временно недоступен. Пожалуйста, используйте другой метод входа.'
+        errorMessage.value = 'Вход по email временно недоступен.'
+      } else if (authError.message.includes('Invalid login credentials')) {
+        errorMessage.value = 'Неверный email или пароль.'
       } else {
-        throw authError
+        errorMessage.value = handleNetworkError(authError)
       }
       return
     }
     
     localStorage.setItem('userEmail', email.value)
     
-    // Проверяем существование записи перед вставкой
-    const { data: existingData, error: checkError } = await supabase
+    // Создаем профиль только если его нет (НЕ перезаписываем существующий)
+    const profileResult = await createUserProfileIfNotExists(authData.user.id, email.value)
+    
+    if (!profileResult.success) {
+      console.warn('Профиль не был создан/обновлен, но продолжаем вход')
+    }
+    
+    // Получаем актуальную роль пользователя из базы
+    const { data: userData, error: userError } = await supabase
       .from('personalities')
-      .select('user_id, role')
-      .eq('email', email.value)
+      .select('role')
+      .eq('user_id', authData.user.id)
       .maybeSingle()
     
-    if (checkError) {
-      console.error('Ошибка при проверке профиля:', checkError)
-      throw checkError
+    let userRole = 'student' // значение по умолчанию
+    if (!userError && userData) {
+      userRole = userData.role || 'student'
     }
     
-    // Если записи нет, создаем ее
-    if (!existingData) {      
-      const { error: insertError } = await supabase
-        .from('personalities')
-        .insert([
-          {
-            email: email.value,
-            role: 'student',
-            user_id: authData.user.id
-          }
-        ])
-      
-      if (insertError) {
-        console.error('Ошибка при создании профиля:', insertError)
-        // Не прерываем вход, просто логируем ошибку
-      }
-      
-      // Перенаправляем как студента
-      window.location.href = '/student_menu.html'
-      return
-    }
-
-    // Используем существующие данные
-    const userData = existingData
-
-    // Перенаправляем в зависимости от роли
-    switch (userData.role) {
+    console.log('Роль пользователя для редиректа:', userRole)
+    
+    // Перенаправляем
+    switch (userRole) {
       case 'tutor':
         window.location.href = '/tutor_menu.html'
         break
@@ -90,87 +176,81 @@ const handleLogin = async () => {
     }
 
   } catch (error) {
-    errorMessage.value = error.message
     console.error('Ошибка входа:', error)
+    errorMessage.value = handleNetworkError(error)
+  } finally {
+    isLoading.value = false
   }
 }
 
-// Обработка регистрации
+// Обработка регистрации с улучшенной обработкой ошибок
 const handleSignUp = async () => {
+  if (isLoading.value) return
+  
+  isLoading.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
   try {
+    // Проверка соединения
+    const isConnected = await checkNetworkConnection()
+    if (!isConnected) {
+      errorMessage.value = 'Отсутствует интернет-соединение. Проверьте подключение.'
+      return
+    }
+
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email.value,
-      password: password.value
+      password: password.value,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth-confirm`
+      }
     })
     
     if (authError) {
-      // Проверяем конкретную ошибку о disabled email logins
       if (authError.message.includes('Email logins are disabled')) {
-        errorMessage.value = 'Регистрация по email временно недоступен. Пожалуйста, используйте другой метод входа.'
+        errorMessage.value = 'Регистрация по email временно недоступна.'
+      } else if (authError.message.includes('User already registered')) {
+        errorMessage.value = 'Пользователь с таким email уже зарегистрирован.'
       } else {
-        throw authError
+        errorMessage.value = handleNetworkError(authError)
       }
       return
     }
     
-    // Добавляем пользователя в таблицу personalities
     if (authData.user) {
-      // Сначала проверяем, существует ли уже запись
-      const { data: existingData, error: checkError } = await supabase
-        .from('personalities')
-        .select('user_id')
-        .eq('email', email.value)
-        .maybeSingle()
+      // При регистрации создаем профиль только если его нет
+      const profileResult = await createUserProfileIfNotExists(authData.user.id, email.value)
       
-      if (checkError) {
-        console.error('Ошибка при проверке существующей записи:', checkError)
-        throw checkError
+      if (!profileResult.success && profileResult.error?.code !== '23505') {
+        console.warn('Профиль не был создан, но регистрация завершена')
       }
       
-      // Если записи нет, тогда вставляем
-      if (!existingData) {
-        const { error: insertError } = await supabase
-          .from('personalities')
-          .insert([
-            {
-              email: email.value,
-              role: 'student',
-              user_id: authData.user.id
-            }
-          ])
-        
-        if (insertError) {
-          console.error('Ошибка при создании профиля:', insertError)
-          // Если это ошибка дублирования ключа, обрабатываем особо
-          if (insertError.code === '23505') {
-            errorMessage.value = 'Профиль с таким email уже существует. Попробуйте войти в систему.'
-          } else {
-            throw insertError
-          }
-        }
-      } else {
-       successMessage.value = 'Аккаунт уже существует. Проверьте вашу почту для подтверждения!'
-      }
+      successMessage.value = 'Регистрация успешна! Проверьте вашу почту для подтверждения.'
+      email.value = ''
+      password.value = ''
     }
     
-    successMessage.value = 'Проверьте вашу почту для подтверждения!'
-    email.value = ''
-    password.value = ''
   } catch (error) {
-    errorMessage.value = error.message
     console.error('Ошибка регистрации:', error)
+    errorMessage.value = handleNetworkError(error)
+  } finally {
+    isLoading.value = false
   }
 }
 
 // Вход через Telegram
 const handleTelegramLogin = async () => {
-  // Здесь будет реализация OAuth через Telegram
   alert('Функция входа через Telegram будет реализована позже')
 }
 </script>
 
+
+
+
 <template>
 <div class="allpage">
+  <!-- Остальная разметка без изменений -->
   <div class="topmenu">
     <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
     <div class="rightparttopmenu">
@@ -216,12 +296,14 @@ const handleTelegramLogin = async () => {
           type="text" 
           id="email_or_phone" 
           placeholder="E-mail"
+          :disabled="isLoading"
         >
         <input 
           v-model="password"
           type="password" 
           id="password" 
           placeholder="Пароль"
+          :disabled="isLoading"
         >
       </div>
       
@@ -236,12 +318,15 @@ const handleTelegramLogin = async () => {
       <div class="enter_or_forget_password">
         <div 
           class="enter_button" 
-          :class="{ 'register-button': !isLoginForm }"
+          :class="{ 
+            'register-button': !isLoginForm,
+            'loading': isLoading
+          }"
           @click="isLoginForm ? handleLogin() : handleSignUp()"
         >
-          {{ isLoginForm ? 'Войти' : 'Зарегистрироваться' }}
+          {{ isLoading ? 'Загрузка...' : (isLoginForm ? 'Войти' : 'Зарегистрироваться') }}
         </div>
-        <div class="forget_password" v-if="isLoginForm">
+        <div class="forget_password" v-if="isLoginForm && !isLoading">
           Забыли пароль?
         </div>
       </div>
@@ -251,6 +336,7 @@ const handleTelegramLogin = async () => {
         <div 
           class="enter_by_telegram_menu"
           @click="handleTelegramLogin"
+          :class="{ 'disabled': isLoading }"
         >
           Войти через Telegram
         </div>    
@@ -293,6 +379,57 @@ const handleTelegramLogin = async () => {
   </div>
 </div>
 </template>
+
+
+<style>
+/* Добавьте стили для различных состояний ошибок */
+.error-message.network-error {
+  background-color: #fff3f3;
+  border: 1px solid #ffcdd2;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.loading {
+  position: relative;
+  color: transparent !important;
+}
+
+.loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-left-color: transparent;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>
+<style>
+/* Добавьте эти стили к существующим */
+.loading {
+  opacity: 0.7;
+  cursor: not-allowed !important;
+}
+
+.disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+}
+
+.enter_button:active,
+.enter_by_telegram_menu:active {
+  transform: scale(0.95);
+}
+
+/* Остальные стили без изменений */
+</style>
 
 <style>
 * {
