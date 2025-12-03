@@ -165,6 +165,7 @@ export default {
     const examType = ref('') // ege или oge
     const homeworkId = ref('')
     const editInput = ref(null)
+    const studentInfo = ref(null) // Информация о студенте для режима куратора
 
     // Получаем параметры из URL
     const getUrlParams = () => {
@@ -188,7 +189,6 @@ export default {
         }
       }
 
-
       return {
         subject: finalSubject,
         exam_type: finalExamType,
@@ -201,77 +201,77 @@ export default {
       }
     }
 
-// Функция для получения tutor_name
-const getTutorName = async (studentId) => {
-  try {
-    console.log('🔍 Поиск tutor для student_id:', studentId);
-    
-    // Ищем в таблице students в столбце tutor
-    const { data, error } = await supabase
-      .from('students')
-      .select('tutor')
-      .eq('user_id', studentId)
-      .single();
+    // Функция для получения tutor_name
+    const getTutorName = async (studentId) => {
+      try {
+        console.log('🔍 Поиск tutor для student_id:', studentId);
+        
+        // Ищем в таблице students в столбце tutor
+        const { data, error } = await supabase
+          .from('students')
+          .select('tutor')
+          .eq('user_id', studentId)
+          .single();
 
-    if (error) {
-      console.error('❌ Ошибка запроса tutor из students:', error);
-      throw error;
+        if (error) {
+          console.error('❌ Ошибка запроса tutor из students:', error);
+          throw error;
+        }
+        
+        console.log('✅ Найденные данные из students:', data);
+        console.log('📝 tutor:', data?.tutor);
+        
+        return data?.tutor || null;
+      } catch (err) {
+        console.error('❌ Ошибка получения tutor:', err);
+        return null;
+      }
     }
-    
-    console.log('✅ Найденные данные из students:', data);
-    console.log('📝 tutor:', data?.tutor);
-    
-    return data?.tutor || null;
-  } catch (err) {
-    console.error('❌ Ошибка получения tutor:', err);
-    return null;
-  }
-}
 
-// Затем createHomeworkNotification
-// Функция создания уведомления
-const createHomeworkNotification = async (score) => {
-  if (!user_id.value) {
-    console.error('❌ user_id не установлен');
-    return;
-  }
+    // Функция создания уведомления (только при завершении домашнего задания)
+    const createHomeworkNotification = async (score) => {
+      if (!user_id.value) {
+        console.error('❌ user_id не установлен');
+        return;
+      }
 
-  try {
-    console.log('👤 Создание уведомления для user_id:', user_id.value);
-    
-    const tutorName = await getTutorName(user_id.value);
-    
-    console.log('🎯 Полученный tutor:', tutorName);
-    
-    const notificationData = {
-      student_id: user_id.value,
-      homework_id: parseInt(homeworkId.value),
-      subject: `${subject.value}_${examType.value}`,
-      completed_at: new Date().toISOString(),
-      score: score,
-      is_read: false,
-      tutor_name: tutorName
-    };
+      try {
+        console.log('👤 Создание уведомления для user_id:', user_id.value);
+        
+        const tutorName = await getTutorName(user_id.value);
+        
+        console.log('🎯 Полученный tutor:', tutorName);
+        
+        const notificationData = {
+          student_id: user_id.value,
+          homework_id: parseInt(homeworkId.value),
+          subject: `${subject.value}_${examType.value}`,
+          completed_at: new Date().toISOString(),
+          score: score,
+          is_read: false,
+          tutor_name: tutorName
+        };
 
-    console.log('📨 Данные для уведомления:', notificationData);
+        console.log('📨 Данные для уведомления:', notificationData);
 
-    const { error } = await supabase
-      .from('homework_notifications')
-      .upsert(notificationData, {
-        onConflict: 'tutor_name,student_id,homework_id'
-      });
+        const { error } = await supabase
+          .from('homework_notifications')
+          .upsert(notificationData, {
+            onConflict: 'tutor_name,student_id,homework_id'
+          });
 
-    if (error) {
-      console.error('❌ Ошибка сохранения уведомления:', error);
-      throw error;
+        if (error) {
+          console.error('❌ Ошибка сохранения уведомления:', error);
+          throw error;
+        }
+        
+        console.log('✅ Уведомление создано успешно');
+        
+      } catch (err) {
+        console.error('❌ Ошибка создания уведомления:', err);
+      }
     }
-    
-    console.log('✅ Уведомление создано успешно');
-    
-  } catch (err) {
-    console.error('❌ Ошибка создания уведомления:', err);
-  }
-}
+
     const urlParams = getUrlParams()
     subject.value = urlParams.subject
     examType.value = urlParams.exam_type
@@ -310,6 +310,48 @@ const createHomeworkNotification = async (score) => {
     const isTutorMode = computed(() => {
       return urlParams.view_mode === 'tutor';
     });
+
+    // Метод для загрузки информации о студенте (ФИО)
+    const loadStudentInfo = async () => {
+      if (!user_id.value || !isTutorMode.value) return
+      
+      try {
+        console.log('👤 Загрузка ФИО студента для user_id:', user_id.value)
+        
+        // Запрос к таблице students для получения first_name и last_name
+        const { data, error } = await supabase
+          .from('students')
+          .select('first_name, last_name')
+          .eq('user_id', user_id.value)
+          .single()
+
+        if (error) {
+          console.error('❌ Ошибка загрузки информации о студенте:', error)
+          // Если в таблице students нет данных, попробуем получить из других источников
+          const { data: personalityData } = await supabase
+            .from('personalities')
+            .select('full_name')
+            .eq('user_id', user_id.value)
+            .single()
+            
+          if (personalityData) {
+            studentInfo.value = { 
+              first_name: personalityData.full_name,
+              last_name: ''
+            }
+          } else {
+            studentInfo.value = { first_name: 'Не указано', last_name: '' }
+          }
+        } else {
+          studentInfo.value = data
+          console.log('✅ ФИО студента:', data)
+        }
+        
+      } catch (err) {
+        console.error('❌ Ошибка при загрузке информации о студенте:', err)
+        studentInfo.value = { first_name: 'Ошибка загрузки', last_name: '' }
+      }
+    }
 
     // Получение названий таблиц на основе subject и examType
     const getTableNames = () => {
@@ -618,190 +660,224 @@ const createHomeworkNotification = async (score) => {
     }
 
     // Сохранение прогресса выполнения задания
-// Сохранение прогресса выполнения задания
-const saveTaskProgress = async (task, checkCorrectness = false) => {
-  if (!user_id.value) return;
+    const saveTaskProgress = async (task, checkCorrectness = false) => {
+      if (!user_id.value) return;
 
-  let score = 0;
-  let is_completed = false;
-  let counted_in_rating = false; // Добавляем поле
+      let score = 0;
+      let is_completed = false;
+      let counted_in_rating = false; // Добавляем поле
 
-  if (checkCorrectness) {
-    const result = checkAnswerComponent(
-      task.userAnswer,
-      task.answer,
-      task.points,
-      subject.value,
-      task.exam_task_number
-    );
+      if (checkCorrectness) {
+        const result = checkAnswerComponent(
+          task.userAnswer,
+          task.answer,
+          task.points,
+          subject.value,
+          task.exam_task_number
+        );
 
-    score = result.score;
-    is_completed = result.isCorrect || result.isPartiallyCorrect;
-    
-    // Устанавливаем counted_in_rating = TRUE только при полном правильном ответе
-    counted_in_rating = result.isCorrect;
+        score = result.score;
+        is_completed = result.isCorrect || result.isPartiallyCorrect;
+        
+        // Устанавливаем counted_in_rating = TRUE только при полном правильном ответе
+        counted_in_rating = result.isCorrect;
 
-    task.isCorrect = result.isCorrect;
-    task.isPartiallyCorrect = result.isPartiallyCorrect;
-    task.awardedPoints = score;
-  }
+        task.isCorrect = result.isCorrect;
+        task.isPartiallyCorrect = result.isPartiallyCorrect;
+        task.awardedPoints = score;
+      }
 
-  try {
-    const tableNames = getTableNames();
-    const progressData = {
-      user_id: user_id.value,
-      task_id: task.task_id,
-      is_completed: is_completed,
-      score: score,
-      user_answer: task.userAnswer || '',
-      answer_images: task.answerImages || [],
-      last_updated: new Date().toISOString(),
-      counted_in_rating: counted_in_rating // Добавляем поле
+      try {
+        const tableNames = getTableNames();
+        const progressData = {
+          user_id: user_id.value,
+          task_id: task.task_id,
+          is_completed: is_completed,
+          score: score,
+          user_answer: task.userAnswer || '',
+          answer_images: task.answerImages || [],
+          last_updated: new Date().toISOString(),
+          counted_in_rating: counted_in_rating // Добавляем поле
+        };
+
+        const { error } = await supabase
+          .from(tableNames.progress)
+          .upsert(progressData, {
+            onConflict: 'user_id,task_id'
+          });
+
+        if (error) throw error;
+
+      } catch (err) {
+        console.error('Ошибка сохранения прогресса:', err);
+        throw err;
+      }
     };
-
-    const { error } = await supabase
-      .from(tableNames.progress)
-      .upsert(progressData, {
-        onConflict: 'user_id,task_id'
-      });
-
-    if (error) throw error;
-
-  } catch (err) {
-    console.error('Ошибка сохранения прогресса:', err);
-    throw err;
-  }
-};
 
     // Функция для выставления баллов куратором
+    const setTutorScore = async (task, manualScore) => {
+      if (!isTutorMode.value || !user_id.value) return;
+      
+      try {
+        task.saving = true;
+        
+        task.awardedPoints = manualScore;
+        task.isCorrect = manualScore === task.points;
+        task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points;
+        
+        // Куратор может вручную установить counted_in_rating
+        const counted_in_rating = manualScore === task.points;
+        
+        const tableNames = getTableNames();
+        const { error } = await supabase
+          .from(tableNames.progress)
+          .upsert({
+            user_id: user_id.value,
+            task_id: task.task_id,
+            is_completed: manualScore > 0,
+            score: manualScore,
+            user_answer: task.userAnswer || '',
+            answer_images: task.answerImages || [],
+            last_updated: new Date().toISOString(),
+            counted_in_rating: counted_in_rating // Добавляем для куратора
+          }, {
+            onConflict: 'user_id,task_id'
+          });
 
-const setTutorScore = async (task, manualScore) => {
-  if (!isTutorMode.value || !user_id.value) return;
-  
-  try {
-    task.saving = true;
-    
-    task.awardedPoints = manualScore;
-    task.isCorrect = manualScore === task.points;
-    task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points;
-    
-    // Куратор может вручную установить counted_in_rating
-    const counted_in_rating = manualScore === task.points;
-    
-    const tableNames = getTableNames();
-    const { error } = await supabase
-      .from(tableNames.progress)
-      .upsert({
-        user_id: user_id.value,
-        task_id: task.task_id,
-        is_completed: manualScore > 0,
-        score: manualScore,
-        user_answer: task.userAnswer || '',
-        answer_images: task.answerImages || [],
-        last_updated: new Date().toISOString(),
-        counted_in_rating: counted_in_rating // Добавляем для куратора
-      }, {
-        onConflict: 'user_id,task_id'
-      });
-
-    if (error) throw error;
-    
-    await updateHomeworkTotalScore();
-    
-  } catch (err) {
-    console.error('Ошибка сохранения баллов куратора:', err);
-    error.value = 'Ошибка при сохранении баллов: ' + err.message;
-  } finally {
-    task.saving = false;
-  }
-};
-
-    // Обновление общего балла домашнего задания
-const updateHomeworkTotalScore = async () => {
-  if (!user_id.value) return;
-  
-  const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
-  
-  try {
-    const tableNames = getTableNames();
-    
-    // 1. Обновляем homework_completed
-    const { error } = await supabase
-      .from(tableNames.homeworkCompleted)
-      .upsert({
-        homework_id: parseInt(homeworkId.value),
-        user_id: user_id.value,
-        is_completed: true,
-        score: newTotalScore,
-        completed_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,homework_id'
-      });
-
-    if (error) throw error;
-    
-    // 2. Создаем/обновляем уведомление
-    await createHomeworkNotification(newTotalScore);
-    
-    totalScore.value = newTotalScore;
-    
-  } catch (err) {
-    console.error('Ошибка обновления общего балла:', err);
-  }
-};
-
-// Завершение домашнего задания
-const completeHomework = async () => {
-  try {
-    error.value = null;
-    
-    updateTotalScore();
-
-    // Сохраняем прогресс по всем заданиям
-    for (const task of tasks.value) {
-      if (task.userAnswer || (task.answerImages && task.answerImages.length > 0)) {
-        await saveTaskProgress(task, true);
+        if (error) throw error;
+        
+        // Обновляем только homework_completed, без создания уведомления
+        await updateHomeworkCompletedOnly();
+        
+      } catch (err) {
+        console.error('Ошибка сохранения баллов куратора:', err);
+        error.value = 'Ошибка при сохранении баллов: ' + err.message;
+      } finally {
+        task.saving = false;
       }
-    }
-
-    updateTotalScore();
-
-    const tableNames = getTableNames();
-    
-    // 1. Сохраняем в homework_completed
-    const completionData = {
-      homework_id: parseInt(homeworkId.value),
-      user_id: user_id.value,
-      is_completed: true,
-      score: totalScore.value,
-      completed_at: new Date().toISOString()
     };
 
-    const { error: completionError } = await supabase
-      .from(tableNames.homeworkCompleted)
-      .upsert(completionData, {
-        onConflict: 'user_id,homework_id'
-      });
+    // Обновление только homework_completed (без уведомлений)
+    const updateHomeworkCompletedOnly = async () => {
+      if (!user_id.value) return;
+      
+      const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
+      
+      try {
+        const tableNames = getTableNames();
+        
+        // Обновляем homework_completed без создания уведомления
+        const { error } = await supabase
+          .from(tableNames.homeworkCompleted)
+          .upsert({
+            homework_id: parseInt(homeworkId.value),
+            user_id: user_id.value,
+            is_completed: true,
+            score: newTotalScore,
+            completed_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,homework_id'
+          });
 
-    if (completionError) {
-      console.error('Ошибка Supabase:', completionError);
-      throw new Error(completionError.message);
+        if (error) throw error;
+        
+        totalScore.value = newTotalScore;
+        
+      } catch (err) {
+        console.error('Ошибка обновления общего балла:', err);
+      }
+    };
+
+    // Обновление общего балла домашнего задания
+    const updateHomeworkTotalScore = async () => {
+      if (!user_id.value) return;
+      
+      const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
+      
+      try {
+        const tableNames = getTableNames();
+        
+        // 1. Обновляем homework_completed
+        const { error } = await supabase
+          .from(tableNames.homeworkCompleted)
+          .upsert({
+            homework_id: parseInt(homeworkId.value),
+            user_id: user_id.value,
+            is_completed: true,
+            score: newTotalScore,
+            completed_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,homework_id'
+          });
+
+        if (error) throw error;
+        
+        // 2. Создаем/обновляем уведомление (только если не в режиме куратора)
+        if (!isTutorMode.value) {
+          await createHomeworkNotification(newTotalScore);
+        }
+        
+        totalScore.value = newTotalScore;
+        
+      } catch (err) {
+        console.error('Ошибка обновления общего балла:', err);
+      }
+    };
+
+    // Завершение домашнего задания
+    const completeHomework = async () => {
+      try {
+        error.value = null;
+        
+        updateTotalScore();
+
+        // Сохраняем прогресс по всем заданиям
+        for (const task of tasks.value) {
+          if (task.userAnswer || (task.answerImages && task.answerImages.length > 0)) {
+            await saveTaskProgress(task, true);
+          }
+        }
+
+        updateTotalScore();
+
+        const tableNames = getTableNames();
+        
+        // 1. Сохраняем в homework_completed
+        const completionData = {
+          homework_id: parseInt(homeworkId.value),
+          user_id: user_id.value,
+          is_completed: true,
+          score: totalScore.value,
+          completed_at: new Date().toISOString()
+        };
+
+        const { error: completionError } = await supabase
+          .from(tableNames.homeworkCompleted)
+          .upsert(completionData, {
+            onConflict: 'user_id,homework_id'
+          });
+
+        if (completionError) {
+          console.error('Ошибка Supabase:', completionError);
+          throw new Error(completionError.message);
+        }
+
+        // 2. Создаем уведомление (только для студентов)
+        if (!isTutorMode.value) {
+          await createHomeworkNotification(totalScore.value);
+        }
+
+        isCompleted.value = true;
+        showAnswers.value = true;
+        
+        alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value);
+
+      } catch (err) {
+        error.value = err.message;
+        console.error('Полная ошибка завершения домашнего задания:', err);
+        alert('Ошибка: ' + err.message);
+      }
     }
-
-    // 2. Создаем уведомление
-    await createHomeworkNotification(totalScore.value);
-
-    isCompleted.value = true;
-    showAnswers.value = true;
-    
-    alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value);
-
-  } catch (err) {
-    error.value = err.message;
-    console.error('Полная ошибка завершения домашнего задания:', err);
-    alert('Ошибка: ' + err.message);
-  }
-}
 
     // Загрузка заданий домашнего задания
     const fetchHomeworkTasks = async () => {
@@ -820,14 +896,14 @@ const completeHomework = async () => {
 
         const tableNames = getTableNames();
 
-
-            // ДОБАВИМ ОТЛАДКУ ДЛЯ OGE
-    console.log('=== OGE DEBUG INFO ===');
-    console.log('subject:', subject.value);
-    console.log('examType:', examType.value); 
-    console.log('homeworkId:', homeworkId.value);
-    console.log('tableNames:', tableNames);
-    console.log('=====================');
+        // ДОБАВИМ ОТЛАДКУ ДЛЯ OGE
+        console.log('=== OGE DEBUG INFO ===');
+        console.log('subject:', subject.value);
+        console.log('examType:', examType.value); 
+        console.log('homeworkId:', homeworkId.value);
+        console.log('tableNames:', tableNames);
+        console.log('=====================');
+        
         const { data: homeworkInfo, error: homeworkInfoError } = await supabase
           .from(tableNames.homeworkList)
           .select('deadline, homework_name, lesson_number, lesson_name')
@@ -870,11 +946,11 @@ const completeHomework = async () => {
           throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
         }
 
- console.log('taskDetails:', taskDetails);
-    if (taskDetails && taskDetails.length > 0) {
-      console.log('Первая задача из task_bank:', taskDetails[0]);
-      console.log('Доступные поля:', Object.keys(taskDetails[0]));
-    }
+        console.log('taskDetails:', taskDetails);
+        if (taskDetails && taskDetails.length > 0) {
+          console.log('Первая задача из task_bank:', taskDetails[0]);
+          console.log('Доступные поля:', Object.keys(taskDetails[0]));
+        }
 
         tasks.value = homeworkTasks.map(homeworkTask => {
           const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
@@ -901,6 +977,11 @@ const completeHomework = async () => {
 
         await loadTasksProgress()
         await checkHomeworkCompletion()
+
+        // Загружаем информацию о студенте если это режим куратора
+        if (isTutorMode.value) {
+          await loadStudentInfo();
+        }
 
         // Привязываем обработчики изображений после загрузки
         if (showAnswers.value) {
@@ -1117,10 +1198,18 @@ const completeHomework = async () => {
     const updateTotalScore = () => {
       totalScore.value = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0)
     }
+    
     const completionPercent = computed(() => {
-    if (maxScore.value === 0) return 0;
-    return Math.round((totalScore.value / maxScore.value) * 100);
-  });
+      if (maxScore.value === 0) return 0;
+      return Math.round((totalScore.value / maxScore.value) * 100);
+    });
+
+    // Получение полного имени студента
+    const studentFullName = computed(() => {
+      if (!studentInfo.value) return 'Загрузка...';
+      const { first_name = '', last_name = '' } = studentInfo.value;
+      return `${last_name} ${first_name}`.trim() || 'Не указано';
+    });
 
     // Статус дедлайна
     const deadlineStatus = computed(() => {
@@ -1290,7 +1379,10 @@ const completeHomework = async () => {
       isSecondPartTask,
       toggleExplanation,
       getDisplaySubjectName,
-      completionPercent
+      completionPercent,
+      studentFullName,
+      loadStudentInfo,
+      updateHomeworkCompletedOnly
     }
   }
 }
@@ -1700,34 +1792,42 @@ const completeHomework = async () => {
           </div>
         </div>
 
-<div v-if="isTutorMode" class="tutor-final-assessment">
-  <h3>Итоговая оценка</h3>
-  <div class="final-score">
-    Общий балл: {{ totalScore }}/{{ maxScore }}
-    <div class="completion-percent">
-      Выполнено на: {{ completionPercent }}%
-    </div>
-  </div>
-  <div class="tutor-actions">
-    <button @click="updateHomeworkTotalScore" class="save-final-score-btn">
-      Сохранить итоговую оценку
-    </button>
-  </div>
-</div>
+        <!-- Блок итоговой оценки куратора -->
+        <div v-if="isTutorMode" class="tutor-final-assessment">
+          <h3>Итоговая оценка</h3>
+          
+          <div class="student-info">
+            <div class="student-name">
+              <strong>Ученик:</strong> {{ studentFullName }}
+            </div>
+          </div>
+          
+          <div class="final-score">
+            Общий балл: {{ totalScore }}/{{ maxScore }}
+            <div class="completion-percent">
+              Выполнено на: {{ completionPercent }}%
+            </div>
+          </div>
+          
+          <div class="tutor-actions">
+            <button @click="updateHomeworkCompletedOnly" class="save-final-score-btn">
+              Сохранить итоговую оценку (без уведомления)
+            </button>
+          </div>
+        </div>
 
-<!-- Кнопка завершения -->
-<div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
-  <button @click="completeHomework" class="complete-btn">
-    Завершить домашнее задание
-  </button>
-</div>
+        <!-- Кнопка завершения -->
+        <div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
+          <button @click="completeHomework" class="complete-btn">
+            Завершить домашнее задание
+          </button>
+        </div>
 
-<div v-if="isCompleted" class="completion-result">
-  <h3>Домашнее задание завершено!</h3>
-  <p>Набрано баллов: {{ totalScore }}/{{ maxScore }}</p>
-  <p>Выполнено на: {{ completionPercent }}%</p>
-</div>
-
+        <div v-if="isCompleted" class="completion-result">
+          <h3>Домашнее задание завершено!</h3>
+          <p>Набрано баллов: {{ totalScore }}/{{ maxScore }}</p>
+          <p>Выполнено на: {{ completionPercent }}%</p>
+        </div>
 
       </div>
     </div>
@@ -1741,6 +1841,7 @@ const completeHomework = async () => {
     </div>
   </div>
 </template>
+
 
 <style scoped>
 /* Все оригинальные стили остаются без изменений */
@@ -2662,10 +2763,44 @@ const completeHomework = async () => {
   font-size: 1.3rem;
 }
 
+.tutor-final-assessment .student-info {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 0.6rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  color: #333;
+}
+
+.tutor-final-assessment .student-info .student-name {
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.tutor-final-assessment .student-info strong {
+  color: #667eea;
+  margin-right: 0.5rem;
+}
+
 .final-score {
   font-size: 1.5rem;
   font-weight: bold;
-  margin-bottom: 1rem;
+  margin: 1rem 0;
+  color: white;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.completion-percent {
+  font-size: 1.1rem;
+  opacity: 0.9;
+  margin-top: 0.5rem;
+}
+
+.tutor-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .save-final-score-btn {
@@ -2698,6 +2833,19 @@ const completeHomework = async () => {
   
   .score-select {
     width: 100%;
+  }
+  
+  .tutor-actions {
+    flex-direction: column;
+  }
+  
+  .tutor-final-assessment {
+    padding: 1rem;
+  }
+  
+  .tutor-final-assessment .student-info {
+    padding: 0.8rem;
+    font-size: 0.9rem;
   }
 }
 
