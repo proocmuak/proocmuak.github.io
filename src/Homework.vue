@@ -660,102 +660,179 @@ export default {
     }
 
     // Сохранение прогресса выполнения задания
-    const saveTaskProgress = async (task, checkCorrectness = false) => {
-      if (!user_id.value) return;
+// Сохранение прогресса выполнения задания
+const saveTaskProgress = async (task, checkCorrectness = false) => {
+  if (!user_id.value) return;
 
-      let score = 0;
-      let is_completed = false;
-      let counted_in_rating = false; // Добавляем поле
+  let score = 0;
+  let is_completed = false;
+  let counted_in_rating = false;
 
-      if (checkCorrectness) {
-        const result = checkAnswerComponent(
-          task.userAnswer,
-          task.answer,
-          task.points,
-          subject.value,
-          task.exam_task_number
-        );
+  if (checkCorrectness) {
+    const result = checkAnswerComponent(
+      task.userAnswer,
+      task.answer,
+      task.points,
+      subject.value,
+      task.exam_task_number
+    );
 
-        score = result.score;
-        is_completed = result.isCorrect || result.isPartiallyCorrect;
-        
-        // Устанавливаем counted_in_rating = TRUE только при полном правильном ответе
-        counted_in_rating = result.isCorrect;
+    score = result.score;
+    is_completed = result.isCorrect || result.isPartiallyCorrect;
+    counted_in_rating = result.isCorrect;
 
-        task.isCorrect = result.isCorrect;
-        task.isPartiallyCorrect = result.isPartiallyCorrect;
-        task.awardedPoints = score;
-      }
+    task.isCorrect = result.isCorrect;
+    task.isPartiallyCorrect = result.isPartiallyCorrect;
+    task.awardedPoints = score;
+  }
 
-      try {
-        const tableNames = getTableNames();
-        const progressData = {
-          user_id: user_id.value,
-          task_id: task.task_id,
-          is_completed: is_completed,
-          score: score,
-          user_answer: task.userAnswer || '',
-          answer_images: task.answerImages || [],
-          last_updated: new Date().toISOString(),
-          counted_in_rating: counted_in_rating // Добавляем поле
-        };
-
-        const { error } = await supabase
-          .from(tableNames.progress)
-          .upsert(progressData, {
-            onConflict: 'user_id,task_id'
-          });
-
-        if (error) throw error;
-
-      } catch (err) {
-        console.error('Ошибка сохранения прогресса:', err);
-        throw err;
-      }
+  try {
+    const tableNames = getTableNames();
+    const now = new Date().toISOString();
+    
+    // Данные для таблицы прогресса
+    const progressData = {
+      user_id: user_id.value,
+      task_id: task.task_id,
+      is_completed: is_completed,
+      score: score,
+      user_answer: task.userAnswer || '',
+      answer_images: task.answerImages || [],
+      last_updated: now,
+      counted_in_rating: counted_in_rating
     };
+
+    // Сохраняем в таблицу прогресса
+    const { error: progressError } = await supabase
+      .from(tableNames.progress)
+      .upsert(progressData, {
+        onConflict: 'user_id,task_id'
+      });
+
+    if (progressError) throw progressError;
+
+    // === ДОБАВЛЯЕМ ЗАПИСЬ В ML ТАБЛИЦУ ===
+    // Название ML таблицы: ml_{subject}_{examType}
+    const mlTableName = `ml_${subject.value}_${examType.value}`;
+    
+    // Получаем данные задания из task_bank для ML
+    const { data: taskData, error: taskError } = await supabase
+      .from(tableNames.taskBank)
+      .select('number, section, topic, difficulty, points')
+      .eq('id', task.task_id)
+      .single();
+
+    if (taskError) {
+      console.error('Ошибка получения данных задания для ML:', taskError);
+    } else {
+      // Вставляем запись в ML таблицу
+      const mlData = {
+        user_id: user_id.value,
+        task_id: task.task_id,
+        number: taskData.number,
+        section: taskData.section,
+        topic: taskData.topic,
+        difficulty: taskData.difficulty,
+        max_score: taskData.points,
+        is_correct: counted_in_rating, // true только если полный балл
+        score: score,
+        created_at: now
+      };
+
+      const { error: mlError } = await supabase
+        .from(mlTableName)
+        .insert([mlData]);
+
+      if (mlError) {
+        console.error('Ошибка сохранения в ML таблицу:', mlError);
+      } else {
+        console.log('✅ Данные сохранены в ML таблицу:', mlTableName);
+      }
+    }
+
+  } catch (err) {
+    console.error('Ошибка сохранения прогресса:', err);
+    throw err;
+  }
+};
 
     // Функция для выставления баллов куратором
-    const setTutorScore = async (task, manualScore) => {
-      if (!isTutorMode.value || !user_id.value) return;
-      
-      try {
-        task.saving = true;
-        
-        task.awardedPoints = manualScore;
-        task.isCorrect = manualScore === task.points;
-        task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points;
-        
-        // Куратор может вручную установить counted_in_rating
-        const counted_in_rating = manualScore === task.points;
-        
-        const tableNames = getTableNames();
-        const { error } = await supabase
-          .from(tableNames.progress)
-          .upsert({
-            user_id: user_id.value,
-            task_id: task.task_id,
-            is_completed: manualScore > 0,
-            score: manualScore,
-            user_answer: task.userAnswer || '',
-            answer_images: task.answerImages || [],
-            last_updated: new Date().toISOString(),
-            counted_in_rating: counted_in_rating // Добавляем для куратора
-          }, {
-            onConflict: 'user_id,task_id'
-          });
+// Функция для выставления баллов куратором
+const setTutorScore = async (task, manualScore) => {
+  if (!isTutorMode.value || !user_id.value) return;
+  
+  try {
+    task.saving = true;
+    
+    task.awardedPoints = manualScore;
+    task.isCorrect = manualScore === task.points;
+    task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points;
+    
+    const counted_in_rating = manualScore === task.points;
+    const now = new Date().toISOString();
+    
+    const tableNames = getTableNames();
+    
+    // Сохраняем в таблицу прогресса
+    const { error: progressError } = await supabase
+      .from(tableNames.progress)
+      .upsert({
+        user_id: user_id.value,
+        task_id: task.task_id,
+        is_completed: manualScore > 0,
+        score: manualScore,
+        user_answer: task.userAnswer || '',
+        answer_images: task.answerImages || [],
+        last_updated: now,
+        counted_in_rating: counted_in_rating
+      }, {
+        onConflict: 'user_id,task_id'
+      });
 
-        if (error) throw error;
-        
-        // Обновляем только homework_completed, без создания уведомления
-        await updateHomeworkCompletedOnly();
-        
-      } catch (err) {
-        console.error('Ошибка сохранения баллов куратора:', err);
-        error.value = 'Ошибка при сохранении баллов: ' + err.message;
-      } finally {
-        task.saving = false;
+    if (progressError) throw progressError;
+    
+    // === ДОБАВЛЯЕМ ЗАПИСЬ В ML ТАБЛИЦУ ДЛЯ КУРАТОРА ===
+    const mlTableName = `ml_${subject.value}_${examType.value}`;
+    
+    const { data: taskData, error: taskError } = await supabase
+      .from(tableNames.taskBank)
+      .select('number, section, topic, difficulty, points')
+      .eq('id', task.task_id)
+      .single();
+
+    if (!taskError && taskData) {
+      const mlData = {
+        user_id: user_id.value,
+        task_id: task.task_id,
+        number: taskData.number,
+        section: taskData.section,
+        topic: taskData.topic,
+        difficulty: taskData.difficulty,
+        max_score: taskData.points,
+        is_correct: counted_in_rating,
+        score: manualScore,
+        created_at: now
+      };
+
+      const { error: mlError } = await supabase
+        .from(mlTableName)
+        .insert([mlData]);
+
+      if (mlError) {
+        console.error('Ошибка сохранения в ML таблицу (куратор):', mlError);
       }
-    };
+    }
+    
+    // Обновляем только homework_completed, без создания уведомления
+    await updateHomeworkCompletedOnly();
+    
+  } catch (err) {
+    console.error('Ошибка сохранения баллов куратора:', err);
+    error.value = 'Ошибка при сохранении баллов: ' + err.message;
+  } finally {
+    task.saving = false;
+  }
+};
 
     // Обновление только homework_completed (без уведомлений)
     const updateHomeworkCompletedOnly = async () => {

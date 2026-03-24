@@ -368,103 +368,152 @@ export default {
       return 0;
     },
 
-    async saveTaskProgress() {
-      if (!this.user?.id) return;
+// Сохранение прогресса выполнения задания
+async saveTaskProgress() {
+  if (!this.user?.id) return;
 
-      try {
-        const taskId = Number(this.task.id);
-        
-        const progressTable = this.task.subject.includes('Химия') 
-          ? 'chemistry_ege_progress' 
-          : 'biology_ege_progress';
+  try {
+    const taskId = Number(this.task.id);
+    const now = new Date().toISOString();
+    
+    const progressTable = this.task.subject.includes('Химия') 
+      ? 'chemistry_ege_progress' 
+      : 'biology_ege_progress';
 
-        const { data: existingRecord, error: checkError } = await supabase
-          .from(progressTable)
-          .select('id, score, counted_in_rating')
-          .eq('user_id', this.user.id)
-          .eq('task_id', taskId)
-          .maybeSingle();
+    const mlTableName = this.task.subject.includes('Химия') 
+      ? 'ml_chemistry_ege' 
+      : 'ml_biology_ege';
 
-        if (checkError) throw checkError;
+    const { data: existingRecord, error: checkError } = await supabase
+      .from(progressTable)
+      .select('id, score, counted_in_rating')
+      .eq('user_id', this.user.id)
+      .eq('task_id', taskId)
+      .maybeSingle();
 
-        const shouldCountInRating = !existingRecord?.counted_in_rating;
-        
-        const { error: upsertError } = await supabase
-          .from(progressTable)
-          .upsert({
-            user_id: this.user.id,
-            task_id: taskId,
-            is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
-            score: this.awardedPoints,
-            user_answer: this.userAnswer,
-            last_updated: new Date().toISOString(),
-            counted_in_rating: existingRecord?.counted_in_rating || 
-                              (this.isFullyCorrect && shouldCountInRating)
-          }, {
-            onConflict: 'user_id,task_id',
-            returning: 'minimal'
-          });
+    if (checkError) throw checkError;
 
-        if (upsertError) throw upsertError;
+    const shouldCountInRating = !existingRecord?.counted_in_rating;
+    const counted_in_rating = existingRecord?.counted_in_rating || 
+                              (this.isFullyCorrect && shouldCountInRating);
+    
+    // Сохраняем в таблицу прогресса
+    const { error: upsertError } = await supabase
+      .from(progressTable)
+      .upsert({
+        user_id: this.user.id,
+        task_id: taskId,
+        is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
+        score: this.awardedPoints,
+        user_answer: this.userAnswer,
+        last_updated: now,
+        counted_in_rating: counted_in_rating
+      }, {
+        onConflict: 'user_id,task_id',
+        returning: 'minimal'
+      });
 
-        if (shouldCountInRating) {
-          this.$emit('answer-checked', {
-            taskId: this.task.id,
-            isCorrect: this.isFullyCorrect,
-            isPartiallyCorrect: this.isPartiallyCorrect,
-            awardedPoints: this.awardedPoints,
-            userAnswer: this.userAnswer
-          });
-        } else {
-          this.$emit('answer-retried', {
-            taskId: this.task.id,
-            awardedPoints: this.awardedPoints,
-            userAnswer: this.userAnswer,
-            isCounted: false
-          });
-        }
+    if (upsertError) throw upsertError;
 
-      } catch (error) {
-        console.error('Ошибка сохранения прогресса:', error);
-        throw error;
-      }
-    },
+    // === ДОБАВЛЯЕМ ЗАПИСЬ В ML ТАБЛИЦУ ===
+    const mlData = {
+      user_id: this.user.id,
+      task_id: taskId,
+      number: this.task.number,
+      section: this.task.section,
+      topic: this.task.topic,
+      difficulty: this.task.difficulty,
+      max_score: this.task.points,
+      is_correct: this.isFullyCorrect, // true только если полный балл
+      score: this.awardedPoints,
+      created_at: now
+    };
 
-    async loadTaskProgress() {
-      if (!this.user?.id) return;
-      
-      try {
-        const taskId = Number(this.task.id);
-        
-        const progressTable = this.task.subject.includes('Химия') 
-          ? 'chemistry_ege_progress' 
-          : 'biology_ege_progress';
+    const { error: mlError } = await supabase
+      .from(mlTableName)
+      .insert([mlData]);
 
-        const { data, error } = await supabase
-          .from(progressTable)
-          .select('score, is_completed, user_answer')
-          .eq('user_id', this.user.id)
-          .eq('task_id', taskId)
-          .maybeSingle();
+    if (mlError) {
+      console.error('Ошибка сохранения в ML таблицу:', mlError);
+    } else {
+      console.log('✅ Данные сохранены в ML таблицу:', mlTableName);
+    }
 
-        if (error) throw error;
+    if (shouldCountInRating) {
+      this.$emit('answer-checked', {
+        taskId: this.task.id,
+        isCorrect: this.isFullyCorrect,
+        isPartiallyCorrect: this.isPartiallyCorrect,
+        awardedPoints: this.awardedPoints,
+        userAnswer: this.userAnswer
+      });
+    } else {
+      this.$emit('answer-retried', {
+        taskId: this.task.id,
+        awardedPoints: this.awardedPoints,
+        userAnswer: this.userAnswer,
+        isCounted: false
+      });
+    }
 
-        if (data) {
-          this.userAnswer = data.user_answer || '';
-          this.awardedPoints = data.score || 0;
-          this.answerChecked = true;
-          this.updateStatusFlags();
-        } else {
-          this.answerChecked = false;
-          this.awardedPoints = 0;
-          this.userAnswer = '';
-          this.isFullyCorrect = false;
-          this.isPartiallyCorrect = false;
-        }
-      } catch (error) {
-        console.error('Ошибка загрузки прогресса:', error);
-      }
-    },
+  } catch (error) {
+    console.error('Ошибка сохранения прогресса:', error);
+    throw error;
+  }
+},
+
+// Функция для ручного выставления баллов (для куратора)
+async setManualScore(manualScore) {
+  if (!this.user?.id) return;
+  
+  try {
+    this.awardedPoints = manualScore;
+    this.isFullyCorrect = manualScore === this.task.points;
+    this.isPartiallyCorrect = manualScore > 0 && manualScore < this.task.points;
+    this.answerChecked = true;
+    
+    await this.saveTaskProgress();
+    
+  } catch (error) {
+    console.error('Ошибка установки ручной оценки:', error);
+  }
+},
+
+async loadTaskProgress() {
+  if (!this.user?.id) return;
+  
+  try {
+    const taskId = Number(this.task.id);
+    
+    const progressTable = this.task.subject.includes('Химия') 
+      ? 'chemistry_ege_progress' 
+      : 'biology_ege_progress';
+
+    const { data, error } = await supabase
+      .from(progressTable)
+      .select('score, is_completed, user_answer')
+      .eq('user_id', this.user.id)
+      .eq('task_id', taskId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (data) {
+      this.userAnswer = data.user_answer || '';
+      this.awardedPoints = data.score || 0;
+      this.answerChecked = true;
+      this.updateStatusFlags();
+    } else {
+      this.answerChecked = false;
+      this.awardedPoints = 0;
+      this.userAnswer = '';
+      this.isFullyCorrect = false;
+      this.isPartiallyCorrect = false;
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки прогресса:', error);
+  }
+},
 
     getProgressTableName() {
       return this.task.subject.includes('Химия') 
@@ -472,14 +521,14 @@ export default {
         : 'biology_ege_progress';
     },
 
-    updateStatusFlags() {
-      this.isFullyCorrect = this.awardedPoints === this.task.points;
-      this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
-      
-      if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
-        this.awardedPoints = 0;
-      }
-    },
+updateStatusFlags() {
+  this.isFullyCorrect = this.awardedPoints === this.task.points;
+  this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
+  
+  if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
+    this.awardedPoints = 0;
+  }
+},
 
     openImageModal(imageUrl) {
       this.selectedImage = imageUrl;

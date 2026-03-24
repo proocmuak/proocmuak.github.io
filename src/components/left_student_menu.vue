@@ -359,7 +359,7 @@ onUnmounted(() => {
         <div class="menu_button"> <a href="/task_bank.html" class="black_text_href">Банк заданий</a></div>
         <div class="menu_button" @click="switchComponent('SubjectRating')">Рейтинг</div>
         <div class="menu_button" @click="switchComponent('HomeworkList')">Домашние задания</div>
-        <div class="menu_button">Уведомления</div>
+        <div class="menu_button" @click="switchComponent('StudentStatic')">Статистика</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
         <div class="exit">Выйти</div>
       </div>
