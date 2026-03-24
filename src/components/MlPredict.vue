@@ -160,7 +160,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
 
-const ML_API_URL = '/api'
+// Определяем окружение и соответствующий URL
+const isProduction = import.meta.env.PROD
+const ML_API_URL = isProduction 
+  ? 'http://178.72.128.131:5000'  // Прямой URL на сервер с моделью в продакшене
+  : '/api'                         // Прокси для разработки (работает через Vite)
 
 export default {
   name: 'MlPredict',
@@ -194,6 +198,9 @@ export default {
           number: features.number,
           created_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
         }
+        
+        console.log('ML API URL:', ML_API_URL)
+        console.log('Request body:', requestBody)
         
         const response = await fetch(`${ML_API_URL}/predict`, {
           method: 'POST',
@@ -343,7 +350,7 @@ export default {
     
     const sortedNumbers = computed(() => {
       return [...predictionsByNumber.value]
-        .sort((a, b) => a.success_probability - b.success_probability) // От низкого шанса к высокому
+        .sort((a, b) => a.success_probability - b.success_probability)
     })
     
     const sortedTopics = computed(() => {
@@ -355,26 +362,26 @@ export default {
       currentMode.value = mode
     }
     
-const getChanceClass = (successProbability) => {
-  if (successProbability < 0.5) return 'low-chance'
-  if (successProbability < 0.7) return 'medium-chance'
-  if (successProbability < 0.9) return 'good-chance'
-  return 'high-chance'
-}
-
-const getSuccessClass = (successProbability) => {
-  if (successProbability >= 0.9) return 'excellent'
-  if (successProbability >= 0.7) return 'good'
-  if (successProbability >= 0.5) return 'average'
-  return 'poor'
-}
-
-const getChanceLevel = (successProbability) => {
-  if (successProbability < 0.5) return 'Низкий шанс'
-  if (successProbability < 0.7) return 'Средний шанс'
-  if (successProbability < 0.9) return 'Хороший шанс'
-  return 'Высокий шанс'
-}
+    const getChanceClass = (successProbability) => {
+      if (successProbability < 0.5) return 'low-chance'
+      if (successProbability < 0.7) return 'medium-chance'
+      if (successProbability < 0.9) return 'good-chance'
+      return 'high-chance'
+    }
+    
+    const getSuccessClass = (successProbability) => {
+      if (successProbability >= 0.9) return 'excellent'
+      if (successProbability >= 0.7) return 'good'
+      if (successProbability >= 0.5) return 'average'
+      return 'poor'
+    }
+    
+    const getChanceLevel = (successProbability) => {
+      if (successProbability < 0.5) return 'Низкий шанс'
+      if (successProbability < 0.7) return 'Средний шанс'
+      if (successProbability < 0.9) return 'Хороший шанс'
+      return 'Высокий шанс'
+    }
     
     onMounted(() => {
       loadPredictions()
