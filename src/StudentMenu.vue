@@ -3,7 +3,7 @@ import Left_student_menu from './components/left_student_menu.vue';
 import settings from './components/settings.vue';
 import main_student_page from './components/main_student_page.vue';
 import SubjectRating from './components/SubjectRating.vue';
-import StudentStatic from './components/Studentstatic.vue';
+import StudentStatic from './components/StudentStatic.vue';
 import HomeworkList from './components/HomeworkList.vue';
 import { supabase } from './supabase'; // Импортируем Supabase клиент
 
