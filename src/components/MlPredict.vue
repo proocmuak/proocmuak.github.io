@@ -163,7 +163,7 @@ import { supabase } from '../supabase'
 // Определяем окружение и соответствующий URL
 const isProduction = import.meta.env.PROD
 const ML_API_URL = isProduction 
-  ? 'http://178.72.128.131:5000'  // Прямой URL на сервер с моделью в продакшене
+  ? '/ml-api'  // Прямой URL на сервер с моделью в продакшене
   : '/api'                         // Прокси для разработки (работает через Vite)
 
 export default {
