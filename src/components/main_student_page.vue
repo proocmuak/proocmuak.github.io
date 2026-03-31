@@ -1,33 +1,28 @@
 <template>
   <div class="main-student-page">
     <!-- Модальное окно для просроченных платежей -->
-    <div v-if="showOverdueModal" class="modal-overlay">
-      <div class="modal-content">
-        <div class="modal-header">
+    <div v-if="showOverdueModal" class="modal-overlay-payment">
+      <div class="modal-content-payment">
+        <div class="modal-header-payment">
           <h3>Внимание!</h3>
         </div>
-        <div class="modal-body">
+        <div class="modal-body-payment">
           <p>{{ overdueModalText }}</p>
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer-payment">
           <p>Закрытие через 10 секунд...</p>
         </div>
       </div>
     </div>
     
     <div class="title">
-      <!-- Показываем уведомление об оплате вместо DailyMotivation, если нужно -->
       <div v-if="showPaymentNotification" class="payment-notification">
         {{ paymentNotificationText }}
       </div>
       <DailyMotivation v-else />
     </div>
     
-    <div v-if="showNoCoursesMessage" class="no-courses-message">
-      Нет информации о доступных курсах, обратитесь к учителю
-    </div>
-    
-    <div v-else class="content-wrapper">
+    <div class="content-wrapper">
       <div class="block_of_content">
         <subject_chemistry 
           @has-data="handleChemistryData(true)"
@@ -42,6 +37,10 @@
           @no-data="handleAdditionalData(false)"
         />
       </div>
+    </div>
+    
+    <div v-if="showNoCoursesMessage" class="no-courses-message">
+      Нет информации о доступных курсах, обратитесь к учителю
     </div>
   </div>
 </template>
@@ -66,26 +65,25 @@ export default {
       biologyHasData: false,
       additionalHasData: false,
       showNoCoursesMessage: false,
-      // Добавляем данные о студенте
       studentData: {
         subject1: '',
         subject2: '',
         subject1_payment_date: null,
         subject2_payment_date: null
       },
-      // Флаг для отображения уведомления об оплате
       showPaymentNotification: false,
       paymentNotificationText: '',
-      // Флаг для отображения модального окна просрочки
       showOverdueModal: false,
       overdueModalText: '',
       loading: true
     }
   },
   async mounted() {
-    // Загружаем данные студента из Supabase
     await this.loadStudentData();
     this.loading = false;
+    setTimeout(() => {
+      this.checkCoursesAvailability();
+    }, 1000);
   },
   methods: {
     handleChemistryData(hasData) {
@@ -101,15 +99,12 @@ export default {
       this.checkCoursesAvailability();
     },
     checkCoursesAvailability() {
-      // Проверяем, есть ли хотя бы один доступный курс
-      const hasAnyCourse = this.chemistryHasData || this.biologyHasData || this.additionalHasData;
+      const hasAnyCourse = this.chemistryHasData || this.biologyHasData;
       this.showNoCoursesMessage = !hasAnyCourse;
     },
     
-    // Метод для загрузки данных студента из Supabase
     async loadStudentData() {
       try {
-        // Получаем текущего пользователя
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
@@ -117,7 +112,6 @@ export default {
           return;
         }
         
-        // Запрашиваем данные студента из таблицы students
         const { data, error } = await supabase
           .from('students')
           .select('*')
@@ -137,7 +131,6 @@ export default {
             subject2_payment_date: data.subject2_payment_date
           };
           
-          // Проверяем необходимость показа уведомления
           this.checkPaymentDates();
         }
       } catch (error) {
@@ -145,7 +138,6 @@ export default {
       }
     },
     
-    // Метод для проверки дат оплаты
     checkPaymentDates() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -153,7 +145,6 @@ export default {
       const notificationMessages = [];
       const overdueMessages = [];
       
-      // Проверяем subject1_payment_date
       if (this.studentData.subject1_payment_date) {
         const paymentDate = new Date(this.studentData.subject1_payment_date);
         paymentDate.setHours(0, 0, 0, 0);
@@ -171,7 +162,6 @@ export default {
         }
       }
       
-      // Проверяем subject2_payment_date
       if (this.studentData.subject2_payment_date) {
         const paymentDate = new Date(this.studentData.subject2_payment_date);
         paymentDate.setHours(0, 0, 0, 0);
@@ -189,13 +179,11 @@ export default {
         }
       }
       
-      // Если есть сообщения для показа (предупреждение за 3 дня)
       if (notificationMessages.length > 0) {
         this.showPaymentNotification = true;
         this.paymentNotificationText = notificationMessages.join(', ');
       }
       
-      // Если есть просроченные платежи
       if (overdueMessages.length > 0) {
         this.showOverdueModal = true;
         if (overdueMessages.length === 1) {
@@ -204,28 +192,22 @@ export default {
           this.overdueModalText = `Срочно оплатите ${overdueMessages.join(' и ')}, чтобы продолжить обучение`;
         }
         
-        // Автоматически закрываем модальное окно через 10 секунд
         setTimeout(() => {
           this.showOverdueModal = false;
         }, 10 * 1000);
       }
     },
     
-    // Вспомогательный метод для форматирования даты
     formatDate(date) {
       return date.toLocaleDateString('ru-RU');
     },
     
-    // Метод для обработки названий предметов
     formatSubjectName(subject, caseType) {
       if (!subject) return '';
       
-      // Убираем второе слово (все после пробела)
       const firstWord = subject.split(' ')[0];
       
-      // Преобразуем в нужный падеж
       if (caseType === 'accusative') {
-        // Правила преобразования в винительный падеж
         if (firstWord.endsWith('ия')) {
           return firstWord.replace('ия', 'ию');
         }
@@ -235,14 +217,12 @@ export default {
         if (firstWord.endsWith('я')) {
           return firstWord.replace('я', 'ю');
         }
-        // Для слов мужского рода без изменения окончания
         return firstWord;
       }
       
       return firstWord;
     },
     
-    // Метод для ручного закрытия модального окна
     closeOverdueModal() {
       this.showOverdueModal = false;
     }
@@ -252,8 +232,9 @@ export default {
 
 <style scoped>
 .main-student-page {
-  min-height: 100vh;
+  min-height: 80vh;
   background-color: #f9f8ff;
+  border-radius: 2.5%;
 }
 
 .title {
@@ -265,7 +246,7 @@ export default {
 }
 
 .content-wrapper {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 20px;
 }
@@ -278,16 +259,26 @@ export default {
   grid-template-columns: repeat(3, 1fr);
   gap: 5%;
   padding: 5%;
+  align-items: stretch;
 }
+
+.block_of_content > * {
+  height: auto;
+}
+
+/* Если дополнительных курсов нет, сетка все равно остается 3 колонки,
+   но компонент subject_additional просто не рендерится,
+   поэтому grid создаст 2 колонки автоматически */
 
 .no-courses-message {
   text-align: center;
-  padding: 40px;
+  padding: 60px;
   font-size: 1.5rem;
   color: #666;
   background-color: #f8f9fa;
   border-radius: 10px;
-  margin: 20px 0;
+  margin: 40px auto;
+  max-width: 600px;
 }
 
 .payment-notification {
@@ -302,15 +293,8 @@ export default {
   width: 100%;
 }
 
-.loading {
-  text-align: center;
-  padding: 40px;
-  font-size: 1.2rem;
-  color: #666;
-}
-
-/* Стили для модального окна */
-.modal-overlay {
+/* Стили для модального окна оплаты (отдельно от основного) */
+.modal-overlay-payment {
   position: fixed;
   top: 0;
   left: 0;
@@ -323,7 +307,7 @@ export default {
   z-index: 1000;
 }
 
-.modal-content {
+.modal-content-payment {
   background-color: white;
   padding: 25px;
   border-radius: 12px;
@@ -334,20 +318,20 @@ export default {
   animation: modal-appear 0.3s ease-out;
 }
 
-.modal-header h3 {
+.modal-header-payment h3 {
   margin: 0 0 15px 0;
   color: #d9534f;
   font-size: 1.5rem;
 }
 
-.modal-body p {
+.modal-body-payment p {
   margin: 0 0 20px 0;
   font-size: 1.1rem;
   line-height: 1.5;
   color: #333;
 }
 
-.modal-footer p {
+.modal-footer-payment p {
   margin: 0;
   font-size: 0.9rem;
   color: #666;
@@ -366,9 +350,45 @@ export default {
 }
 
 /* Адаптивность */
+@media (max-width: 1024px) {
+  .block_of_content {
+    gap: 4%;
+    padding: 4%;
+  }
+}
+
+@media (max-width: 900px) {
+  .block_of_content {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .title {
     font-size: 4vw;
+    padding: 15px;
+  }
+  
+  .content-wrapper {
+    padding: 15px;
+  }
+  
+  .block_of_content {
+    grid-template-columns: 1fr;
+    gap: 30px;
+    padding: 20px;
+  }
+  
+  .no-courses-message {
+    padding: 40px;
+    font-size: 1.2rem;
+    margin: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .title {
+    font-size: 5vw;
     padding: 10px;
   }
   
@@ -377,9 +397,14 @@ export default {
   }
   
   .block_of_content {
-    grid-template-columns: 1fr;
     gap: 20px;
-    padding: 20px;
+    padding: 15px;
+  }
+  
+  .no-courses-message {
+    padding: 30px;
+    font-size: 1rem;
+    margin: 15px;
   }
 }
 </style>

@@ -127,13 +127,13 @@ export default {
 .block {
   background-color: #b241d1;
   border-radius: 5%;
-  padding: 5%;
+  padding: 8% 5%;
   color: white;
   display: grid;
   grid-template-rows: 10% 20% 20% 10%;
   gap: 10%;
   transition: opacity 0.3s ease;
-  min-height: 280px
+  min-height: 320px;
 }
 .block:hover {
   opacity: 0.75;

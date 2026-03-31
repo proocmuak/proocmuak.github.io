@@ -1,4 +1,5 @@
 <template>
+  <!-- Показываем блок только если есть курсы -->
   <div v-if="hasAdditionalCourses" class="block additional-courses-block" @click="openModal">
     <div class="subject_name">Дополнительные курсы</div>
     <div class="courses-count">Доступно курсов: {{ additionalCoursesCount }}</div>
@@ -93,7 +94,6 @@ export default {
   methods: {
     async loadAdditionalCourses() {
       try {
-        // Сначала получаем список дополнительных курсов студента
         const { data: studentData, error: studentError } = await supabase
           .from('students')
           .select('additional_courses')
@@ -119,7 +119,6 @@ export default {
           return
         }
         
-        // Загружаем полную информацию о курсах
         const { data, error } = await supabase
           .from('additional_course')
           .select('*')
@@ -149,10 +148,8 @@ export default {
     },
     
     openCourse(course) {
-      // Закрываем модальное окно и переходим к странице additional_course.html с параметром курса
       this.closeModal()
       setTimeout(() => {
-        // Переход на страницу additional_course.html с параметром course
         window.location.href = `/additional_course.html?course=${course.english_name}`
       }, 300)
     }
@@ -164,14 +161,15 @@ export default {
 .block {
   background-color: #b241d1;
   border-radius: 5%;
-  padding: 5%;
+  padding: 8% 5%;
   color: white;
-  display: grid;
-  grid-template-rows: auto auto auto;
-  gap: 10%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   min-height: 280px;
   cursor: pointer;
+  height: 100%;
 }
 
 .block:hover {
@@ -183,38 +181,41 @@ export default {
 .subject_name { 
   font-size: 1.5vw;
   font-weight: bold;
-  border-bottom: #fff solid 0.25vh;
-  padding-bottom: 10px;
-  margin-bottom: 10px;
+  border-bottom: #fff solid 2px;
+  padding-bottom: 15px;
+  margin-bottom: 20px;
   text-align: center;
 }
 
 .courses-count {
-  font-size: 1vw;
+  font-size: 1.2vw;
   text-align: center;
-  opacity: 0.9;
-  margin-bottom: 15px;
+  opacity: 0.95;
+  margin: 20px 0;
+  line-height: 1.4;
 }
 
 .button {
   background-color: #fff;
   color: #b241d1;
-  display: grid;
+  display: flex;
   justify-content: center;
   align-items: center;
-  border-radius: 5vw;
+  border-radius: 50px;
   text-decoration: none;
-  padding: 12px 24px;
-  font-weight: 500;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 12px 20px;
+  font-weight: 600;
+  transition: all 0.3s ease;
   text-align: center;
   cursor: pointer;
+  font-size: 1rem;
+  margin-top: auto;
 }
 
 .button:hover {
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  background-color: #f5f5f5;
+  background-color: #f0f0f0;
 }
 
 /* Анимации для модального окна */
@@ -397,7 +398,7 @@ export default {
 .course-button {
   display: inline-block;
   background-color: white;
-  color: #8a2be2;
+  color: white;
   padding: 8px 20px;
   border-radius: 25px;
   font-size: 0.9rem;
@@ -421,13 +422,23 @@ export default {
 }
 
 /* Адаптивность */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .subject_name {
-    font-size: 3vw;
+    font-size: 2.2vw;
   }
   
   .courses-count {
-    font-size: 2vw;
+    font-size: 1.5vw;
+  }
+}
+
+@media (max-width: 768px) {
+  .subject_name {
+    font-size: 3.5vw;
+  }
+  
+  .courses-count {
+    font-size: 2.5vw;
   }
   
   .button {
@@ -464,16 +475,15 @@ export default {
 
 @media (max-width: 480px) {
   .subject_name {
-    font-size: 4vw;
+    font-size: 4.5vw;
   }
   
   .courses-count {
-    font-size: 3vw;
+    font-size: 3.5vw;
   }
   
   .block {
     min-height: 220px;
-    gap: 8%;
   }
   
   .button {
