@@ -27,7 +27,8 @@ export default defineConfig({
         task_bank: resolve(__dirname, 'task_bank.html'),
         tutor_menu: resolve(__dirname, 'tutor_menu.html'),
         homework: resolve(__dirname, 'homework.html'),
-        TutorTaskBank: resolve(__dirname, 'TutorTaskBank.html')
+        TutorTaskBank: resolve(__dirname, 'TutorTaskBank.html'),
+        additional_course: resolve(__dirname, 'additional_course.html')
       },
       output: {
         // Генерируем предсказуемые имена файлов

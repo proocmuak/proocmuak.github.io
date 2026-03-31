@@ -1,19 +1,70 @@
+<template>
+  <div class="main-student-page">
+    <!-- Модальное окно для просроченных платежей -->
+    <div v-if="showOverdueModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Внимание!</h3>
+        </div>
+        <div class="modal-body">
+          <p>{{ overdueModalText }}</p>
+        </div>
+        <div class="modal-footer">
+          <p>Закрытие через 10 секунд...</p>
+        </div>
+      </div>
+    </div>
+    
+    <div class="title">
+      <!-- Показываем уведомление об оплате вместо DailyMotivation, если нужно -->
+      <div v-if="showPaymentNotification" class="payment-notification">
+        {{ paymentNotificationText }}
+      </div>
+      <DailyMotivation v-else />
+    </div>
+    
+    <div v-if="showNoCoursesMessage" class="no-courses-message">
+      Нет информации о доступных курсах, обратитесь к учителю
+    </div>
+    
+    <div v-else class="content-wrapper">
+      <div class="block_of_content">
+        <subject_chemistry 
+          @has-data="handleChemistryData(true)"
+          @no-data="handleChemistryData(false)"
+        />
+        <subject_biology 
+          @has-data="handleBiologyData(true)"
+          @no-data="handleBiologyData(false)"
+        />
+        <subject_additional
+          @has-data="handleAdditionalData(true)"
+          @no-data="handleAdditionalData(false)"
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
 <script>
 import DailyMotivation from './DailyMotivation.vue';
 import subject_chemistry from './subject_chemistry.vue'
-import subject_biology from './subject_biology.vue';
-import { supabase } from '../supabase'; // Импортируем клиент Supabase
+import subject_biology from './subject_biology.vue'
+import subject_additional from './subject_additional.vue'
+import { supabase } from '../supabase';
 
 export default {
   components: {
     DailyMotivation,
     subject_chemistry,
-    subject_biology
+    subject_biology,
+    subject_additional
   },
   data() {
     return {
       chemistryHasData: false,
       biologyHasData: false,
+      additionalHasData: false,
       showNoCoursesMessage: false,
       // Добавляем данные о студенте
       studentData: {
@@ -45,12 +96,16 @@ export default {
       this.biologyHasData = hasData;
       this.checkCoursesAvailability();
     },
-    checkCoursesAvailability() {
-      // Проверяем после небольшой задержки, чтобы оба компонента успели загрузиться
-      setTimeout(() => {
-        this.showNoCoursesMessage = !this.chemistryHasData && !this.biologyHasData;
-      }, 5000);
+    handleAdditionalData(hasData) {
+      this.additionalHasData = hasData;
+      this.checkCoursesAvailability();
     },
+    checkCoursesAvailability() {
+      // Проверяем, есть ли хотя бы один доступный курс
+      const hasAnyCourse = this.chemistryHasData || this.biologyHasData || this.additionalHasData;
+      this.showNoCoursesMessage = !hasAnyCourse;
+    },
+    
     // Метод для загрузки данных студента из Supabase
     async loadStudentData() {
       try {
@@ -89,10 +144,11 @@ export default {
         console.error('Исключение при загрузке данных:', error);
       }
     },
+    
     // Метод для проверки дат оплаты
     checkPaymentDates() {
       const today = new Date();
-      today.setHours(0, 0, 0, 0); // Устанавливаем время на начало дня для точного сравнения
+      today.setHours(0, 0, 0, 0);
       
       const notificationMessages = [];
       const overdueMessages = [];
@@ -148,16 +204,18 @@ export default {
           this.overdueModalText = `Срочно оплатите ${overdueMessages.join(' и ')}, чтобы продолжить обучение`;
         }
         
-        // Автоматически закрываем модальное окно через 3 секунды
+        // Автоматически закрываем модальное окно через 10 секунд
         setTimeout(() => {
           this.showOverdueModal = false;
-        }, 10*1000);
+        }, 10 * 1000);
       }
     },
+    
     // Вспомогательный метод для форматирования даты
     formatDate(date) {
       return date.toLocaleDateString('ru-RU');
     },
+    
     // Метод для обработки названий предметов
     formatSubjectName(subject, caseType) {
       if (!subject) return '';
@@ -183,6 +241,7 @@ export default {
       
       return firstWord;
     },
+    
     // Метод для ручного закрытия модального окна
     closeOverdueModal() {
       this.showOverdueModal = false;
@@ -191,150 +250,136 @@ export default {
 }
 </script>
 
-<template>
+<style scoped>
+.main-student-page {
+  min-height: 100vh;
+  background-color: #f9f8ff;
+}
 
-  
-  
-    <!-- Модальное окно для просроченных платежей -->
-    <div v-if="showOverdueModal" class="modal-overlay">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Внимание!</h3>
-        </div>
-        <div class="modal-body">
-          <p>{{ overdueModalText }}</p>
-        </div>
-        <div class="modal-footer">
-          <p>Закрытие через 10 секунд...</p>
-        </div>
-      </div>
-    </div>
-    
-    <div class="title">
-      <!-- Показываем уведомление об оплате вместо DailyMotivation, если нужно -->
-      <div v-if="showPaymentNotification" class="payment-notification">
-        {{ paymentNotificationText }}
-      </div>
-      <DailyMotivation v-else />
-    </div>
-    
-    <div v-if="showNoCoursesMessage" class="no-courses-message">
-      Нет информации о доступных курсах, обратитесь к учителю
-    </div>
-    
-    <div v-else class="block_of_content">
-      <subject_chemistry 
-        @has-data="handleChemistryData(true)"
-        @no-data="handleChemistryData(false)"
-      />
-      <subject_biology 
-        @has-data="handleBiologyData(true)"
-        @no-data="handleBiologyData(false)"
-      />
-    </div>
+.title {
+  font-size: 2vw;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  padding: 20px;
+}
 
-</template>
+.content-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
 
-<style>
-  .title{
-    font-size: 2vw;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
+.block_of_content {
+  background-color: #f9f8ff;
+  margin-bottom: 5%;
+  border-radius: 2%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5%;
+  padding: 5%;
+}
+
+.no-courses-message {
+  text-align: center;
+  padding: 40px;
+  font-size: 1.5rem;
+  color: #666;
+  background-color: #f8f9fa;
+  border-radius: 10px;
+  margin: 20px 0;
+}
+
+.payment-notification {
+  text-align: center;
+  padding: 20px;
+  font-size: 1.2rem;
+  color: #d9534f;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 10px;
+  margin: 10px 0;
+  width: 100%;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  font-size: 1.2rem;
+  color: #666;
+}
+
+/* Стили для модального окна */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  animation: modal-appear 0.3s ease-out;
+}
+
+.modal-header h3 {
+  margin: 0 0 15px 0;
+  color: #d9534f;
+  font-size: 1.5rem;
+}
+
+.modal-body p {
+  margin: 0 0 20px 0;
+  font-size: 1.1rem;
+  line-height: 1.5;
+  color: #333;
+}
+
+.modal-footer p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+  font-style: italic;
+}
+
+@keyframes modal-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .title {
+    font-size: 4vw;
+    padding: 10px;
   }
   
-  .block_of_content{
-    background-color: #f9f8ff;
-    margin-bottom: 5%;
-    border-radius: 2%;
-    display: grid;
-    grid-template-columns: 35% 35%;
-    gap: 30%;
-    padding: 10%;
-  }
-
-  .no-courses-message {
-    text-align: center;
-    padding: 40px;
-    font-size: 1.5rem;
-    color: #666;
-    background-color: #f8f9fa;
-    border-radius: 10px;
-    margin: 20px 0;
+  .content-wrapper {
+    padding: 10px;
   }
   
-  .payment-notification {
-    text-align: center;
+  .block_of_content {
+    grid-template-columns: 1fr;
+    gap: 20px;
     padding: 20px;
-    font-size: 1.2rem;
-    color: #d9534f;
-    background-color: #f8d7da;
-    border: 1px solid #f5c6cb;
-    border-radius: 10px;
-    margin: 10px 0;
-    width: 100%;
   }
-  
-  .loading {
-    text-align: center;
-    padding: 40px;
-    font-size: 1.2rem;
-    color: #666;
-  }
-  
-  /* Стили для модального окна */
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.7);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-  }
-  
-  .modal-content {
-    background-color: white;
-    padding: 25px;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    max-width: 400px;
-    width: 90%;
-    text-align: center;
-    animation: modal-appear 0.3s ease-out;
-  }
-  
-  .modal-header h3 {
-    margin: 0 0 15px 0;
-    color: #d9534f;
-    font-size: 1.5rem;
-  }
-  
-  .modal-body p {
-    margin: 0 0 20px 0;
-    font-size: 1.1rem;
-    line-height: 1.5;
-    color: #333;
-  }
-  
-  .modal-footer p {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #666;
-    font-style: italic;
-  }
-  
-  @keyframes modal-appear {
-    from {
-      opacity: 0;
-      transform: translateY(-20px) scale(0.95);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
+}
 </style>

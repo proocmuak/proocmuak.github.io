@@ -11,6 +11,12 @@
       @back-to-edit="activeEditor = null"
     />
     
+    <!-- Отображаем редактор дополнительных курсов -->
+    <EditorAdditionalCourse
+      v-else-if="showAdditionalCourses"
+      @back-to-edit="showAdditionalCourses = false"
+    />
+    
     <!-- Отображаем список предметов, если редактор не активен -->
     <div v-else class="subjects-grid">
       <SubjectButton
@@ -18,6 +24,11 @@
         :key="subject.tableName"
         :subject-name="subject.title"
         @editor-change="activateEditor(subject)"
+      />
+      <!-- Кнопка для дополнительных курсов -->
+      <SubjectButton
+        subject-name="Дополнительные курсы"
+        @editor-change="openAdditionalCourses"
       />
     </div>
   </div>
@@ -27,6 +38,7 @@
 import { ref } from 'vue'
 import SubjectButton from './SubjectButton.vue'
 import TableEditor from './TableEditor.vue'
+import EditorAdditionalCourse from './EditorAdditionalCourse.vue'
 
 // Конфигурация предметов
 const subjects = [
@@ -89,9 +101,14 @@ const subjects = [
 ]
 
 const activeEditor = ref(null)
+const showAdditionalCourses = ref(false)
 
 const activateEditor = (subject) => {
   activeEditor.value = subject
+}
+
+const openAdditionalCourses = () => {
+  showAdditionalCourses.value = true
 }
 </script>
 

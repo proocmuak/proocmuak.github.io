@@ -37,6 +37,7 @@
               <th class="tariff-column">Тариф</th>
               <th class="date-column">Оплата до</th>
               <th class="date-column">Доступ с</th>
+              <th class="additional-courses-column">Дополнительные курсы</th>
               <th class="tutor-column">Наставник</th>
               <th class="access-column">Доступ</th>
             </tr>
@@ -120,6 +121,30 @@
                 />
               </td>
               
+              <!-- Дополнительные курсы -->
+              <td class="additional-courses-column">
+                <div class="additional-courses-list">
+                  <div 
+                    v-for="course in additionalCourses" 
+                    :key="course.id" 
+                    class="course-checkbox"
+                  >
+                    <label class="checkbox-label">
+                      <input
+                        type="checkbox"
+                        :checked="isCourseSelected(student, course)"
+                        @change="(e) => handleAdditionalCourseChange(student, course, e.target.checked)"
+                        class="course-checkbox-input"
+                      />
+                      <span class="checkbox-text">{{ course.name }}</span>
+                    </label>
+                  </div>
+                  <div v-if="additionalCourses.length === 0" class="no-courses">
+                    Нет доступных курсов
+                  </div>
+                </div>
+              </td>
+              
               <!-- Наставник -->
               <td class="tutor-column">
                 <CustomDropdown
@@ -166,6 +191,7 @@ const currentPage = ref(1);
 const perPage = 10;
 const totalCount = ref(0);
 const tutors = ref([]);
+const additionalCourses = ref([]);
 
 // Опции для тарифов
 const tariffOptions = [
@@ -197,9 +223,33 @@ const BiologyOption = [
 // Функция для поиска опции по значению
 const findOptionByValue = (options, value) => {
   if (value === null || value === undefined) {
-    return null; // Возвращаем null вместо объекта с value: null
+    return null;
   }
   return options.find(opt => opt.value === value) || null;
+};
+
+// Проверка, выбран ли курс для студента
+const isCourseSelected = (student, course) => {
+  if (!student.additional_courses) return false;
+  const courses = Array.isArray(student.additional_courses) 
+    ? student.additional_courses 
+    : JSON.parse(student.additional_courses || '[]');
+  return courses.includes(course.name);
+};
+
+// Загрузка дополнительных курсов
+const fetchAdditionalCourses = async () => {
+  const { data, error } = await supabase
+    .from('additional_course')
+    .select('id, name, english_name')
+    .order('name');
+
+  if (error) {
+    console.error('Ошибка загрузки дополнительных курсов:', error);
+    return;
+  }
+
+  additionalCourses.value = data || [];
 };
 
 // Загрузка наставников
@@ -263,7 +313,9 @@ const fetchStudents = async () => {
     subject2_payment_date: student.subject2_payment_date ? formatDateForInput(student.subject2_payment_date) : '',
     subject1_access_from: student.subject1_access_from ? formatDateForInput(student.subject1_access_from) : '',
     subject2_access_from: student.subject2_access_from ? formatDateForInput(student.subject2_access_from) : '',
-    access: student.access !== undefined ? Boolean(student.access) : true
+    access: student.access !== undefined ? Boolean(student.access) : true,
+    additional_courses: student.additional_courses ? 
+      (Array.isArray(student.additional_courses) ? student.additional_courses : JSON.parse(student.additional_courses)) : []
   }));
   
   totalCount.value = count || 0;
@@ -273,6 +325,45 @@ const fetchStudents = async () => {
 const formatDateForInput = (dateString) => {
   const date = new Date(dateString);
   return date.toISOString().split('T')[0];
+};
+
+// Обработчик изменения дополнительного курса
+const handleAdditionalCourseChange = async (student, course, isChecked) => {
+  try {
+    // Получаем текущий массив курсов
+    let currentCourses = Array.isArray(student.additional_courses) 
+      ? [...student.additional_courses]
+      : (student.additional_courses ? JSON.parse(student.additional_courses) : []);
+    
+    if (isChecked) {
+      // Добавляем курс, если его еще нет
+      if (!currentCourses.includes(course.name)) {
+        currentCourses.push(course.name);
+      }
+    } else {
+      // Удаляем курс
+      currentCourses = currentCourses.filter(name => name !== course.name);
+    }
+    
+    // Обновляем локальное состояние
+    student.additional_courses = currentCourses;
+    
+    // Обновляем в базе данных
+    const { error } = await supabase
+      .from('students')
+      .update({ additional_courses: JSON.stringify(currentCourses) })
+      .eq('user_id', student.user_id);
+    
+    if (error) {
+      console.error('Ошибка обновления дополнительных курсов:', error);
+      alert('Не удалось сохранить изменения!');
+      // Откатываем локальное состояние
+      await fetchStudents();
+    }
+  } catch (error) {
+    console.error('Неожиданная ошибка:', error);
+    alert('Не удалось сохранить изменения!');
+  }
 };
 
 // Обработчики изменений
@@ -337,10 +428,10 @@ const updateStudent = async (student) => {
     subject1_access_from: student.subject1 && student.subject1_access_from ? student.subject1_access_from : null,
     subject2_access_from: student.subject2 && student.subject2_access_from ? student.subject2_access_from : null,
     tutor: student.tutor,
-    access: student.access
+    access: student.access,
+    additional_courses: JSON.stringify(student.additional_courses || [])
   };
 
-   
   try {
     const { error } = await supabase
       .from('students')
@@ -350,8 +441,7 @@ const updateStudent = async (student) => {
     if (error) {
       console.error('Ошибка обновления:', error);
       alert('Не удалось сохранить изменения! Ошибка: ' + error.message);
-    } else {
-           }
+    }
   } catch (error) {
     console.error('Неожиданная ошибка:', error);
     alert('Не удалось сохранить изменения!');
@@ -381,6 +471,7 @@ const resetPagination = () => {
 
 // Загружаем данные при загрузке страницы
 onMounted(async () => {
+  await fetchAdditionalCourses();
   await fetchTutors();
   await fetchStudents();
 });
@@ -409,7 +500,7 @@ onMounted(async () => {
   flex-direction: column;
   max-width: 95vw;
   max-height: 95vh;
-  width: 95rem; /* Увеличил ширину для дополнительных столбцов */
+  width: 110rem; /* Увеличил ширину для дополнительного столбца */
   overflow: hidden;
 }
 
@@ -556,6 +647,11 @@ onMounted(async () => {
   min-width: 6.5rem;
 }
 
+.additional-courses-column {
+  width: 12rem;
+  min-width: 12rem;
+}
+
 .tutor-column {
   width: 7.5rem;
   min-width: 7.5rem;
@@ -586,6 +682,43 @@ onMounted(async () => {
   outline: none;
   border-color: #b241d1;
   box-shadow: 0 0 0 0.125rem rgba(178, 65, 209, 0.2);
+}
+
+.additional-courses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.course-checkbox {
+  margin: 0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: #333;
+}
+
+.course-checkbox-input {
+  cursor: pointer;
+  width: 1rem;
+  height: 1rem;
+}
+
+.checkbox-text {
+  user-select: none;
+}
+
+.no-courses {
+  color: #999;
+  font-size: 0.75rem;
+  font-style: italic;
+  text-align: center;
+  padding: 0.5rem;
 }
 
 .no-data {
@@ -628,6 +761,7 @@ onMounted(async () => {
   .subject-column { width: 6rem; min-width: 6rem; }
   .tariff-column { width: 5.5rem; min-width: 5.5rem; }
   .date-column { width: 6rem; min-width: 6rem; }
+  .additional-courses-column { width: 10rem; min-width: 10rem; }
   .tutor-column { width: 7rem; min-width: 7rem; }
   .access-column { width: 6rem; min-width: 6rem; }
 }
@@ -659,6 +793,14 @@ onMounted(async () => {
   .students-table td {
     padding: 0.375rem;
     font-size: 0.75rem;
+  }
+  
+  .additional-courses-list {
+    gap: 0.25rem;
+  }
+  
+  .checkbox-text {
+    font-size: 0.7rem;
   }
 }
 </style>

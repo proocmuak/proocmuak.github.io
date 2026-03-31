@@ -65,6 +65,14 @@
                 <span class="metric-label">Попыток:</span>
                 <span class="metric-value">{{ item.attempts }}</span>
               </div>
+              <div class="metric" v-if="item.avg_score">
+                <span class="metric-label">Ср. балл:</span>
+                <span class="metric-value">{{ (item.avg_score * 100).toFixed(1) }}%</span>
+              </div>
+              <div class="metric" v-if="item.weighted_accuracy">
+                <span class="metric-label">Взвеш. точность:</span>
+                <span class="metric-value">{{ (item.weighted_accuracy * 100).toFixed(1) }}%</span>
+              </div>
             </div>
           </div>
           
@@ -186,7 +194,13 @@ export default {
     const predictionsByNumber = ref([])
     const predictionsByTopic = ref([])
     
-    const callPredictApi = async (features) => {
+    // Логирование этапов
+    const logStage = (stage, data) => {
+      console.log(`[ML Predict] ${stage}:`, data)
+    }
+    
+    const callPredictApi = async (features, originalItem) => {
+      const startTime = Date.now()
       try {
         const requestBody = {
           attempts: features.attempts,
@@ -199,8 +213,12 @@ export default {
           created_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
         }
         
-        console.log('ML API URL:', ML_API_URL)
-        console.log('Request body:', requestBody)
+        logStage('API Request', {
+          number: features.number,
+          topic: originalItem?.topic,
+          requestBody,
+          url: `${ML_API_URL}/predict`
+        })
         
         const response = await fetch(`${ML_API_URL}/predict`, {
           method: 'POST',
@@ -209,6 +227,8 @@ export default {
           },
           body: JSON.stringify(requestBody)
         })
+        
+        const responseTime = Date.now() - startTime
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`)
@@ -221,11 +241,28 @@ export default {
         if (successProbability < 0) successProbability = 0
         if (successProbability > 1) successProbability = 1
         
+        logStage('API Response', {
+          number: features.number,
+          topic: originalItem?.topic,
+          rawPrediction: result.prediction,
+          adjustedPrediction: successProbability,
+          responseTime: `${responseTime}ms`,
+          modelInfo: result.model_info || 'Not provided'
+        })
+        
         return {
           success: true,
-          success_probability: successProbability
+          success_probability: successProbability,
+          raw_prediction: result.prediction
         }
       } catch (err) {
+        const responseTime = Date.now() - startTime
+        logStage('API Error', {
+          number: features.number,
+          topic: originalItem?.topic,
+          error: err.message,
+          responseTime: `${responseTime}ms`
+        })
         console.error('API call failed:', err)
         return {
           success: false,
@@ -236,30 +273,75 @@ export default {
     }
     
     const loadPredictions = async () => {
+      const overallStartTime = Date.now()
+      logStage('Start', { subject: props.subject, timestamp: new Date().toISOString() })
+      
       try {
         loading.value = true
         error.value = null
         
+        // 1. Проверка аутентификации
+        logStage('Auth Check', 'Getting user...')
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         if (authError) throw new Error('Ошибка аутентификации')
         if (!user) throw new Error('Пользователь не аутентифицирован')
+        logStage('Auth Success', { userId: user.id })
         
+        // 2. Загрузка фич
         const tableName = `feature_snapshot_${props.subject}`
+        logStage('Fetch Features', { tableName, userId: user.id })
+        
         const { data: features, error: featuresError } = await supabase
           .from(tableName)
           .select('*')
           .eq('user_id', user.id)
         
         if (featuresError) throw featuresError
+        
+        logStage('Features Loaded', {
+          count: features?.length || 0,
+          sample: features?.slice(0, 3).map(f => ({
+            number: f.number,
+            topic: f.topic,
+            attempts: f.attempts,
+            avg_score: f.avg_score,
+            weighted_accuracy: f.weighted_accuracy,
+            days_since_last_attempt: f.days_since_last_attempt
+          }))
+        })
+        
         if (!features || features.length === 0) {
+          logStage('No Data', 'No features found for user')
           predictionsByNumber.value = []
           predictionsByTopic.value = []
           return
         }
         
+        // 3. Анализ распределения данных
+        const numbersDistribution = {}
+        const topicsDistribution = {}
+        features.forEach(f => {
+          numbersDistribution[f.number] = (numbersDistribution[f.number] || 0) + 1
+          if (f.topic) topicsDistribution[f.topic] = (topicsDistribution[f.topic] || 0) + 1
+        })
+        
+        logStage('Data Distribution', {
+          uniqueNumbers: Object.keys(numbersDistribution).length,
+          numbersWithCounts: numbersDistribution,
+          uniqueTopics: Object.keys(topicsDistribution).length,
+          topicsWithCounts: Object.keys(topicsDistribution).slice(0, 10).reduce((acc, t) => {
+            acc[t] = topicsDistribution[t]
+            return acc
+          }, {})
+        })
+        
         const numbersMap = new Map()
         const topicsMap = new Map()
         
+        let apiCallsCount = 0
+        let apiErrorsCount = 0
+        
+        // 4. Обработка каждой фичи
         for (const item of features) {
           try {
             const featuresData = {
@@ -272,7 +354,15 @@ export default {
               number: item.number
             }
             
-            const prediction = await callPredictApi(featuresData)
+            logStage('Processing Item', {
+              number: item.number,
+              topic: item.topic,
+              featuresData
+            })
+            
+            const prediction = await callPredictApi(featuresData, item)
+            apiCallsCount++
+            if (!prediction.success) apiErrorsCount++
             
             // Агрегация по номерам
             if (!numbersMap.has(item.number)) {
@@ -280,7 +370,10 @@ export default {
                 number: item.number,
                 attempts: 0,
                 total_success_probability: 0,
-                count: 0
+                count: 0,
+                rawPredictions: [],
+                avg_scores: [],
+                weighted_accuracies: []
               })
             }
             
@@ -288,6 +381,9 @@ export default {
             numData.attempts += item.attempts
             numData.total_success_probability += prediction.success_probability
             numData.count += 1
+            numData.rawPredictions.push(prediction.success_probability)
+            numData.avg_scores.push(item.avg_score)
+            numData.weighted_accuracies.push(item.weighted_accuracy)
             
             // Агрегация по темам
             if (item.topic && item.topic.trim() !== '') {
@@ -299,7 +395,9 @@ export default {
                   numbers: new Set(),
                   total_attempts: 0,
                   total_success_probability: 0,
-                  count: 0
+                  count: 0,
+                  rawPredictions: [],
+                  numbersList: []
                 })
               }
               
@@ -308,30 +406,71 @@ export default {
               topicData.total_attempts += item.attempts
               topicData.total_success_probability += prediction.success_probability
               topicData.count += 1
+              topicData.rawPredictions.push(prediction.success_probability)
+              topicData.numbersList.push(item.number)
             }
             
           } catch (err) {
             console.error('Error predicting for item:', item.number, err)
+            apiErrorsCount++
           }
         }
         
-        // Преобразуем номера
-        predictionsByNumber.value = Array.from(numbersMap.values())
-          .filter(item => item.count >= 3)
+        logStage('API Calls Summary', {
+          totalCalls: apiCallsCount,
+          errors: apiErrorsCount,
+          successRate: `${((apiCallsCount - apiErrorsCount) / apiCallsCount * 100).toFixed(1)}%`
+        })
+        
+        // 5. Преобразование номеров с детальной статистикой
+        const numbersData = Array.from(numbersMap.values())
+          .filter(item => item.attempts >= 3)
           .map(item => {
             const success_probability = item.total_success_probability / item.count
+            const avg_score = item.avg_scores.reduce((a, b) => a + b, 0) / item.avg_scores.length
+            const weighted_accuracy = item.weighted_accuracies.reduce((a, b) => a + b, 0) / item.weighted_accuracies.length
+            
+            const deviation = Math.abs(success_probability - avg_score)
+            
+            logStage('Number Aggregation', {
+              number: item.number,
+              attempts: item.attempts,
+              topicsCount: item.count,
+              avgScore: avg_score,
+              weightedAccuracy: weighted_accuracy,
+              modelPrediction: success_probability,
+              deviation: deviation,
+              isOptimistic: success_probability > avg_score + 0.15 ? '⚠️ TOO OPTIMISTIC' : 'OK',
+              rawPredictions: item.rawPredictions
+            })
+            
             return {
               number: item.number,
               attempts: item.attempts,
-              success_probability: success_probability
+              success_probability: success_probability,
+              avg_score: avg_score,
+              weighted_accuracy: weighted_accuracy,
+              deviation: deviation
             }
           })
         
-        // Преобразуем темы
-        predictionsByTopic.value = Array.from(topicsMap.values())
+        predictionsByNumber.value = numbersData
+        
+        // 6. Преобразование тем с детальной статистикой
+        const topicsData = Array.from(topicsMap.values())
           .filter(item => item.count >= 3)
           .map(item => {
             const success_probability = item.total_success_probability / item.count
+            
+            logStage('Topic Aggregation', {
+              topic: item.topic,
+              numbers: Array.from(item.numbers),
+              totalAttempts: item.total_attempts,
+              topicsCount: item.count,
+              modelPrediction: success_probability,
+              rawPredictions: item.rawPredictions
+            })
+            
             return {
               topic: item.topic,
               numbers: Array.from(item.numbers).sort((a, b) => a - b),
@@ -340,11 +479,45 @@ export default {
             }
           })
         
+        predictionsByTopic.value = topicsData
+        
+        // 7. Итоговая статистика
+        const optimisticNumbers = numbersData.filter(n => n.deviation > 0.15 && n.success_probability > n.avg_score)
+        const pessimisticNumbers = numbersData.filter(n => n.deviation > 0.15 && n.success_probability < n.avg_score)
+        
+        logStage('Final Summary', {
+          totalNumbers: numbersData.length,
+          totalTopics: topicsData.length,
+          numbersWithHighDeviation: optimisticNumbers.length + pessimisticNumbers.length,
+          optimisticNumbers: optimisticNumbers.map(n => ({
+            number: n.number,
+            prediction: n.success_probability,
+            avgScore: n.avg_score,
+            diff: n.deviation
+          })),
+          pessimisticNumbers: pessimisticNumbers.map(n => ({
+            number: n.number,
+            prediction: n.success_probability,
+            avgScore: n.avg_score,
+            diff: n.deviation
+          })),
+          totalExecutionTime: `${Date.now() - overallStartTime}ms`
+        })
+        
+        if (optimisticNumbers.length > 0) {
+          console.warn('[ML Predict] ⚠️ Обнаружены оптимистичные предсказания:', optimisticNumbers)
+        }
+        
       } catch (err) {
+        logStage('Fatal Error', {
+          message: err.message,
+          stack: err.stack
+        })
         console.error('Ошибка при загрузке предсказаний:', err)
         error.value = err.message
       } finally {
         loading.value = false
+        logStage('Complete', { timestamp: new Date().toISOString() })
       }
     }
     
@@ -359,6 +532,7 @@ export default {
     })
     
     const switchMode = (mode) => {
+      logStage('Switch Mode', { from: currentMode.value, to: mode })
       currentMode.value = mode
     }
     
@@ -404,6 +578,33 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+/* ... остальные стили остаются без изменений ... */
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.metric:last-child {
+  border-bottom: none;
+}
+
+.metric-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.metric-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+</style>
 
 <style scoped>
 .ml-predict-container {

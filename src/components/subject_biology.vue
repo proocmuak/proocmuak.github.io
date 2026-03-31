@@ -133,6 +133,7 @@ export default {
   grid-template-rows: 10% 20% 20% 10%;
   gap: 10%;
   transition: opacity 0.3s ease;
+  min-height: 280px
 }
 .block:hover {
   opacity: 0.75;
