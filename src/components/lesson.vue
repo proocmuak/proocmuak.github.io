@@ -29,6 +29,22 @@
                 Скачивание видео запрещено
               </div>
             </div>
+            
+            <!-- Альтернативные ссылки -->
+            <div v-if="alternativeLinks.length > 0" class="alternative-links">
+              <div class="links-title">Альтернативные ссылки:</div>
+              <div class="links-list">
+                <a 
+                  v-for="(link, linkIndex) in alternativeLinks" 
+                  :key="linkIndex"
+                  :href="link" 
+                  target="_blank" 
+                  class="alternative-link"
+                >
+                  Ссылка {{ linkIndex + 1 }}
+                </a>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -180,6 +196,12 @@ const filteredHomeworkData = computed(() => {
 const allVideos = computed(() => {
   if (!lesson.value?.video || !Array.isArray(lesson.value.video)) return []
   return lesson.value.video.filter(html => html && typeof html === 'string')
+})
+
+// Альтернативные ссылки
+const alternativeLinks = computed(() => {
+  if (!lesson.value?.alternativeLinks || !Array.isArray(lesson.value.alternativeLinks)) return []
+  return lesson.value.alternativeLinks.filter(link => link && typeof link === 'string' && link.trim() !== '')
 })
 
 const workbooks = computed(() => {
@@ -344,7 +366,7 @@ async function fetchLesson() {
     
     const { data, error: supabaseError } = await supabase
       .from(props.tableName)
-      .select('number, title, date, video, homework, workbook, practice')
+      .select('number, title, date, video, homework, workbook, practice, alternativeLinks')
       .eq('number', props.lessonNumber)
       .single()
 
@@ -362,6 +384,7 @@ async function fetchLesson() {
       lesson.value = {
         ...data,
         video: convertToArray(data.video),
+        alternativeLinks: convertToArray(data.alternativeLinks),
         workbook: convertToArray(data.workbook),
         practice: convertToArray(data.practice),
         homework: convertToArray(data.homework)
@@ -564,6 +587,45 @@ const formattedDate = computed(() => {
   z-index: 20;
   font-weight: bold;
   pointer-events: none;
+}
+
+/* Стили для альтернативных ссылок */
+.alternative-links {
+  margin-top: 15px;
+  padding: 12px 15px;
+  background: #f5d0ff;
+  border-radius: 8px;
+  border-left: 4px solid #9a36b3;
+}
+
+.links-title {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: #b241d1;
+  margin-bottom: 8px;
+}
+
+.links-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.alternative-link {
+  display: inline-block;
+  padding: 5px 12px;
+  background: #b241d1;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 0.85em;
+  transition: all 0.3s ease;
+}
+
+.alternative-link:hover {
+  background: #9a36b3;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
 /* Стили для материалов */
@@ -813,6 +875,20 @@ const formattedDate = computed(() => {
   .homework-item {
     padding: 12px;
   }
+  
+  .alternative-links {
+    margin-top: 12px;
+    padding: 10px 12px;
+  }
+  
+  .links-list {
+    gap: 8px;
+  }
+  
+  .alternative-link {
+    padding: 4px 10px;
+    font-size: 0.8em;
+  }
 }
 
 @media (max-width: 480px) {
@@ -830,6 +906,20 @@ const formattedDate = computed(() => {
   
   .homework-title {
     font-size: 1em;
+  }
+  
+  .alternative-links {
+    margin-top: 10px;
+    padding: 8px 10px;
+  }
+  
+  .links-title {
+    font-size: 0.85em;
+  }
+  
+  .alternative-link {
+    padding: 3px 8px;
+    font-size: 0.75em;
   }
 }
 </style>

@@ -10,6 +10,7 @@
     
     <template v-else>
       <div v-if="loading" class="loading-message">Загрузка уроков...</div>
+      <div v-else-if="checkingAccess" class="loading-message">Проверка доступа...</div>
       <div v-else-if="error" class="error-message">{{ error }}</div>
       <div v-else-if="!hasAccess" class="no-access-message">
         <p>У вас нет доступа к этому курсу</p>
@@ -60,56 +61,83 @@ const selectedLesson = ref(null)
 const loading = ref(false)
 const error = ref(null)
 const hasCourseAccess = ref(false)
+const checkingAccess = ref(true) // Флаг для отображения статуса проверки
 
 const selectLesson = (number) => {
   selectedLesson.value = number
   emit('select-lesson', number)
 }
 
-
+// Правильная проверка доступа
 const hasAccess = computed(() => {
-  return true
+  return hasCourseAccess.value
 })
 
 // Загрузка данных студента - проверяем доступ к дополнительному курсу
 async function fetchStudentData() {
-  try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      throw new Error('Пользователь не авторизован')
-    }
-
-    const { data, error: studentError } = await supabase
-      .from('students')
-      .select('additional_courses')
-      .eq('user_id', user.id)
-      .single()
-
-    if (studentError) throw studentError
-    
-    // Проверяем, есть ли курс в списке дополнительных курсов студента
-    let additionalCourses = []
-    if (data?.additional_courses) {
-      try {
-        additionalCourses = typeof data.additional_courses === 'string' 
-          ? JSON.parse(data.additional_courses) 
-          : data.additional_courses
-      } catch (e) {
-        console.error('Ошибка парсинга additional_courses:', e)
-        additionalCourses = []
+  return new Promise(async (resolve) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        throw new Error('Пользователь не авторизован')
       }
-    }
-    
-    // Проверяем, что курс есть в списке
-    hasCourseAccess.value = additionalCourses.includes(props.courseName)
 
-  } catch (err) {
-    console.error('Ошибка загрузки данных студента:', err)
-    hasCourseAccess.value = false
-  }
+      const { data, error: studentError } = await supabase
+        .from('students')
+        .select('additional_courses')
+        .eq('user_id', user.id)
+        .single()
+
+      if (studentError) throw studentError
+      
+      // Проверяем, есть ли курс в списке дополнительных курсов студента
+      let additionalCourses = []
+      if (data?.additional_courses) {
+        try {
+          additionalCourses = typeof data.additional_courses === 'string' 
+            ? JSON.parse(data.additional_courses) 
+            : data.additional_courses
+        } catch (e) {
+          console.error('Ошибка парсинга additional_courses:', e)
+          additionalCourses = []
+        }
+      }
+      
+      // Нормализуем названия для сравнения (убираем пробелы, приводим к нижнему регистру)
+      const normalizedStudentCourses = additionalCourses.map(course => 
+        String(course).toLowerCase().trim()
+      )
+      
+      const normalizedCourseName = String(props.courseName).toLowerCase().trim()
+      const normalizedCourseEngName = String(props.courseEnglishName).toLowerCase().trim()
+      
+      // Проверяем, что курс есть в списке (по name ИЛИ по english_name)
+      hasCourseAccess.value = normalizedStudentCourses.includes(normalizedCourseName) || 
+                              normalizedStudentCourses.includes(normalizedCourseEngName)
+      
+      console.log('Проверка доступа к курсу:', {
+        courseName: props.courseName,
+        courseEnglishName: props.courseEnglishName,
+        studentCourses: additionalCourses,
+        hasAccess: hasCourseAccess.value
+      })
+
+      resolve(hasCourseAccess.value)
+
+    } catch (err) {
+      console.error('Ошибка загрузки данных студента:', err)
+      hasCourseAccess.value = false
+      resolve(false)
+    }
+  })
 }
 
 async function fetchLessons() {
+  // Если нет доступа, не загружаем уроки
+  if (!hasCourseAccess.value) {
+    return
+  }
+  
   try {
     loading.value = true
     error.value = null
@@ -149,8 +177,18 @@ const dateStatus = (dateString) => {
 }
 
 onMounted(async () => {
-  await fetchStudentData()
-  await fetchLessons()
+  // Запускаем проверку доступа с таймером 2 секунды
+  checkingAccess.value = true
+  
+  // Таймер на 2 секунды для имитации загрузки и проверки
+  setTimeout(async () => {
+    await fetchStudentData()
+    checkingAccess.value = false
+    
+    if (hasCourseAccess.value) {
+      await fetchLessons()
+    }
+  }, 2000) // 2 секунды задержки
 })
 </script>
 

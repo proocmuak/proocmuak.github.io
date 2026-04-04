@@ -75,6 +75,33 @@
             </div>
           </div>
 
+          <!-- Альтернативные ссылки (массив ссылок) -->
+          <div class="form-group">
+            <label>Альтернативные ссылки (можно несколько):</label>
+            <div class="links-input-container">
+              <div v-for="(link, index) in newRow.alternativeLinks" :key="index" class="link-input-group">
+                <input 
+                  type="url" 
+                  v-model="newRow.alternativeLinks[index]"
+                  placeholder="https://example.com"
+                  class="form-input link-input"
+                >
+                <button @click="removeAlternativeLink(index)" type="button" class="btn-remove-small">×</button>
+              </div>
+              <button @click="addAlternativeLink" type="button" class="btn-add-link">+ Добавить ссылку</button>
+            </div>
+            
+            <div v-if="newRow.alternativeLinks && newRow.alternativeLinks.length > 0" class="files-preview">
+              <h4>Добавленные ссылки ({{ newRow.alternativeLinks.length }}):</h4>
+              <ul>
+                <li v-for="(link, index) in newRow.alternativeLinks" :key="index" class="file-item">
+                  <a :href="link" target="_blank" class="file-link">{{ link || 'Пустая ссылка' }}</a>
+                  <button @click="removeAlternativeLink(index)" class="btn-remove-small">×</button>
+                </li>
+              </ul>
+            </div>
+          </div>
+
           <!-- Рабочие тетради (массив ссылок) -->
           <div class="form-group">
             <label>Рабочие тетради (можно несколько):</label>
@@ -133,6 +160,7 @@
                   {{ field.label }}
                 </th>
                 <th class="table-header">Видео</th>
+                <th class="table-header">Альтернативные ссылки</th>
                 <th class="table-header">Тетради</th>
                 <th class="table-header">Практика</th>
                 <th class="table-header">Действия</th>
@@ -181,6 +209,25 @@
                   </div>
                 </td>
                 
+                <!-- Альтернативные ссылки -->
+                <td class="table-cell">
+                  <div class="links-management">
+                    <div class="links-list">
+                      <div v-for="(link, index) in row.alternativeLinks" :key="index" class="link-item">
+                        <input 
+                          type="url" 
+                          v-model="row.alternativeLinks[index]"
+                          @change="updateRow(row)"
+                          placeholder="https://example.com"
+                          class="table-input link-input-small"
+                        >
+                        <button @click="removeAlternativeLinkFromRow(row, index)" class="btn-remove-small">×</button>
+                      </div>
+                      <button @click="addAlternativeLinkToRow(row)" class="btn-add-link-small">+ Добавить ссылку</button>
+                    </div>
+                  </div>
+                 </td>
+                
                 <!-- Тетради -->
                 <td class="table-cell">
                   <FileUploader 
@@ -198,7 +245,7 @@
                       <button @click="removeWorkbookFromRow(row, index)" class="btn-remove-small">×</button>
                     </div>
                   </div>
-                </td>
+                 </td>
                 
                 <!-- Практика -->
                 <td class="table-cell">
@@ -217,11 +264,11 @@
                       <button @click="removePracticeFromRow(row, index)" class="btn-remove-small">×</button>
                     </div>
                   </div>
-                </td>
+                 </td>
                 
                 <td class="table-cell actions-cell">
                   <button @click="deleteRow(row[primaryKey])" class="btn-delete">Удалить</button>
-                </td>
+                 </td>
               </tr>
             </tbody>
           </table>
@@ -335,6 +382,54 @@ const iframesToText = (iframes) => {
   return iframes.join('\n\n')
 }
 
+// Функции для работы с альтернативными ссылками
+const addAlternativeLink = () => {
+  if (!newRow.value.alternativeLinks) {
+    newRow.value.alternativeLinks = []
+  }
+  newRow.value.alternativeLinks.push('')
+}
+
+const removeAlternativeLink = (index) => {
+  newRow.value.alternativeLinks.splice(index, 1)
+}
+
+const addAlternativeLinkToRow = (row) => {
+  if (!row.alternativeLinks) {
+    row.alternativeLinks = []
+  }
+  row.alternativeLinks.push('')
+  updateRow(row)
+}
+
+const removeAlternativeLinkFromRow = async (row, index) => {
+  try {
+    const updatedLinks = [...row.alternativeLinks]
+    updatedLinks.splice(index, 1)
+    
+    const updatedRow = {
+      ...row,
+      alternativeLinks: updatedLinks
+    }
+    
+    const cleanedData = prepareDataForDb(updatedRow)
+    const { error } = await supabase
+      .from(props.tableName)
+      .update(cleanedData)
+      .eq(props.primaryKey, row[props.primaryKey])
+
+    if (error) throw error
+    
+    const rowIndex = rows.value.findIndex(r => r[props.primaryKey] === row[props.primaryKey])
+    if (rowIndex !== -1) {
+      rows.value[rowIndex] = updatedRow
+    }
+    
+  } catch (error) {
+    console.error('Ошибка при удалении ссылки:', error)
+    alert('Ошибка удаления ссылки: ' + error.message)
+  }
+}
 
 // Инициализация
 const initNewRow = () => {
@@ -344,6 +439,7 @@ const initNewRow = () => {
   }, {})
   
   initialData.video = []
+  initialData.alternativeLinks = []
   initialData.workbook = []
   initialData.practice = []
   initialData.homework = []
@@ -408,6 +504,7 @@ const fetchRows = async () => {
     rows.value = data.map(row => ({
       ...row,
       video: convertToArray(row.video),
+      alternativeLinks: convertToArray(row.alternativeLinks),
       workbook: convertToArray(row.workbook),
       practice: convertToArray(row.practice),
       homework: convertToArray(row.homework)
@@ -443,6 +540,7 @@ const prepareDataForDb = (data) => {
   })
   
   cleaned.video = JSON.stringify(Array.isArray(cleaned.video) ? cleaned.video : [])
+  cleaned.alternativeLinks = JSON.stringify(Array.isArray(cleaned.alternativeLinks) ? cleaned.alternativeLinks : [])
   cleaned.workbook = JSON.stringify(Array.isArray(cleaned.workbook) ? cleaned.workbook : [])
   cleaned.practice = JSON.stringify(Array.isArray(cleaned.practice) ? cleaned.practice : [])
   cleaned.homework = JSON.stringify(Array.isArray(cleaned.homework) ? cleaned.homework : [])
@@ -496,7 +594,6 @@ const updateRow = async (row) => {
 const getVideoTextForRow = (row) => {
   return iframesToText(row.video || [])
 }
-
 
 // Функции для работы с видео в существующих записях
 let updateTimeout = null
@@ -640,6 +737,7 @@ const GoBackToEditPage = () => {
   emit('back-to-edit')
 }
 </script>
+
 <style scoped>
 .editor-container {
   position: absolute;
@@ -759,6 +857,76 @@ label {
 .form-textarea {
   min-height: 100px;
   resize: vertical;
+}
+
+/* Стили для альтернативных ссылок */
+.links-input-container {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  background: white;
+}
+
+.link-input-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.link-input {
+  flex: 1;
+}
+
+.btn-add-link {
+  padding: 6px 12px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.btn-add-link:hover {
+  background-color: #218838;
+}
+
+.links-management {
+  min-width: 250px;
+}
+
+.links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.link-item {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.link-input-small {
+  flex: 1;
+  min-width: 150px;
+}
+
+.btn-add-link-small {
+  padding: 4px 8px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  margin-top: 5px;
+}
+
+.btn-add-link-small:hover {
+  background-color: #218838;
 }
 
 .files-preview {
@@ -896,6 +1064,7 @@ label {
   min-height: 60px;
   resize: vertical;
 }
+
 .video-textarea {
   font-family: monospace;
   font-size: 12px;
@@ -1056,6 +1225,14 @@ label {
   
   .video-management {
     min-width: auto;
+  }
+  
+  .links-management {
+    min-width: auto;
+  }
+  
+  .link-input-small {
+    min-width: 100px;
   }
 }
 </style>
