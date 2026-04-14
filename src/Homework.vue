@@ -1949,6 +1949,8 @@ const setTutorScore = async (task, manualScore) => {
   max-width: 1000px;
   margin: 0 auto;
   padding: 1rem;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 @media (min-width: 768px) {
@@ -1975,6 +1977,8 @@ const setTutorScore = async (task, manualScore) => {
   margin-bottom: 0.5rem;
   line-height: 1.2;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 @media (min-width: 480px) {
@@ -2020,6 +2024,8 @@ const setTutorScore = async (task, manualScore) => {
 .lesson-info {
   color: var(--text-secondary);
   font-size: 0.85rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2033,6 +2039,14 @@ const setTutorScore = async (task, manualScore) => {
   border-radius: 1rem;
   font-weight: 500;
   font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .deadline {
+    white-space: normal;
+    text-align: center;
+  }
 }
 
 @media (min-width: 768px) {
@@ -2064,6 +2078,8 @@ const setTutorScore = async (task, manualScore) => {
 /* ===== КОНТЕЙНЕР ЗАДАНИЙ ===== */
 .tasks-container {
   margin-bottom: 1.5rem;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 @media (min-width: 768px) {
@@ -2093,6 +2109,9 @@ const setTutorScore = async (task, manualScore) => {
   box-shadow: var(--shadow);
   width: 100%;
   transition: box-shadow var(--transition);
+  overflow-x: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2126,6 +2145,7 @@ const setTutorScore = async (task, manualScore) => {
 .task-meta {
   flex: 1;
   min-width: 0;
+  overflow-x: hidden;
 }
 
 .task-topic {
@@ -2135,6 +2155,8 @@ const setTutorScore = async (task, manualScore) => {
   display: block;
   line-height: 1.4;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2149,6 +2171,7 @@ const setTutorScore = async (task, manualScore) => {
   font-weight: bold;
   display: block;
   margin-top: 0.4rem;
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2166,6 +2189,15 @@ const setTutorScore = async (task, manualScore) => {
   font-weight: bold;
   margin-left: 0.5rem;
   display: inline-block;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .task-part-badge {
+    white-space: normal;
+    display: inline-block;
+    margin-top: 0.3rem;
+  }
 }
 
 .task-status {
@@ -2175,6 +2207,15 @@ const setTutorScore = async (task, manualScore) => {
   font-weight: bold;
   align-self: flex-start;
   text-align: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .task-status {
+    white-space: normal;
+    align-self: stretch;
+    text-align: center;
+  }
 }
 
 @media (min-width: 480px) {
@@ -2220,9 +2261,11 @@ const setTutorScore = async (task, manualScore) => {
 /* ===== КОНТЕНТ ЗАДАНИЯ ===== */
 .task-content {
   margin-bottom: 1.2rem;
+  overflow-x: hidden;
+  width: 100%;
 }
 
-/* Текст задания */
+/* Текст задания - ГЛАВНОЕ ИСПРАВЛЕНИЕ */
 .task-text {
   line-height: 1.6;
   color: var(--text-primary);
@@ -2235,6 +2278,40 @@ const setTutorScore = async (task, manualScore) => {
   -ms-user-select: none;
   cursor: default;
   overflow-x: auto;
+  overflow-y: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+}
+
+/* Принудительный перенос для длинных слов */
+.task-text :deep(*) {
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+}
+
+/* Стили для таблиц внутри текста задания */
+.task-text :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  overflow-x: auto;
+  display: block;
+  -webkit-overflow-scrolling: touch;
+  word-wrap: break-word;
+}
+
+.task-text :deep(table td) {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  vertical-align: top;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2258,21 +2335,6 @@ const setTutorScore = async (task, manualScore) => {
 .task-text :deep(sub) { bottom: -0.25em; }
 .task-text :deep(sup) { top: -0.5em; }
 
-.task-text :deep(table) {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
-  overflow-x: auto;
-  display: block;
-  -webkit-overflow-scrolling: touch;
-}
-
-.task-text :deep(table td) {
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  vertical-align: top;
-}
-
 /* Таблицы заданий */
 .task-table-container {
   margin: 1.2rem 0;
@@ -2295,6 +2357,9 @@ const setTutorScore = async (task, manualScore) => {
 .task-table-container table.with-borders td {
   border: 1px solid var(--border);
   padding: 0.5rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2307,6 +2372,9 @@ const setTutorScore = async (task, manualScore) => {
   padding: 0.5rem;
   vertical-align: top;
   font-size: 0.85rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2368,6 +2436,7 @@ const setTutorScore = async (task, manualScore) => {
 .answer-section {
   margin-top: 1.2rem;
   width: 100%;
+  overflow-x: hidden;
 }
 
 /* Поле ввода */
@@ -2396,6 +2465,8 @@ const setTutorScore = async (task, manualScore) => {
   min-width: 0;
   width: 100%;
   font-family: inherit;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2496,6 +2567,9 @@ const setTutorScore = async (task, manualScore) => {
   border-radius: var(--radius-md);
   border-left: 4px solid var(--success);
   transition: all var(--transition);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  width: 100%;
 }
 
 @media (min-width: 480px) {
@@ -2509,6 +2583,7 @@ const setTutorScore = async (task, manualScore) => {
   color: var(--success);
   font-weight: bold;
   font-size: 1.2rem;
+  flex-shrink: 0;
 }
 
 /* Фидбек ответа */
@@ -2520,6 +2595,8 @@ const setTutorScore = async (task, manualScore) => {
   font-size: 0.9rem;
   width: 100%;
   transition: all var(--transition);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2550,6 +2627,9 @@ const setTutorScore = async (task, manualScore) => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  width: 100%;
 }
 
 @media (min-width: 768px) {
@@ -2564,6 +2644,7 @@ const setTutorScore = async (task, manualScore) => {
 .partial-icon,
 .incorrect-icon {
   font-size: 1.1rem;
+  flex-shrink: 0;
 }
 
 @media (min-width: 768px) {
@@ -2582,17 +2663,24 @@ const setTutorScore = async (task, manualScore) => {
 .user-answer-container {
   width: 100%;
   flex: 1;
+  min-width: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .user-answer-text {
   margin-left: 0.5rem;
   color: #155724;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .user-answer-text.multiline {
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
   background: var(--gray-light);
   padding: 0.8rem;
   border-radius: var(--radius-md);
@@ -2604,6 +2692,10 @@ const setTutorScore = async (task, manualScore) => {
 
 .correct-answer-text {
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  flex: 1;
+  min-width: 0;
 }
 
 /* Кнопка редактирования */
@@ -2615,6 +2707,7 @@ const setTutorScore = async (task, manualScore) => {
   border-radius: var(--radius-sm);
   font-size: 1rem;
   transition: background-color 0.2s;
+  flex-shrink: 0;
 }
 
 @media (min-width: 768px) {
@@ -2634,6 +2727,7 @@ const setTutorScore = async (task, manualScore) => {
   background: var(--gray-light);
   border-radius: var(--radius-md);
   border: 1px dashed #dee2e6;
+  overflow-x: hidden;
 }
 
 .upload-label {
@@ -2677,6 +2771,7 @@ const setTutorScore = async (task, manualScore) => {
 /* Превью изображений */
 .answer-images-preview {
   margin-top: 1rem;
+  overflow-x: hidden;
 }
 
 .images-title {
@@ -2796,6 +2891,7 @@ const setTutorScore = async (task, manualScore) => {
   background-color: var(--gray-light);
   border-radius: var(--radius-md);
   border-left: 4px solid var(--primary);
+  overflow-x: hidden;
 }
 
 .explanation-header {
@@ -2825,12 +2921,15 @@ const setTutorScore = async (task, manualScore) => {
 
 .explanation-content-container {
   margin-top: 0.5rem;
+  overflow-x: hidden;
 }
 
 .explanation-content {
   line-height: 1.6;
   color: #444;
   font-size: 0.85rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2841,6 +2940,8 @@ const setTutorScore = async (task, manualScore) => {
 
 .explanation-content :deep(p) {
   margin-bottom: 0.8rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .explanation-image-container {
@@ -2893,6 +2994,7 @@ const setTutorScore = async (task, manualScore) => {
   font-weight: bold;
   text-align: center;
   font-size: 0.85rem;
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2934,6 +3036,7 @@ const setTutorScore = async (task, manualScore) => {
   background-color: rgba(102, 126, 234, 0.1);
   border-radius: var(--radius-md);
   flex-wrap: wrap;
+  word-wrap: break-word;
 }
 
 @media (min-width: 480px) {
@@ -2981,6 +3084,7 @@ const setTutorScore = async (task, manualScore) => {
   font-weight: 600;
   color: #4a5568;
   font-size: 0.85rem;
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -2998,6 +3102,8 @@ const setTutorScore = async (task, manualScore) => {
   color: white;
   border-radius: var(--radius-lg);
   text-align: center;
+  overflow-x: hidden;
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -3009,6 +3115,7 @@ const setTutorScore = async (task, manualScore) => {
 .tutor-final-assessment h3 {
   margin-bottom: 1rem;
   font-size: 1.1rem;
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -3024,6 +3131,7 @@ const setTutorScore = async (task, manualScore) => {
   margin-bottom: 1rem;
   text-align: center;
   color: var(--text-primary);
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -3054,6 +3162,7 @@ const setTutorScore = async (task, manualScore) => {
   font-weight: bold;
   margin: 1rem 0;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -3177,6 +3286,7 @@ const setTutorScore = async (task, manualScore) => {
   text-align: center;
   border-left: 4px solid var(--success);
   width: 100%;
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -3301,6 +3411,7 @@ const setTutorScore = async (task, manualScore) => {
   background: #ffebee;
   border-radius: var(--radius-md);
   font-size: 0.9rem;
+  word-wrap: break-word;
 }
 
 @media (min-width: 768px) {
@@ -3333,6 +3444,7 @@ const setTutorScore = async (task, manualScore) => {
   border-radius: var(--radius-sm);
   margin: 0.5rem 0;
   font-size: 0.85rem;
+  word-wrap: break-word;
 }
 
 .upload-status-uploading {
@@ -3393,6 +3505,7 @@ body {
   width: 100%;
   min-height: 100vh;
   line-height: 1.4;
+  overflow-x: hidden;
 }
 
 a {
@@ -3404,6 +3517,8 @@ a {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 .topmenu {
@@ -3486,6 +3601,7 @@ a {
   padding: 1rem;
   display: flex;
   justify-content: center;
+  overflow-x: hidden;
 }
 
 @media (min-width: 768px) {
@@ -3514,6 +3630,8 @@ td,
 th,
 table * {
   font-family: Evolventa !important;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Адаптивность для мобильных */
@@ -3558,16 +3676,5 @@ table * {
 
 .task-text ::-moz-selection {
   background: transparent;
-}
-
-.task-text::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1;
-  pointer-events: none;
 }
 </style>
