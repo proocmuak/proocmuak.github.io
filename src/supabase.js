@@ -1,7 +1,7 @@
 // src/supabase.js
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://mltqewxnxinaytavbmds.supabase.co'
+const supabaseUrl = 'https://api.schoolpurto.ru'
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sdHFld3hueGluYXl0YXZibWRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQxNzMyMTYsImV4cCI6MjA2OTc0OTIxNn0.YCH1G-aDCCc_bse_uVhxqBj4slsN-iDiFdoYZ1Qwsm8'
 
 // Клиент Supabase для работы с таблицами
