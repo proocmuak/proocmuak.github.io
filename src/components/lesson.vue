@@ -64,9 +64,7 @@
                   <span class="file-name">Тетрадь {{ index + 1 }}</span>
                   <span class="file-size" v-if="fileSizes.workbooks[index]">{{ fileSizes.workbooks[index] }}</span>
                 </div>
-                <a :href="file" target="_blank" class="download-button">
-                  Скачать
-                </a>
+                  <a :href="getProxyUrl(file)" target="_blank" class="download-button">Скачать</a>
               </div>
             </div>
           </div>
@@ -83,9 +81,7 @@
                   <span class="file-name">Задание {{ index + 1 }}</span>
                   <span class="file-size" v-if="fileSizes.practices[index]">{{ fileSizes.practices[index] }}</span>
                 </div>
-                <a :href="file" target="_blank" class="download-button">
-                  Скачать
-                </a>
+               <a :href="getProxyUrl(file)" target="_blank" class="download-button">Скачать</a>
               </div>
             </div>
           </div>
@@ -336,6 +332,16 @@ const formatFileSize = (bytes) => {
   const i = Math.floor(Math.log(bytes) / Math.log(1024))
   return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
 }
+
+// Функция для подмены ссылок на проксированные
+const getProxyUrl = (url) => {
+  if (!url) return '';
+  // Если ссылка ведет на supabase storage, заменяем её начало на наш прокси
+  if (url.includes('supabase.co/storage/v1/object/public/')) {
+    return url.replace('https://mltqewxnxinaytavbmds.supabase.co/storage/v1/object/public/', '/storage/');
+  }
+  return url;
+};
 
 const showProtectionMessage = () => {
   showMessage.value = true
