@@ -486,6 +486,10 @@ export default {
   },
   created() {
     this.initializeTopics();
+    // Устанавливаем выбранный предмет из пропсов
+    const fullSubjectName = `${this.subject === 'chemistry' ? 'Химия' : 'Биология'} ${this.examType === 'ege' ? 'ЕГЭ' : 'ОГЭ'}`;
+    this.selectedSubject = fullSubjectName;
+    this.handleSubjectChange(this.selectedSubject);
   },
   mounted() {
     this.$nextTick(() => {
@@ -870,7 +874,7 @@ export default {
           const content = this.tableContent[i][j] || '&nbsp;';
           html += `<td style="padding: 8px; border: 1px solid #ddd; min-height: 40px;">${content}</td>`;
         }
-        html += '</tr>';
+        html += '<tr>';
       }
       return html;
     },
@@ -1000,17 +1004,28 @@ export default {
     async uploadImagesToStorage(images, folder) {
       if (!images.length) return [];
       
-      const uploadedUrls = [];
+      const uploadedPaths = [];
       
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !session) throw new Error('Not authenticated');
+        // Определяем папку предмета
+        let subjectFolder;
+        if (this.selectedSubject === 'Химия ЕГЭ' || this.selectedSubject === 'Химия ОГЭ') {
+          subjectFolder = 'chemistry';
+        } else if (this.selectedSubject === 'Биология ЕГЭ' || this.selectedSubject === 'Биология ОГЭ') {
+          subjectFolder = 'biology';
+        } else {
+          subjectFolder = 'other';
+        }
+        
+        // Определяем тип экзамена
+        const examType = this.selectedSubject.includes('ЕГЭ') ? 'ege' : 'oge';
         
         for (const img of images) {
           const fileExt = img.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExt}`;
-          const subjectFolder = this.getSubjectFolderName();
-          const filePath = `tasks/${subjectFolder}/${folder}/${fileName}`;
+          
+          // Сохраняем ТОЛЬКО путь, а не полный URL!
+          const filePath = `task-images/tasks/${subjectFolder}/${examType}/${folder}/${fileName}`;
           
           const { error } = await supabase
             .storage
@@ -1020,17 +1035,16 @@ export default {
               contentType: img.file.type
             });
           
-          if (error) throw error;
+          if (error) {
+            console.error('Upload error:', error);
+            throw error;
+          }
           
-          const { data: { publicUrl } } = supabase
-            .storage
-            .from('task-images')
-            .getPublicUrl(filePath);
-            
-          uploadedUrls.push(publicUrl);
+          // Сохраняем только путь к файлу
+          uploadedPaths.push(filePath);
         }
         
-        return uploadedUrls;
+        return uploadedPaths;
       } catch (error) {
         console.error('Ошибка загрузки:', error);
         throw error;
@@ -1052,16 +1066,16 @@ export default {
       try {
         this.isUploading = true;
         
-        const [textImageUrls, explanationImageUrls] = await Promise.all([
-          this.uploadImagesToStorage(this.uploadedImages, 'text'),
-          this.uploadImagesToStorage(this.explanationImages, 'explanation')
-        ]);
+        // Загрузка изображений - получаем пути, а не URL
+        const textImagePaths = await this.uploadImagesToStorage(this.uploadedImages, 'text');
+        const explanationImagePaths = await this.uploadImagesToStorage(this.explanationImages, 'explanation');
         
         const { taskBank, homeworkTasks } = this.getTableNames();
         
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
         
+        // Сохраняем задание с путями к изображениям
         const { data, error } = await supabase
           .from(taskBank)
           .insert([{
@@ -1074,8 +1088,8 @@ export default {
             number: this.newTask.number,
             points: this.newTask.points,
             difficulty: parseInt(this.newTask.difficulty),
-            images: textImageUrls.length ? textImageUrls : null,
-            image_explanation: explanationImageUrls.length ? explanationImageUrls : null,
+            images: textImagePaths.length ? textImagePaths : null,
+            image_explanation: explanationImagePaths.length ? explanationImagePaths : null,
             has_table: this.newTask.has_table,
             table_data: this.newTask.table_data,
           }])

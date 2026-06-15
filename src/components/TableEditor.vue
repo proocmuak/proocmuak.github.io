@@ -115,8 +115,8 @@
             <div v-if="newRow.workbook && newRow.workbook.length > 0" class="files-preview">
               <h4>Загруженные тетради:</h4>
               <ul>
-                <li v-for="(url, index) in newRow.workbook" :key="index" class="file-item">
-                  <a :href="url" target="_blank" class="file-link">Тетрадь {{ index + 1 }}</a>
+                <li v-for="(filePath, index) in newRow.workbook" :key="index" class="file-item">
+                  <a :href="getProxyUrl(filePath)" target="_blank" class="file-link">Тетрадь {{ index + 1 }}</a>
                   <button @click="removeWorkbook(index)" class="btn-remove-small">×</button>
                 </li>
               </ul>
@@ -136,8 +136,8 @@
             <div v-if="newRow.practice && newRow.practice.length > 0" class="files-preview">
               <h4>Загруженные задания:</h4>
               <ul>
-                <li v-for="(url, index) in newRow.practice" :key="index" class="file-item">
-                  <a :href="url" target="_blank" class="file-link">Задание {{ index + 1 }}</a>
+                <li v-for="(filePath, index) in newRow.practice" :key="index" class="file-item">
+                  <a :href="getProxyUrl(filePath)" target="_blank" class="file-link">Задание {{ index + 1 }}</a>
                   <button @click="removePractice(index)" class="btn-remove-small">×</button>
                 </li>
               </ul>
@@ -189,13 +189,13 @@
                 <td class="table-cell">
                   <div class="video-management">
                     <div class="video-text-input">
-        <textarea
-          :value="getVideoTextForRow(row)"
-          @input="(e) => updateRowVideosFromText(row, e.target.value)"
-          placeholder="Вставьте iframe коды, разделяя пустой строкой"
-          rows="4"
-          class="table-textarea video-textarea"
-        ></textarea>
+                      <textarea
+                        :value="getVideoTextForRow(row)"
+                        @input="(e) => updateRowVideosFromText(row, e.target.value)"
+                        placeholder="Вставьте iframe коды, разделяя пустой строкой"
+                        rows="4"
+                        class="table-textarea video-textarea"
+                      ></textarea>
                     </div>
                     <div v-if="row.video && row.video.length > 0" class="files-list-compact">
                       <div class="video-count">Видео: {{ row.video.length }}</div>
@@ -226,7 +226,7 @@
                       <button @click="addAlternativeLinkToRow(row)" class="btn-add-link-small">+ Добавить ссылку</button>
                     </div>
                   </div>
-                 </td>
+                </td>
                 
                 <!-- Тетради -->
                 <td class="table-cell">
@@ -239,13 +239,13 @@
                     multiple
                   />
                   <div v-if="row.workbook && row.workbook.length > 0" class="files-list-compact">
-                    <div v-for="(url, index) in row.workbook" :key="index" class="file-item-compact">
-                      <a :href="url" target="_blank" class="file-link">📘</a>
+                    <div v-for="(filePath, index) in row.workbook" :key="index" class="file-item-compact">
+                      <a :href="getProxyUrl(filePath)" target="_blank" class="file-link">📘</a>
                       <span class="file-tooltip">Тетрадь {{ index + 1 }}</span>
                       <button @click="removeWorkbookFromRow(row, index)" class="btn-remove-small">×</button>
                     </div>
                   </div>
-                 </td>
+                </td>
                 
                 <!-- Практика -->
                 <td class="table-cell">
@@ -258,17 +258,17 @@
                     multiple
                   />
                   <div v-if="row.practice && row.practice.length > 0" class="files-list-compact">
-                    <div v-for="(url, index) in row.practice" :key="index" class="file-item-compact">
-                      <a :href="url" target="_blank" class="file-link">📝</a>
+                    <div v-for="(filePath, index) in row.practice" :key="index" class="file-item-compact">
+                      <a :href="getProxyUrl(filePath)" target="_blank" class="file-link">📝</a>
                       <span class="file-tooltip">Задание {{ index + 1 }}</span>
                       <button @click="removePracticeFromRow(row, index)" class="btn-remove-small">×</button>
                     </div>
                   </div>
-                 </td>
+                </td>
                 
                 <td class="table-cell actions-cell">
                   <button @click="deleteRow(row[primaryKey])" class="btn-delete">Удалить</button>
-                 </td>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -294,6 +294,40 @@
 import { ref, onMounted } from 'vue'
 import { supabase } from '../supabase.js'
 import FileUploader from './FileUploader.vue'
+
+// === Конфигурация прокси ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+}
+
+// Функция для получения прокси-URL
+const getProxyUrl = (filePath) => {
+  if (!filePath) return ''
+  
+  // Если это уже полный URL
+  if (filePath.startsWith('http')) {
+    // Если это старый URL Supabase, конвертируем в прокси
+    if (filePath.includes('supabase.co')) {
+      const match = filePath.match(/\/storage\/v1\/object\/public\/(.+)$/)
+      if (match) {
+        return `${PROXY_CONFIG.baseUrl}/${match[1]}`
+      }
+    }
+    return filePath
+  }
+  
+  // Используем прокси
+  if (PROXY_CONFIG.enabled) {
+    return `${PROXY_CONFIG.baseUrl}/${filePath}`
+  }
+  
+  return filePath
+}
 
 const props = defineProps({
   tableTitle: {
@@ -326,13 +360,6 @@ const error = ref(null)
 const done = ref(false)
 
 // Утилиты
-const formatBytes = (n) => {
-  if (n === 0) return "0 B"
-  const k = 1024, units = ["B", "KB", "MB", "GB", "TB"]
-  const i = Math.floor(Math.log(n) / Math.log(k))
-  return `${(n / Math.pow(k, i)).toFixed(2)} ${units[i]}`
-}
-
 const getDefaultValue = (fieldType) => {
   switch (fieldType) {
     case 'number': return 0
@@ -347,26 +374,19 @@ const getDefaultValue = (fieldType) => {
 const extractIframesFromText = (text) => {
   if (!text) return []
   
-  // Разделяем на блоки по пустым строкам
   const blocks = text.split(/\n\s*\n/).filter(block => block.trim())
-  
   const iframes = []
   
   blocks.forEach(block => {
     const trimmedBlock = block.trim()
-    
-    // Ищем iframe теги в блоке
     const iframeRegex = /<iframe[\s\S]*?<\/iframe>/gi
     const foundIframes = trimmedBlock.match(iframeRegex)
     
     if (foundIframes && foundIframes.length > 0) {
-      // Добавляем все найденные iframe
       iframes.push(...foundIframes)
     } else if (trimmedBlock.startsWith('<iframe') && !trimmedBlock.includes('</iframe>')) {
-      // Если iframe не закрыт, добавляем закрывающий тег
       iframes.push(trimmedBlock + '</iframe>')
     } else if (trimmedBlock) {
-      // Если это просто URL, создаем iframe
       const urlMatch = trimmedBlock.match(/(https?:\/\/[^\s]+)/)
       if (urlMatch) {
         iframes.push(`<iframe src="${urlMatch[1]}" width="640" height="360" frameborder="0" allowfullscreen></iframe>`)
@@ -454,12 +474,12 @@ const processVideoTextInput = () => {
   newRow.value.video = iframes
 }
 
-const handleWorkbooksUploaded = (urls) => {
-  newRow.value.workbook = [...(newRow.value.workbook || []), ...urls]
+const handleWorkbooksUploaded = (paths) => {
+  newRow.value.workbook = [...(newRow.value.workbook || []), ...paths]
 }
 
-const handlePracticesUploaded = (urls) => {
-  newRow.value.practice = [...(newRow.value.practice || []), ...urls]
+const handlePracticesUploaded = (paths) => {
+  newRow.value.practice = [...(newRow.value.practice || []), ...paths]
 }
 
 const removeVideo = (index) => {
@@ -602,11 +622,10 @@ const updateRowVideosFromText = (row, text) => {
   const iframes = extractIframesFromText(text)
   row.video = iframes
   
-  // Используем debounce для избежания слишком частых обновлений
   if (updateTimeout) clearTimeout(updateTimeout)
   updateTimeout = setTimeout(() => {
     updateRow(row)
-  }, 1000) // Обновляем через 1 секунду после последнего изменения
+  }, 1000)
 }
 
 const removeRowVideo = (row, index) => {
@@ -615,19 +634,16 @@ const removeRowVideo = (row, index) => {
 }
 
 // Функции для работы с файлами в существующих записях
-const updateRowFiles = async (row, fieldName, urls) => {
+const updateRowFiles = async (row, fieldName, paths) => {
   try {
-    // Создаем копию текущего массива файлов и добавляем новые
     const currentFiles = Array.isArray(row[fieldName]) ? [...row[fieldName]] : []
-    const updatedFiles = [...currentFiles, ...urls]
+    const updatedFiles = [...currentFiles, ...paths]
     
-    // Обновляем локальное состояние
     const updatedRow = {
       ...row,
       [fieldName]: updatedFiles
     }
     
-    // Обновляем в базе данных
     const cleanedData = prepareDataForDb(updatedRow)
     const { error } = await supabase
       .from(props.tableName)
@@ -636,7 +652,6 @@ const updateRowFiles = async (row, fieldName, urls) => {
 
     if (error) throw error
     
-    // Обновляем локальный массив rows
     const index = rows.value.findIndex(r => r[props.primaryKey] === row[props.primaryKey])
     if (index !== -1) {
       rows.value[index] = updatedRow
@@ -739,6 +754,7 @@ const GoBackToEditPage = () => {
 </script>
 
 <style scoped>
+/* Все стили остаются без изменений */
 .editor-container {
   position: absolute;
   top: 0;
@@ -859,7 +875,6 @@ label {
   resize: vertical;
 }
 
-/* Стили для альтернативных ссылок */
 .links-input-container {
   border: 1px solid #ddd;
   border-radius: 4px;

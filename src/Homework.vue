@@ -3,144 +3,178 @@ import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { supabase } from './supabase.js'
 import DOMPurify from 'dompurify'
 
-// === список заданий с учётом порядка ===
+// === Конфигурация прокси сервера ===
+// Позволяет принудительно направлять запросы к Storage через ваш сервер/прокси
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const PROXY_CONFIG = {
+  enabled: true,
+  // На локалке стучимся напрямую к твоему боевому серверу,
+  // а на проде используем относительный путь, чтобы всё работало внутри одного домена
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+}
+
+// === Список заданий с учётом порядка ===
 const ORDERED_TASKS = {
   chemistry: [6, 7, 8, 14, 15, 22, 23, 24],
   biology: [2, 6, 8, 10, 12, 14, 16, 19, 20]
-};
+}
 
-// === нормализация номера ===
+// === Нормализация номера ===
 function normalizeTaskNumber(taskNumber) {
-  if (taskNumber == null) return null;
-  const s = String(taskNumber).trim();
-  const m = s.match(/\d+/);
-  if (!m) return null;
-  const n = parseInt(m[0], 10);
-  return Number.isNaN(n) ? null : n;
+  if (taskNumber == null) return null
+  const s = String(taskNumber).trim()
+  const m = s.match(/\d+/)
+  if (!m) return null
+  const n = parseInt(m[0], 10)
+  return Number.isNaN(n) ? null : n
 }
 
-// === короткий subject из названия таблицы ===
+// === Короткий subject из названия таблицы ===
 function shortSubjectFromProgressTable(progressTableName) {
-  const s = String(progressTableName).toLowerCase();
-  if (s.includes('chemistry')) return 'chemistry';
-  if (s.includes('biology')) return 'biology';
-  return null;
+  const s = String(progressTableName).toLowerCase()
+  if (s.includes('chemistry')) return 'chemistry'
+  if (s.includes('biology')) return 'biology'
+  return null
 }
 
-// === вспомогательные функции ===
+// === Вспомогательные функции ===
 function splitAnswerVariantsRaw(raw) {
-  if (!raw) return [];
+  if (!raw) return []
   return String(raw)
     .split(/[/]|ИЛИ/i)
     .map(s => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
 }
 
 function isDigitSequence(s) {
-  return /^[0-9]+$/.test(s);
+  return /^[0-9]+$/.test(s)
 }
 
 function splitNumericElements(s) {
-  return s.split('').filter(ch => /\d/.test(ch));
+  return s.split('').filter(ch => /\d/.test(ch))
 }
 
 function normalizeText(s) {
-  return s.toLowerCase().replace(/\s+/g, '');
+  return s.toLowerCase().replace(/\s+/g, '')
 }
 
-// === проверка числовых ответов ===
+// === Проверка числовых ответов ===
 function checkNumericAnswer(userRaw, variant, points, orderMatters) {
-  const userElems = splitNumericElements(userRaw);
-  const correctElems = splitNumericElements(variant);
+  const userElems = splitNumericElements(userRaw)
+  const correctElems = splitNumericElements(variant)
 
   if (orderMatters) {
-    // порядок обязателен
-    let matches = 0;
+    let matches = 0
     for (let i = 0; i < correctElems.length; i++) {
-      if (userElems[i] === correctElems[i]) matches++;
+      if (userElems[i] === correctElems[i]) matches++
     }
-    const mistakes = correctElems.length - matches;
+    const mistakes = correctElems.length - matches
     if (mistakes === 0) {
-      return { correct: true, partial: false };
+      return { correct: true, partial: false }
     }
     if (points === 2 && mistakes === 1) {
-      return { correct: false, partial: true };
+      return { correct: false, partial: true }
     }
   } else {
     if (points === 1 && correctElems.length === userElems.length) {
-      let matches = 0;
+      let matches = 0
       for (let i = 0; i < correctElems.length; i++) {
-        if (userElems[i] === correctElems[i]) matches++;
+        if (userElems[i] === correctElems[i]) matches++
       }
       if (matches === correctElems.length) {
-        return { correct: true, partial: false };
+        return { correct: true, partial: false }
       }
     }
 
     if (points === 2) {
-      // порядок НЕ важен
-      const sortedCorrect = [...correctElems].sort();
-      const sortedUser = [...userElems].sort();
+      const sortedCorrect = [...correctElems].sort()
+      const sortedUser = [...userElems].sort()
 
       if (JSON.stringify(sortedCorrect) === JSON.stringify(sortedUser)) {
-        return { correct: true, partial: false };
+        return { correct: true, partial: false }
       }
 
-      // частичное совпадение
-      const matches = userElems.filter(e => correctElems.includes(e)).length;
+      const matches = userElems.filter(e => correctElems.includes(e)).length
       if (
         ((matches === userElems.length || matches === correctElems.length) &&
           Math.abs(correctElems.length - userElems.length) === 1) ||
         Math.abs(matches - correctElems.length) === 1
       ) {
-        return { correct: false, partial: true };
+        return { correct: false, partial: true }
       }
     }
   }
 
-  return { correct: false, partial: false };
+  return { correct: false, partial: false }
 }
 
-// === проверка ответа (адаптированная для компонента) ===
+// === Проверка ответа ===
 function checkAnswerComponent(userAnswerRaw, correctAnswerRaw, points, shortSubject, taskNumberRaw) {
-  const userRaw = userAnswerRaw == null ? '' : String(userAnswerRaw).trim();
+  const userRaw = userAnswerRaw == null ? '' : String(userAnswerRaw).trim()
   if (!userRaw) {
-    return { score: 0, isCorrect: false, isPartiallyCorrect: false };
+    return { score: 0, isCorrect: false, isPartiallyCorrect: false }
   }
 
-  const variants = splitAnswerVariantsRaw(correctAnswerRaw);
-  let anyCorrect = false;
-  let anyPartial = false;
+  const variants = splitAnswerVariantsRaw(correctAnswerRaw)
+  let anyCorrect = false
+  let anyPartial = false
 
-  const taskNum = normalizeTaskNumber(taskNumberRaw);
-  let orderMatters = false;
+  const taskNum = normalizeTaskNumber(taskNumberRaw)
+  let orderMatters = false
   if (points === 2 && shortSubject && taskNum != null) {
-    orderMatters = ORDERED_TASKS[shortSubject]?.includes(taskNum) || false;
+    orderMatters = ORDERED_TASKS[shortSubject]?.includes(taskNum) || false
   }
 
   for (const variant of variants) {
     if (isDigitSequence(variant) && isDigitSequence(userRaw)) {
-      const { correct, partial } = checkNumericAnswer(userRaw, variant, points, orderMatters);
+      const { correct, partial } = checkNumericAnswer(userRaw, variant, points, orderMatters)
       if (correct) {
-        anyCorrect = true;
-        break;
+        anyCorrect = true
+        break
       }
       if (partial) {
-        anyPartial = true;
+        anyPartial = true
       }
     } else {
       if (normalizeText(userRaw) === normalizeText(variant)) {
-        anyCorrect = true;
-        break;
+        anyCorrect = true
+        break
       }
     }
   }
 
-  const isCorrect = anyCorrect;
-  const isPartiallyCorrect = !isCorrect && anyPartial;
-  const score = isCorrect ? points : isPartiallyCorrect ? 1 : 0;
+  const isCorrect = anyCorrect
+  const isPartiallyCorrect = !isCorrect && anyPartial
+  const score = isCorrect ? points : isPartiallyCorrect ? 1 : 0
 
-  return { score, isCorrect, isPartiallyCorrect };
+  return { score, isCorrect, isPartiallyCorrect }
+}
+
+// === Функция для конвертации старых URL в пути ===
+function extractPathFromUrl(url) {
+  if (!url || typeof url !== 'string') return url
+  // Если это уже путь (не содержит http), возвращаем как есть
+  if (!url.startsWith('http')) return url
+  
+  // Извлекаем путь из полного URL Supabase
+  const patterns = [
+    /\/storage\/v1\/object\/public\/task-images\/(.+)$/,
+    /\/storage\/v1\/object\/public\/answers\/(.+)$/,
+    /\/task-images\/(.+)$/,
+    /\/answers\/(.+)$/
+  ]
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern)
+    if (match) {
+      return match[1]
+    }
+  }
+  
+  return url
 }
 
 export default {
@@ -161,30 +195,27 @@ export default {
     const showImageModal = ref(false)
     const selectedImage = ref('')
     const showAnswers = ref(false)
-    const subject = ref('') // chemistry или biology
-    const examType = ref('') // ege или oge
+    const subject = ref('')
+    const examType = ref('')
     const homeworkId = ref('')
     const editInput = ref(null)
-    const studentInfo = ref(null) // Информация о студенте для режима куратора
+    const studentInfo = ref(null)
 
     // Получаем параметры из URL
     const getUrlParams = () => {
       const params = new URLSearchParams(window.location.search)
-      const subjectParam = params.get('subject') // chemistry или biology
-      const examTypeParam = params.get('exam_type') // ege или oge
+      const subjectParam = params.get('subject')
+      const examTypeParam = params.get('exam_type')
       
-      // Если exam_type не передан, пытаемся определить из старого формата
       let finalSubject = subjectParam
       let finalExamType = examTypeParam
       
       if (!finalExamType && subjectParam) {
-        // Старый формат: subject=chemistry_ege
         if (subjectParam.includes('_')) {
           const parts = subjectParam.split('_')
           finalSubject = parts[0]
           finalExamType = parts[1]
         } else {
-          // По умолчанию ЕГЭ для обратной совместимости
           finalExamType = 'ege'
         }
       }
@@ -201,46 +232,27 @@ export default {
       }
     }
 
-    // Функция для получения tutor_name
     const getTutorName = async (studentId) => {
       try {
-        console.log('🔍 Поиск tutor для student_id:', studentId);
-        
-        // Ищем в таблице students в столбце tutor
         const { data, error } = await supabase
           .from('students')
           .select('tutor')
           .eq('user_id', studentId)
-          .single();
+          .single()
 
-        if (error) {
-          console.error('❌ Ошибка запроса tutor из students:', error);
-          throw error;
-        }
-        
-        console.log('✅ Найденные данные из students:', data);
-        console.log('📝 tutor:', data?.tutor);
-        
-        return data?.tutor || null;
+        if (error) throw error
+        return data?.tutor || null
       } catch (err) {
-        console.error('❌ Ошибка получения tutor:', err);
-        return null;
+        console.error('Ошибка получения tutor:', err)
+        return null
       }
     }
 
-    // Функция создания уведомления (только при завершении домашнего задания)
     const createHomeworkNotification = async (score) => {
-      if (!user_id.value) {
-        console.error('❌ user_id не установлен');
-        return;
-      }
+      if (!user_id.value) return
 
       try {
-        console.log('👤 Создание уведомления для user_id:', user_id.value);
-        
-        const tutorName = await getTutorName(user_id.value);
-        
-        console.log('🎯 Полученный tutor:', tutorName);
+        const tutorName = await getTutorName(user_id.value)
         
         const notificationData = {
           student_id: user_id.value,
@@ -250,25 +262,17 @@ export default {
           score: score,
           is_read: false,
           tutor_name: tutorName
-        };
-
-        console.log('📨 Данные для уведомления:', notificationData);
+        }
 
         const { error } = await supabase
           .from('homework_notifications')
           .upsert(notificationData, {
             onConflict: 'tutor_name,student_id,homework_id'
-          });
+          })
 
-        if (error) {
-          console.error('❌ Ошибка сохранения уведомления:', error);
-          throw error;
-        }
-        
-        console.log('✅ Уведомление создано успешно');
-        
+        if (error) throw error
       } catch (err) {
-        console.error('❌ Ошибка создания уведомления:', err);
+        console.error('Ошибка создания уведомления:', err)
       }
     }
 
@@ -284,18 +288,14 @@ export default {
       deadline: null
     }
 
-    // Получение ID текущего пользователя
     const getCurrentUserId = async () => {
       if (urlParams.view_mode === 'tutor' && urlParams.student_id) {
-        return urlParams.student_id;
+        return urlParams.student_id
       }
       
       try {
         const { data: { user }, error: authError } = await supabase.auth.getUser()
-        if (authError) {
-          console.error('Ошибка получения пользователя:', authError)
-          return null
-        }
+        if (authError) return null
         return user?.id || null
       } catch (err) {
         console.error('Ошибка получения ID пользователя:', err)
@@ -303,22 +303,13 @@ export default {
       }
     }
 
-    const isViewMode = computed(() => {
-      return urlParams.view_mode === 'tutor';
-    });
+    const isViewMode = computed(() => urlParams.view_mode === 'tutor')
+    const isTutorMode = computed(() => urlParams.view_mode === 'tutor')
 
-    const isTutorMode = computed(() => {
-      return urlParams.view_mode === 'tutor';
-    });
-
-    // Метод для загрузки информации о студенте (ФИО)
     const loadStudentInfo = async () => {
       if (!user_id.value || !isTutorMode.value) return
       
       try {
-        console.log('👤 Загрузка ФИО студента для user_id:', user_id.value)
-        
-        // Запрос к таблице students для получения first_name и last_name
         const { data, error } = await supabase
           .from('students')
           .select('first_name, last_name')
@@ -326,8 +317,6 @@ export default {
           .single()
 
         if (error) {
-          console.error('❌ Ошибка загрузки информации о студенте:', error)
-          // Если в таблице students нет данных, попробуем получить из других источников
           const { data: personalityData } = await supabase
             .from('personalities')
             .select('full_name')
@@ -335,30 +324,23 @@ export default {
             .single()
             
           if (personalityData) {
-            studentInfo.value = { 
-              first_name: personalityData.full_name,
-              last_name: ''
-            }
+            studentInfo.value = { first_name: personalityData.full_name, last_name: '' }
           } else {
             studentInfo.value = { first_name: 'Не указано', last_name: '' }
           }
         } else {
           studentInfo.value = data
-          console.log('✅ ФИО студента:', data)
         }
-        
       } catch (err) {
-        console.error('❌ Ошибка при загрузке информации о студенте:', err)
+        console.error('Ошибка при загрузке информации о студенте:', err)
         studentInfo.value = { first_name: 'Ошибка загрузки', last_name: '' }
       }
     }
 
-    // Получение названий таблиц на основе subject и examType
     const getTableNames = () => {
       if (!subject.value || !examType.value) {
         throw new Error('Не указаны subject и exam_type')
       }
-      
       const baseTable = `${subject.value}_${examType.value}`
       return {
         homeworkList: `${baseTable}_homework_list`,
@@ -369,49 +351,39 @@ export default {
       }
     }
 
-    // Метод для перенаправления в меню
     async function redirectToMenu() {
       try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        
-        if (userError) throw userError;
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+        if (userError) throw userError
         if (!user) {
-          window.location.href = '/login.html';
-          return;
+          window.location.href = '/login.html'
+          return
         }
 
         const { data: personalityData, error: personalityError } = await supabase
           .from('personalities')
           .select('role')
           .eq('user_id', user.id)
-          .single();
+          .single()
 
-        if (personalityError) throw personalityError;
+        if (personalityError) throw personalityError
         if (!personalityData) {
-          alert('Профиль пользователя не найден');
-          return;
+          alert('Профиль пользователя не найден')
+          return
         }
 
         switch(personalityData.role) {
-          case 'student':
-            window.location.href = '/student_menu.html';
-            break;
-          case 'teacher':
-            window.location.href = '/teacher_menu.html';
-            break;
-          case 'tutor':
-            window.location.href = '/tutor_menu.html';
-            break;
-          default:
-            alert('Неизвестная роль пользователя');
+          case 'student': window.location.href = '/student_menu.html'; break
+          case 'teacher': window.location.href = '/teacher_menu.html'; break
+          case 'tutor': window.location.href = '/tutor_menu.html'; break
+          default: alert('Неизвестная роль пользователя')
         }
       } catch (err) {
-        console.error('Ошибка при перенаправлении:', err);
-        alert('Произошла ошибка при переходе на главную');
+        console.error('Ошибка при перенаправлении:', err)
+        alert('Произошла ошибка при переходе на главную')
       }
     }
 
-    // Санитизация HTML
     const sanitizeHtml = (html) => {
       if (!html) return ''
       return DOMPurify.sanitize(html, {
@@ -420,543 +392,510 @@ export default {
       })
     }
 
-    // Форматирование текста с абзацами
     const formatTextWithParagraphs = (text) => {
-      if (!text) return '';
+      if (!text) return ''
+      const hasComplexHTML = /<(?!\/?(sub|sup|br|strong|em|p)\b)[^>]+>/i.test(text)
+      if (hasComplexHTML) return text
       
-      // Если текст уже содержит HTML-теги (кроме простых тегов форматирования), возвращаем как есть
-      const hasComplexHTML = /<(?!\/?(sub|sup|br|strong|em|p)\b)[^>]+>/i.test(text);
-      
-      if (hasComplexHTML) {
-        return text;
-      }
-      
-      // Обрабатываем только простой текст без сложной HTML-разметки
       let formattedText = text
         .trim()
         .replace(/\r\n/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
         .replace(/\n\n/g, '</p><p>')
-        .replace(/\n/g, '<br>');
+        .replace(/\n/g, '<br>')
       
       if (!formattedText.startsWith('<p>') && !formattedText.includes('</p>')) {
-        formattedText = `<p>${formattedText}</p>`;
+        formattedText = `<p>${formattedText}</p>`
       }
-      
-      return formattedText;
+      return formattedText
     }
 
-    // Форматирование текста ответа
     const formatAnswerText = (text) => {
-      if (!text) return '';
-      
-      let formattedText = String(text);
-      
-      // Обработка химических формул (например, H2O → H₂O)
-      formattedText = formattedText.replace(/([A-Za-z])(\d+)/g, '$1<sub>$2</sub>');
-      
-      // Обработка степеней (например, x^2 → x²)
-      formattedText = formattedText.replace(/(\w)\^(\d+)/g, '$1<sup>$2</sup>');
-      
-      // Обработка специальных тегов [sub] и [sup]
-      formattedText = formattedText.replace(/\[sub\](.*?)\[\/sub\]/g, '<sub>$1</sub>');
-      formattedText = formattedText.replace(/\[sup\](.*?)\[\/sup\]/g, '<sup>$1</sup>');
-      
-      // Переносы строк
-      formattedText = formattedText.replace(/\n/g, '<br>');
-      
-      return formattedText;
+      if (!text) return ''
+      let formattedText = String(text)
+      formattedText = formattedText.replace(/([A-Za-z])(\d+)/g, '$1<sub>$2</sub>')
+      formattedText = formattedText.replace(/(\w)\^(\d+)/g, '$1<sup>$2</sup>')
+      formattedText = formattedText.replace(/\[sub\](.*?)\[\/sub\]/g, '<sub>$1</sub>')
+      formattedText = formattedText.replace(/\[sup\](.*?)\[\/sup\]/g, '<sup>$1</sup>')
+      formattedText = formattedText.replace(/\n/g, '<br>')
+      return formattedText
     }
 
-    // Получение текста задания без таблиц
     const getTaskTextWithoutTables = (task) => {
-      if (!task.text) return '';
-      
-      // Если есть табличные данные в отдельном поле, показываем текст без таблиц
+      if (!task.text) return ''
       if (task.has_table && task.table_data) {
-        return formatTextWithParagraphs(task.text.replace(/<table[\s\S]*?<\/table>/gi, ''));
+        return formatTextWithParagraphs(task.text.replace(/<table[\s\S]*?<\/table>/gi, ''))
       }
-      
-      // Если это HTML-таблица в тексте, возвращаем весь текст
-      return formatTextWithParagraphs(task.text);
+      return formatTextWithParagraphs(task.text)
     }
 
-    // Получение пояснения с поддержкой изображений
-    const getExplanationContent = (task) => {
-      let content = '';
-      
-      // Добавляем текстовое пояснение с абзацами
-      if (task.explanation) {
-        content += formatTextWithParagraphs(task.explanation);
-      }
-      
-      // Добавляем изображения пояснения если есть (обрабатываем массив)
-      if (task.image_explanation && Array.isArray(task.image_explanation)) {
-        task.image_explanation.forEach(imagePath => {
-          if (typeof imagePath === 'string') {
-            const imageUrl = getImageUrl(imagePath);
-            content += `<div class="explanation-image-container">
-              <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
-            </div>`;
-          }
-        });
-      } else if (typeof task.image_explanation === 'string') {
-        // Обработка для случая, когда image_explanation - строка
-        const imageUrl = getImageUrl(task.image_explanation);
-        content += `<div class="explanation-image-container">
-          <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
-        </div>`;
-      }
-      
-      return content;
-    }
-
-    // Получение URL изображения
+    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: получение URL изображения задания через прокси ===
     const getImageUrl = (imagePath) => {
-      if (!imagePath) return '';
-      if (typeof imagePath !== 'string') return '';
-      if (imagePath.startsWith('http')) return imagePath;
+      if (!imagePath) return ''
       
+      // Обработка строки
+      let path = String(imagePath)
+      
+      // Если это абсолютный URL
+      if (path.startsWith('http')) {
+        // Если это старый URL Supabase, конвертируем в проксированный
+        if (path.includes('supabase.co')) {
+          const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/)
+          if (match) {
+            return `${PROXY_CONFIG.baseUrl}/task-images/${match[1]}`
+          }
+        }
+        return path
+      }
+      
+      // Очищаем путь от возможных префиксов
+      let cleanPath = path
+      if (cleanPath.startsWith('task-images/')) {
+        cleanPath = cleanPath.replace('task-images/', '')
+      }
+      
+      // Всегда используем прокси, если он включён
+      if (PROXY_CONFIG.enabled) {
+        return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`
+      }
+      
+      // Fallback только если прокси выключен
       try {
         const { data: { publicUrl } } = supabase
           .storage
           .from('task-images')
-          .getPublicUrl(imagePath);
-        return publicUrl;
+          .getPublicUrl(cleanPath)
+        return publicUrl
       } catch (err) {
-        console.error('Ошибка получения URL изображения:', err);
-        return '';
+        console.error('Ошибка получения URL изображения:', err)
+        return ''
       }
     }
 
-    // Получение URL изображения ответа
+    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: получение URL изображения ответа через прокси ===
     const getAnswerImageUrl = (imagePath) => {
-      if (!imagePath) return '';
-      if (imagePath.startsWith('http')) return imagePath;
+      if (!imagePath) return ''
       
+      // Обработка строки
+      let path = String(imagePath)
+      
+      // Если это абсолютный URL
+      if (path.startsWith('http')) {
+        // Если это старый URL Supabase, конвертируем в проксированный
+        if (path.includes('supabase.co')) {
+          const match = path.match(/\/storage\/v1\/object\/public\/answers\/(.+)$/)
+          if (match) {
+            return `${PROXY_CONFIG.baseUrl}/answers/${match[1]}`
+          }
+        }
+        return path
+      }
+      
+      // Очищаем путь от возможных префиксов
+      let cleanPath = path
+      if (cleanPath.startsWith('answers/')) {
+        cleanPath = cleanPath.replace('answers/', '')
+      }
+      
+      // Всегда используем прокси, если он включён
+      if (PROXY_CONFIG.enabled) {
+        return `${PROXY_CONFIG.baseUrl}/answers/${cleanPath}`
+      }
+      
+      // Fallback только если прокси выключен
       try {
         const { data: { publicUrl } } = supabase
           .storage
           .from('answers')
-          .getPublicUrl(imagePath);
-        return publicUrl;
+          .getPublicUrl(cleanPath)
+        return publicUrl
       } catch (err) {
-        console.error('Ошибка получения URL изображения ответа:', err);
-        return '';
+        console.error('Ошибка получения URL изображения ответа:', err)
+        return ''
       }
     }
 
-    // Загрузка изображения ответа
+    const getExplanationContent = (task) => {
+      let content = ''
+      if (task.explanation) {
+        content += formatTextWithParagraphs(task.explanation)
+      }
+      
+      if (task.image_explanation && Array.isArray(task.image_explanation)) {
+        task.image_explanation.forEach(imagePath => {
+          if (typeof imagePath === 'string') {
+            const imageUrl = getImageUrl(imagePath)
+            content += `<div class="explanation-image-container">
+              <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
+            </div>`
+          }
+        })
+      } else if (typeof task.image_explanation === 'string') {
+        const imageUrl = getImageUrl(task.image_explanation)
+        content += `<div class="explanation-image-container">
+          <img src="${imageUrl}" alt="Пояснение к заданию" class="explanation-image">
+        </div>`
+      }
+      return content
+    }
+
+    // === Загрузка изображения ответа (сохраняем только путь, не URL) ===
     const uploadAnswerImage = async (task, file) => {
-      if (!user_id.value) return null;
-
+      if (!user_id.value) return null
       try {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${user_id.value}/${task.task_id}/${Date.now()}.${fileExt}`;
-
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${user_id.value}/${task.task_id}/${Date.now()}.${fileExt}`
         const { error: uploadError } = await supabase
           .storage
           .from('answers')
-          .upload(fileName, file);
+          .upload(fileName, file)
 
-        if (uploadError) throw uploadError;
-
-        return fileName;
+        if (uploadError) throw uploadError
+        return fileName // Возвращаем ТОЛЬКО путь
       } catch (err) {
-        console.error('Ошибка загрузки изображения:', err);
-        error.value = 'Ошибка загрузки изображения: ' + err.message;
-        return null;
+        console.error('Ошибка загрузки изображения:', err)
+        error.value = 'Ошибка загрузки изображения: ' + err.message
+        return null
       }
     }
 
-    // Удаление изображения ответа
     const deleteAnswerImage = async (imagePath) => {
       try {
         const { error: deleteError } = await supabase
           .storage
           .from('answers')
-          .remove([imagePath]);
-
-        if (deleteError) throw deleteError;
+          .remove([imagePath])
+        if (deleteError) throw deleteError
       } catch (err) {
-        console.error('Ошибка удаления изображения:', err);
+        console.error('Ошибка удаления изображения:', err)
       }
     }
 
-    // Начать редактирование ответа
     const startEdit = (task) => {
-      task.isEditing = true;
-      task.editAnswerInput = task.userAnswer || '';
-      
+      task.isEditing = true
+      task.editAnswerInput = task.userAnswer || ''
       nextTick(() => {
-        const input = document.querySelector(`.task-item[data-task-id="${task.task_id}"] .answer-input, .task-item[data-task-id="${task.task_id}"] .answer-textarea`);
+        const input = document.querySelector(`.task-item[data-task-id="${task.task_id}"] .answer-input, .task-item[data-task-id="${task.task_id}"] .answer-textarea`)
         if (input) {
-          input.focus();
-          input.select();
+          input.focus()
+          input.select()
         }
-      });
+      })
     }
 
-    // Отменить редактирование
     const cancelEdit = (task) => {
-      task.isEditing = false;
-      task.editAnswerInput = '';
+      task.isEditing = false
+      task.editAnswerInput = ''
     }
 
-    // Сохранение отредактированного ответа
     const saveEditedAnswer = async (task) => {
       if (!task.editAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
-        alert('Пожалуйста, введите ответ или прикрепите изображение');
-        return;
+        alert('Пожалуйста, введите ответ или прикрепите изображение')
+        return
       }
-
       try {
-        task.saving = true;
-        const userAnswer = task.editAnswerInput.trim();
+        task.saving = true
+        const userAnswer = task.editAnswerInput.trim()
+        task.userAnswer = userAnswer 
+        task.userAnswerInput = userAnswer
+        task.isEditing = false
         
-        task.userAnswer = userAnswer; 
-        task.userAnswerInput = userAnswer;
-        task.isEditing = false;
-        
-        await saveTaskProgress(task, false);
-        
-        task.saving = false;
-        
+        await saveTaskProgress(task, false)
+        task.saving = false
       } catch (err) {
-        console.error('Ошибка сохранения отредактированного ответа:', err);
-        task.saving = false;
-        error.value = 'Ошибка при сохранении ответа: ' + err.message;
+        console.error('Ошибка сохранения отредактированного ответа:', err)
+        task.saving = false
+        error.value = 'Ошибка при сохранении ответа: ' + err.message
       }
     }
 
-    // Сохранение ответа
     const saveAnswer = async (task) => {
       if (!task.userAnswerInput.trim() && (!task.answerImages || task.answerImages.length === 0)) {
-        alert('Пожалуйста, введите ответ или прикрепите изображение');
-        return;
+        alert('Пожалуйста, введите ответ или прикрепите изображение')
+        return
       }
-
       try {
-        task.saving = true;
-        const userAnswer = task.userAnswerInput.trim();
+        task.saving = true
+        const userAnswer = task.userAnswerInput.trim()
+        task.userAnswer = userAnswer
         
-        task.userAnswer = userAnswer;
+        await saveTaskProgress(task, false)
         
-        await saveTaskProgress(task, false);
-        
-        // Устанавливаем флаг, что ответ сохранен
-        task.answerSaved = true;
+        task.answerSaved = true
         setTimeout(() => {
-          task.answerSaved = false;
-        }, 3000);
-        
-        task.saving = false;
-
+          task.answerSaved = false
+        }, 3000)
+        task.saving = false
       } catch (err) {
-        console.error('Ошибка сохранения ответа:', err);
-        task.saving = false;
-        error.value = 'Ошибка при сохранении ответа: ' + err.message;
+        console.error('Ошибка сохранения ответа:', err)
+        task.saving = false
+        error.value = 'Ошибка при сохранении ответа: ' + err.message
       }
     }
 
-    // Сохранение прогресса выполнения задания
-// Сохранение прогресса выполнения задания
-const saveTaskProgress = async (task, checkCorrectness = false) => {
-  if (!user_id.value) return;
+    const saveTaskProgress = async (task, checkCorrectness = false) => {
+      if (!user_id.value) return
 
-  let score = 0;
-  let is_completed = false;
-  let counted_in_rating = false;
+      let score = 0
+      let is_completed = false
+      let counted_in_rating = false
 
-  if (checkCorrectness) {
-    const result = checkAnswerComponent(
-      task.userAnswer,
-      task.answer,
-      task.points,
-      subject.value,
-      task.exam_task_number
-    );
+      if (checkCorrectness) {
+        const result = checkAnswerComponent(
+          task.userAnswer,
+          task.answer,
+          task.points,
+          subject.value,
+          task.exam_task_number
+        )
+        score = result.score
+        is_completed = result.isCorrect || result.isPartiallyCorrect
+        counted_in_rating = result.isCorrect
+        task.isCorrect = result.isCorrect
+        task.isPartiallyCorrect = result.isPartiallyCorrect
+        task.awardedPoints = score
+      }
 
-    score = result.score;
-    is_completed = result.isCorrect || result.isPartiallyCorrect;
-    counted_in_rating = result.isCorrect;
+      try {
+        const tableNames = getTableNames()
+        const now = new Date().toISOString()
+        
+        const progressData = {
+          user_id: user_id.value,
+          task_id: task.task_id,
+          is_completed: is_completed,
+          score: score,
+          user_answer: task.userAnswer || '',
+          answer_images: task.answerImages || [],
+          last_updated: now,
+          counted_in_rating: counted_in_rating
+        }
 
-    task.isCorrect = result.isCorrect;
-    task.isPartiallyCorrect = result.isPartiallyCorrect;
-    task.awardedPoints = score;
-  }
+        const { error: progressError } = await supabase
+          .from(tableNames.progress)
+          .upsert(progressData, {
+            onConflict: 'user_id,task_id'
+          })
 
-  try {
-    const tableNames = getTableNames();
-    const now = new Date().toISOString();
-    
-    // Данные для таблицы прогресса
-    const progressData = {
-      user_id: user_id.value,
-      task_id: task.task_id,
-      is_completed: is_completed,
-      score: score,
-      user_answer: task.userAnswer || '',
-      answer_images: task.answerImages || [],
-      last_updated: now,
-      counted_in_rating: counted_in_rating
-    };
+        if (progressError) throw progressError
 
-    // Сохраняем в таблицу прогресса
-    const { error: progressError } = await supabase
-      .from(tableNames.progress)
-      .upsert(progressData, {
-        onConflict: 'user_id,task_id'
-      });
+        const mlTableName = `ml_${subject.value}_${examType.value}`
+        const { data: taskData, error: taskError } = await supabase
+          .from(tableNames.taskBank)
+          .select('number, section, topic, difficulty, points')
+          .eq('id', task.task_id)
+          .single()
 
-    if (progressError) throw progressError;
+        if (!taskError && taskData) {
+          const mlData = {
+            user_id: user_id.value,
+            task_id: task.task_id,
+            number: taskData.number,
+            section: taskData.section,
+            topic: taskData.topic,
+            difficulty: taskData.difficulty,
+            max_score: taskData.points,
+            is_correct: counted_in_rating,
+            score: score,
+            created_at: now
+          }
 
-    // === ДОБАВЛЯЕМ ЗАПИСЬ В ML ТАБЛИЦУ ===
-    // Название ML таблицы: ml_{subject}_{examType}
-    const mlTableName = `ml_${subject.value}_${examType.value}`;
-    
-    // Получаем данные задания из task_bank для ML
-    const { data: taskData, error: taskError } = await supabase
-      .from(tableNames.taskBank)
-      .select('number, section, topic, difficulty, points')
-      .eq('id', task.task_id)
-      .single();
-
-    if (taskError) {
-      console.error('Ошибка получения данных задания для ML:', taskError);
-    } else {
-      // Вставляем запись в ML таблицу
-      const mlData = {
-        user_id: user_id.value,
-        task_id: task.task_id,
-        number: taskData.number,
-        section: taskData.section,
-        topic: taskData.topic,
-        difficulty: taskData.difficulty,
-        max_score: taskData.points,
-        is_correct: counted_in_rating, // true только если полный балл
-        score: score,
-        created_at: now
-      };
-
-      const { error: mlError } = await supabase
-        .from(mlTableName)
-        .insert([mlData]);
-
-      if (mlError) {
-        console.error('Ошибка сохранения в ML таблицу:', mlError);
-      } else {
-        console.log('✅ Данные сохранены в ML таблицу:', mlTableName);
+          const { error: mlError } = await supabase
+            .from(mlTableName)
+            .insert([mlData])
+            
+          if (mlError) {
+            console.error('Ошибка сохранения в ML таблицу:', mlError)
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка сохранения прогресса:', err)
+        throw err
       }
     }
 
-  } catch (err) {
-    console.error('Ошибка сохранения прогресса:', err);
-    throw err;
-  }
-};
-
-    // Функция для выставления баллов куратором
-// Функция для выставления баллов куратором
-const setTutorScore = async (task, manualScore) => {
-  if (!isTutorMode.value || !user_id.value) return;
-  
-  try {
-    task.saving = true;
-    
-    task.awardedPoints = manualScore;
-    task.isCorrect = manualScore === task.points;
-    task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points;
-    
-    const counted_in_rating = manualScore === task.points;
-    const now = new Date().toISOString();
-    
-    const tableNames = getTableNames();
-    
-    // Сохраняем в таблицу прогресса
-    const { error: progressError } = await supabase
-      .from(tableNames.progress)
-      .upsert({
-        user_id: user_id.value,
-        task_id: task.task_id,
-        is_completed: manualScore > 0,
-        score: manualScore,
-        user_answer: task.userAnswer || '',
-        answer_images: task.answerImages || [],
-        last_updated: now,
-        counted_in_rating: counted_in_rating
-      }, {
-        onConflict: 'user_id,task_id'
-      });
-
-    if (progressError) throw progressError;
-    
-    // === ДОБАВЛЯЕМ ЗАПИСЬ В ML ТАБЛИЦУ ДЛЯ КУРАТОРА ===
-    const mlTableName = `ml_${subject.value}_${examType.value}`;
-    
-    const { data: taskData, error: taskError } = await supabase
-      .from(tableNames.taskBank)
-      .select('number, section, topic, difficulty, points')
-      .eq('id', task.task_id)
-      .single();
-
-    if (!taskError && taskData) {
-      const mlData = {
-        user_id: user_id.value,
-        task_id: task.task_id,
-        number: taskData.number,
-        section: taskData.section,
-        topic: taskData.topic,
-        difficulty: taskData.difficulty,
-        max_score: taskData.points,
-        is_correct: counted_in_rating,
-        score: manualScore,
-        created_at: now
-      };
-
-      const { error: mlError } = await supabase
-        .from(mlTableName)
-        .insert([mlData]);
-
-      if (mlError) {
-        console.error('Ошибка сохранения в ML таблицу (куратор):', mlError);
-      }
-    }
-    
-    // Обновляем только homework_completed, без создания уведомления
-    await updateHomeworkCompletedOnly();
-    
-  } catch (err) {
-    console.error('Ошибка сохранения баллов куратора:', err);
-    error.value = 'Ошибка при сохранении баллов: ' + err.message;
-  } finally {
-    task.saving = false;
-  }
-};
-
-    // Обновление только homework_completed (без уведомлений)
-    const updateHomeworkCompletedOnly = async () => {
-      if (!user_id.value) return;
-      
-      const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
+    const setTutorScore = async (task, manualScore) => {
+      if (!isTutorMode.value || !user_id.value) return
       
       try {
-        const tableNames = getTableNames();
+        task.saving = true
+        task.awardedPoints = manualScore
+        task.isCorrect = manualScore === task.points
+        task.isPartiallyCorrect = manualScore > 0 && manualScore < task.points
         
-        // Обновляем homework_completed без создания уведомления
-        const { error } = await supabase
-          .from(tableNames.homeworkCompleted)
+        const counted_in_rating = manualScore === task.points
+        const now = new Date().toISOString()
+        const tableNames = getTableNames()
+        
+        const { error: progressError } = await supabase
+          .from(tableNames.progress)
           .upsert({
-            homework_id: parseInt(homeworkId.value),
             user_id: user_id.value,
-            is_completed: true,
-            score: newTotalScore,
-            completed_at: new Date().toISOString(),
+            task_id: task.task_id,
+            is_completed: manualScore > 0,
+            score: manualScore,
+            user_answer: task.userAnswer || '',
+            answer_images: task.answerImages || [],
+            last_updated: now,
+            counted_in_rating: counted_in_rating
           }, {
-            onConflict: 'user_id,homework_id'
-          });
+            onConflict: 'user_id,task_id'
+          })
 
-        if (error) throw error;
+        if (progressError) throw progressError
         
-        totalScore.value = newTotalScore;
-        
-      } catch (err) {
-        console.error('Ошибка обновления общего балла:', err);
-      }
-    };
+        const mlTableName = `ml_${subject.value}_${examType.value}`
+        const { data: taskData, error: taskError } = await supabase
+          .from(tableNames.taskBank)
+          .select('number, section, topic, difficulty, points')
+          .eq('id', task.task_id)
+          .single()
 
-    // Обновление общего балла домашнего задания
-    const updateHomeworkTotalScore = async () => {
-      if (!user_id.value) return;
-      
-      const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0);
-      
-      try {
-        const tableNames = getTableNames();
-        
-        // 1. Обновляем homework_completed
-        const { error } = await supabase
-          .from(tableNames.homeworkCompleted)
-          .upsert({
-            homework_id: parseInt(homeworkId.value),
+        if (!taskError && taskData) {
+          const mlData = {
             user_id: user_id.value,
-            is_completed: true,
-            score: newTotalScore,
-            completed_at: new Date().toISOString(),
-          }, {
-            onConflict: 'user_id,homework_id'
-          });
+            task_id: task.task_id,
+            number: taskData.number,
+            section: taskData.section,
+            topic: taskData.topic,
+            difficulty: taskData.difficulty,
+            max_score: taskData.points,
+            is_correct: counted_in_rating,
+            score: manualScore,
+            created_at: now
+          }
 
-        if (error) throw error;
-        
-        // 2. Создаем/обновляем уведомление (только если не в режиме куратора)
-        if (!isTutorMode.value) {
-          await createHomeworkNotification(newTotalScore);
+          const { error: mlError } = await supabase.from(mlTableName).insert([mlData])
+          if (mlError) console.error('Ошибка сохранения в ML таблицу (куратор):', mlError)
         }
         
-        totalScore.value = newTotalScore;
-        
+        await updateHomeworkCompletedOnly()
       } catch (err) {
-        console.error('Ошибка обновления общего балла:', err);
+        console.error('Ошибка сохранения баллов куратора:', err)
+        error.value = 'Ошибка при сохранении баллов: ' + err.message
+      } finally {
+        task.saving = false
       }
-    };
+    }
 
-    // Завершение домашнего задания
+    const updateHomeworkCompletedOnly = async () => {
+      if (!user_id.value) return
+      const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0)
+      try {
+        const tableNames = getTableNames()
+        const { error } = await supabase
+          .from(tableNames.homeworkCompleted)
+          .upsert({
+            homework_id: parseInt(homeworkId.value),
+            user_id: user_id.value,
+            is_completed: true,
+            score: newTotalScore,
+            completed_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,homework_id'
+          })
+        if (error) throw error
+        totalScore.value = newTotalScore
+      } catch (err) {
+        console.error('Ошибка обновления общего балла:', err)
+      }
+    }
+
+    const updateHomeworkTotalScore = async () => {
+      if (!user_id.value) return
+      const newTotalScore = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0)
+      try {
+        const tableNames = getTableNames()
+        const { error } = await supabase
+          .from(tableNames.homeworkCompleted)
+          .upsert({
+            homework_id: parseInt(homeworkId.value),
+            user_id: user_id.value,
+            is_completed: true,
+            score: newTotalScore,
+            completed_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,homework_id'
+          })
+
+        if (error) throw error
+        if (!isTutorMode.value) {
+          await createHomeworkNotification(newTotalScore)
+        }
+        totalScore.value = newTotalScore
+      } catch (err) {
+        console.error('Ошибка обновления общего балла:', err)
+      }
+    }
+
     const completeHomework = async () => {
       try {
-        error.value = null;
-        
-        updateTotalScore();
+        error.value = null
+        updateTotalScore()
 
-        // Сохраняем прогресс по всем заданиям
         for (const task of tasks.value) {
           if (task.userAnswer || (task.answerImages && task.answerImages.length > 0)) {
-            await saveTaskProgress(task, true);
+            await saveTaskProgress(task, true)
           }
         }
 
-        updateTotalScore();
-
-        const tableNames = getTableNames();
+        updateTotalScore()
+        const tableNames = getTableNames()
         
-        // 1. Сохраняем в homework_completed
         const completionData = {
           homework_id: parseInt(homeworkId.value),
           user_id: user_id.value,
           is_completed: true,
           score: totalScore.value,
           completed_at: new Date().toISOString()
-        };
+        }
 
         const { error: completionError } = await supabase
           .from(tableNames.homeworkCompleted)
           .upsert(completionData, {
             onConflict: 'user_id,homework_id'
-          });
+          })
 
-        if (completionError) {
-          console.error('Ошибка Supabase:', completionError);
-          throw new Error(completionError.message);
-        }
+        if (completionError) throw new Error(completionError.message)
 
-        // 2. Создаем уведомление (только для студентов)
         if (!isTutorMode.value) {
-          await createHomeworkNotification(totalScore.value);
+          await createHomeworkNotification(totalScore.value)
         }
 
-        isCompleted.value = true;
-        showAnswers.value = true;
-        
-        alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value);
+        isCompleted.value = true
+        showAnswers.value = true
+        alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value)
 
       } catch (err) {
-        error.value = err.message;
-        console.error('Полная ошибка завершения домашнего задания:', err);
-        alert('Ошибка: ' + err.message);
+        error.value = err.message
+        console.error('Полная ошибка завершения домашнего задания:', err)
+        alert('Ошибка: ' + err.message)
       }
     }
 
-    // Загрузка заданий домашнего задания
+    // === Миграция старых путей изображений ===
+    const migrateOldImagePaths = () => {
+      tasks.value = tasks.value.map(task => {
+        // Миграция изображений ответов
+        if (task.answerImages && Array.isArray(task.answerImages)) {
+          task.answerImages = task.answerImages.map(img => extractPathFromUrl(img))
+        }
+        // Миграция изображений задания
+        if (task.images && Array.isArray(task.images)) {
+          task.images = task.images.map(img => extractPathFromUrl(img))
+        }
+        // Миграция изображений пояснения
+        if (task.image_explanation) {
+          if (Array.isArray(task.image_explanation)) {
+            task.image_explanation = task.image_explanation.map(img => extractPathFromUrl(img))
+          } else if (typeof task.image_explanation === 'string') {
+            task.image_explanation = extractPathFromUrl(task.image_explanation)
+          }
+        }
+        return task
+      })
+    }
+
     const fetchHomeworkTasks = async () => {
       try {
         loading.value = true
@@ -971,15 +910,7 @@ const setTutorScore = async (task, manualScore) => {
           throw new Error('Не указаны параметры домашнего задания (subject, exam_type, homework_id)')
         }
 
-        const tableNames = getTableNames();
-
-        // ДОБАВИМ ОТЛАДКУ ДЛЯ OGE
-        console.log('=== OGE DEBUG INFO ===');
-        console.log('subject:', subject.value);
-        console.log('examType:', examType.value); 
-        console.log('homeworkId:', homeworkId.value);
-        console.log('tableNames:', tableNames);
-        console.log('=====================');
+        const tableNames = getTableNames()
         
         const { data: homeworkInfo, error: homeworkInfoError } = await supabase
           .from(tableNames.homeworkList)
@@ -987,9 +918,7 @@ const setTutorScore = async (task, manualScore) => {
           .eq('homework_id', homeworkId.value)
           .single()
 
-        if (homeworkInfoError) {
-          console.error('Ошибка загрузки информации о домашнем задании:', homeworkInfoError)
-        } else if (homeworkInfo) {
+        if (!homeworkInfoError && homeworkInfo) {
           homeworkData.value = {
             ...homeworkData.value,
             deadline: homeworkInfo.deadline,
@@ -1005,13 +934,8 @@ const setTutorScore = async (task, manualScore) => {
           .eq('homework_id', homeworkId.value)
           .order('number', { ascending: true })
 
-        if (homeworkError) {
-          throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
-        }
-
-        if (!homeworkTasks || homeworkTasks.length === 0) {
-          throw new Error('Задания для этого домашнего задания не найдены')
-        }
+        if (homeworkError) throw new Error('Не удалось загрузить задания: ' + homeworkError.message)
+        if (!homeworkTasks || homeworkTasks.length === 0) throw new Error('Задания для этого домашнего задания не найдены')
 
         const taskIds = homeworkTasks.map(task => task.task_id)
         const { data: taskDetails, error: taskError } = await supabase
@@ -1019,15 +943,7 @@ const setTutorScore = async (task, manualScore) => {
           .select('*')
           .in('id', taskIds)
 
-        if (taskError) {
-          throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
-        }
-
-        console.log('taskDetails:', taskDetails);
-        if (taskDetails && taskDetails.length > 0) {
-          console.log('Первая задача из task_bank:', taskDetails[0]);
-          console.log('Доступные поля:', Object.keys(taskDetails[0]));
-        }
+        if (taskError) throw new Error('Не удалось загрузить детали заданий: ' + taskError.message)
 
         tasks.value = homeworkTasks.map(homeworkTask => {
           const taskDetail = taskDetails.find(t => t.id === homeworkTask.task_id)
@@ -1035,7 +951,7 @@ const setTutorScore = async (task, manualScore) => {
             ...homeworkTask,
             ...taskDetail,
             number: homeworkTask.number, 
-            exam_task_number: taskDetail.number, // ← глобальный номер из task_bank для проверки
+            exam_task_number: taskDetail.number,
             userAnswerInput: '',
             userAnswer: null,
             answerImages: [],
@@ -1053,20 +969,19 @@ const setTutorScore = async (task, manualScore) => {
         })
 
         await loadTasksProgress()
+        
+        // Мигрируем старые пути изображений
+        migrateOldImagePaths()
+        
         await checkHomeworkCompletion()
 
-        // Загружаем информацию о студенте если это режим куратора
         if (isTutorMode.value) {
-          await loadStudentInfo();
+          await loadStudentInfo()
         }
 
-        // Привязываем обработчики изображений после загрузки
         if (showAnswers.value) {
-          nextTick(() => {
-            bindExplanationImageHandlers();
-          });
+          nextTick(() => bindExplanationImageHandlers())
         }
-
       } catch (err) {
         error.value = err.message
         console.error('Ошибка загрузки заданий:', err)
@@ -1075,12 +990,10 @@ const setTutorScore = async (task, manualScore) => {
       }
     }
 
-    // Загрузка прогресса выполнения заданий
     const loadTasksProgress = async () => {
       if (!user_id.value) return
-
       try {
-        const tableNames = getTableNames();
+        const tableNames = getTableNames()
         const taskIds = tasks.value.map(task => task.task_id)
         
         const { data: progressData, error: progressError } = await supabase
@@ -1101,7 +1014,7 @@ const setTutorScore = async (task, manualScore) => {
           .eq('user_id', user_id.value)
           .maybeSingle()
 
-        showAnswers.value = completionData?.is_completed || isTutorMode.value;
+        showAnswers.value = completionData?.is_completed || isTutorMode.value
 
         tasks.value = tasks.value.map(task => {
           const progress = progressData?.find(p => p.task_id === task.task_id)
@@ -1118,18 +1031,15 @@ const setTutorScore = async (task, manualScore) => {
           }
           return task
         })
-
       } catch (err) {
         console.error('Ошибка загрузки прогресса:', err)
       }
     }
 
-    // Проверка статуса выполнения домашнего задания
     const checkHomeworkCompletion = async () => {
       if (!user_id.value) return
-
       try {
-        const tableNames = getTableNames();
+        const tableNames = getTableNames()
         const { data: completionData, error: completionError } = await supabase
           .from(tableNames.homeworkCompleted)
           .select('*')
@@ -1147,105 +1057,77 @@ const setTutorScore = async (task, manualScore) => {
           totalScore.value = completionData.score || 0
           showAnswers.value = completionData.is_completed || isTutorMode.value
         }
-
       } catch (err) {
         console.error('Ошибка проверки статуса выполнения:', err)
       }
     }
 
-    // Обработка загрузки изображений для ответа
     const handleImageUpload = async (task, event) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
+      const files = event.target.files
+      if (!files || files.length === 0) return
 
       try {
-        task.uploadingImages = true;
-        const newImages = [];
+        task.uploadingImages = true
+        const newImages = []
 
         for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          
+          const file = files[i]
           if (!file.type.startsWith('image/')) {
-            alert('Пожалуйста, загружайте только изображения');
-            continue;
+            alert('Пожалуйста, загружайте только изображения')
+            continue
           }
-
           if (file.size > 25 * 1024 * 1024) {
-            alert('Размер файла не должен превышать 25MB');
-            continue;
+            alert('Размер файла не должен превышать 25MB')
+            continue
           }
-
-          const imagePath = await uploadAnswerImage(task, file);
-          if (imagePath) {
-            newImages.push(imagePath);
-          }
+          const imagePath = await uploadAnswerImage(task, file)
+          if (imagePath) newImages.push(imagePath)
         }
 
         if (newImages.length > 0) {
-          task.answerImages = [...(task.answerImages || []), ...newImages];
-          task.userAnswerInput = '';
-          task.userAnswer = '';
-          
-          // Устанавливаем флаг, что ответ сохранен (для изображений)
-          task.answerSaved = true;
-          await saveTaskProgress(task, false);
-          
-          // Скрываем сообщение через 3 секунды
-          setTimeout(() => {
-            task.answerSaved = false;
-          }, 3000);
+          task.answerImages = [...(task.answerImages || []), ...newImages]
+          task.userAnswerInput = ''
+          task.userAnswer = ''
+          task.answerSaved = true
+          await saveTaskProgress(task, false)
+          setTimeout(() => task.answerSaved = false, 3000)
         }
-
       } catch (err) {
-        console.error('Ошибка загрузки изображений:', err);
-        error.value = 'Ошибка при загрузке изображений: ' + err.message;
+        console.error('Ошибка загрузки изображений:', err)
+        error.value = 'Ошибка при загрузке изображений: ' + err.message
       } finally {
-        task.uploadingImages = false;
-        event.target.value = '';
+        task.uploadingImages = false
+        event.target.value = ''
       }
     }
 
-    // Привязка обработчиков к изображениям пояснений
     const bindExplanationImageHandlers = () => {
-      const explanationImages = document.querySelectorAll('.explanation-image');
+      const explanationImages = document.querySelectorAll('.explanation-image')
       explanationImages.forEach(img => {
-        // Удаляем старые обработчики
-        img.onclick = null;
-        // Добавляем новые
-        img.onclick = () => {
-          openImageModal(img.src);
-        };
-      });
+        img.onclick = null
+        img.onclick = () => openImageModal(img.src)
+      })
     }
 
-    // Переключение отображения пояснения
     const toggleExplanation = (task) => {
-      task.showExplanation = !task.showExplanation;
-      
-      // После переключения привязываем обработчики к новым изображениям
+      task.showExplanation = !task.showExplanation
       if (task.showExplanation) {
-        nextTick(() => {
-          bindExplanationImageHandlers();
-        });
+        nextTick(() => bindExplanationImageHandlers())
       }
     }
 
-    // Удаление изображения ответа
     const removeAnswerImage = async (task, imageIndex) => {
       try {
-        const imageToRemove = task.answerImages[imageIndex];
-        
-        await deleteAnswerImage(imageToRemove);
-        task.answerImages.splice(imageIndex, 1);
-        await saveTaskProgress(task, false);
-        
+        const imageToRemove = task.answerImages[imageIndex]
+        await deleteAnswerImage(imageToRemove)
+        task.answerImages.splice(imageIndex, 1)
+        await saveTaskProgress(task, false)
       } catch (err) {
-        console.error('Ошибка удаления изображения:', err);
-        error.value = 'Ошибка при удалении изображения: ' + err.message;
+        console.error('Ошибка удаления изображения:', err)
+        error.value = 'Ошибка при удалении изображения: ' + err.message
       }
     }
 
-    // Открытие модального окна с изображением
     const openImageModal = (imageUrl) => {
       selectedImage.value = imageUrl
       showImageModal.value = true
@@ -1257,7 +1139,6 @@ const setTutorScore = async (task, manualScore) => {
       document.body.style.overflow = ''
     }
 
-    // Форматирование даты
     const formatDate = (dateString) => {
       if (!dateString) return 'Не указан'
       try {
@@ -1271,35 +1152,29 @@ const setTutorScore = async (task, manualScore) => {
       }
     }
 
-    // Обновляем общий балл
     const updateTotalScore = () => {
       totalScore.value = tasks.value.reduce((sum, task) => sum + (task.awardedPoints || 0), 0)
     }
     
     const completionPercent = computed(() => {
-      if (maxScore.value === 0) return 0;
-      return Math.round((totalScore.value / maxScore.value) * 100);
-    });
+      if (maxScore.value === 0) return 0
+      return Math.round((totalScore.value / maxScore.value) * 100)
+    })
 
-    // Получение полного имени студента
     const studentFullName = computed(() => {
-      if (!studentInfo.value) return 'Загрузка...';
-      const { first_name = '', last_name = '' } = studentInfo.value;
-      return `${last_name} ${first_name}`.trim() || 'Не указано';
-    });
+      if (!studentInfo.value) return 'Загрузка...'
+      const { first_name = '', last_name = '' } = studentInfo.value
+      return `${last_name} ${first_name}`.trim() || 'Не указано'
+    })
 
-    // Статус дедлайна
     const deadlineStatus = computed(() => {
       const deadline = homeworkData.value.deadline
       if (!deadline) return 'no-deadline'
-      
       try {
         const deadlineDate = new Date(deadline)
         const today = new Date()
-        
         const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
         const deadlineDateOnly = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate())
-        
         if (deadlineDateOnly < todayDate) return 'overdue'
         if (deadlineDateOnly.getTime() === todayDate.getTime()) return 'today'
         return 'future'
@@ -1308,22 +1183,10 @@ const setTutorScore = async (task, manualScore) => {
       }
     })
 
-    // Отсортированные задания по номеру
-    const sortedTasks = computed(() => {
-      return [...tasks.value].sort((a, b) => a.number - b.number)
-    })
+    const sortedTasks = computed(() => [...tasks.value].sort((a, b) => a.number - b.number))
+    const hasAnswers = computed(() => tasks.value.some(task => task.userAnswer || (task.answerImages && task.answerImages.length > 0)))
+    const maxScore = computed(() => tasks.value.reduce((sum, task) => sum + (task.points || 0), 0))
 
-    // Есть ли ответы на задания
-    const hasAnswers = computed(() => {
-      return tasks.value.some(task => task.userAnswer || (task.answerImages && task.answerImages.length > 0))
-    })
-
-    // Максимальный возможный балл
-    const maxScore = computed(() => {
-      return tasks.value.reduce((sum, task) => sum + (task.points || 0), 0)
-    })
-
-    // Статус задания
     const getTaskStatusClass = (task) => {
       if (!task.userAnswer && (!task.answerImages || task.answerImages.length === 0)) return 'status-not-completed'
       if (!showAnswers.value) return 'status-saved'
@@ -1340,7 +1203,6 @@ const setTutorScore = async (task, manualScore) => {
       return `✗ Неверно (0/${task.points} балла)`
     }
 
-    // Класс для фидбека
     const getFeedbackClass = (task) => {
       if (task.isCorrect) return 'correct-feedback'
       if (task.isPartiallyCorrect) return 'partial-feedback'
@@ -1348,32 +1210,19 @@ const setTutorScore = async (task, manualScore) => {
     }
 
     const getFeedbackText = (task) => {
-      return '';
+      return ''
     }
 
-    // Проверяем, является ли задание второй частью
-    const isSecondPartTask = (task) => {
-      return task.part === 'Вторая часть';
-    }
+    const isSecondPartTask = (task) => task.part === 'Вторая часть'
 
-    // Получение отображаемого названия предмета
     const getDisplaySubjectName = computed(() => {
-      const subjectNames = {
-        'chemistry': 'Химия',
-        'biology': 'Биология'
-      };
-      const examTypeNames = {
-        'ege': 'ЕГЭ',
-        'oge': 'ОГЭ'
-      };
-      
-      const subjectName = subjectNames[subject.value] || subject.value;
-      const examTypeName = examTypeNames[examType.value] || examType.value;
-      
-      return `${subjectName} ${examTypeName}`;
-    });
+      const subjectNames = { 'chemistry': 'Химия', 'biology': 'Биология' }
+      const examTypeNames = { 'ege': 'ЕГЭ', 'oge': 'ОГЭ' }
+      const subjectName = subjectNames[subject.value] || subject.value
+      const examTypeName = examTypeNames[examType.value] || examType.value
+      return `${subjectName} ${examTypeName}`
+    })
 
-    // Следим за изменениями баллов
     onMounted(() => {
       if (subject.value && examType.value && homeworkId.value) {
         fetchHomeworkTasks()
@@ -1382,9 +1231,8 @@ const setTutorScore = async (task, manualScore) => {
         loading.value = false
       }
 
-      // Исправленные обработчики событий
       document.addEventListener('contextmenu', (e) => {
-        const target = e.target;
+        const target = e.target
         if (target && typeof target.closest === 'function' && target.closest('.task-text')) {
           e.preventDefault()
           return false
@@ -1392,7 +1240,7 @@ const setTutorScore = async (task, manualScore) => {
       })
       
       document.addEventListener('selectstart', (e) => {
-        const target = e.target;
+        const target = e.target
         if (target && typeof target.closest === 'function' && target.closest('.task-text')) {
           e.preventDefault()
           return false
@@ -1404,12 +1252,9 @@ const setTutorScore = async (task, manualScore) => {
       updateTotalScore()
     }, { deep: true })
 
-    // При изменении showAnswers привязываем обработчики
     watch(showAnswers, (newVal) => {
       if (newVal) {
-        nextTick(() => {
-          bindExplanationImageHandlers();
-        });
+        nextTick(() => bindExplanationImageHandlers())
       }
     })
 
@@ -1464,6 +1309,7 @@ const setTutorScore = async (task, manualScore) => {
   }
 }
 </script>
+
 
 <template>
   <div class="allpage">
@@ -1838,29 +1684,29 @@ const setTutorScore = async (task, manualScore) => {
                   
                   <transition name="slide">
                     <div v-if="task.showExplanation" class="explanation-content-container">
-<div class="explanation-content">
-  <div v-if="task.explanation" v-html="sanitizeHtml(formatTextWithParagraphs(task.explanation))"></div>
-  
-  <!-- Изображения пояснения -->
-  <div v-if="task.image_explanation && Array.isArray(task.image_explanation)" 
-       v-for="(imagePath, index) in task.image_explanation" :key="index">
-    <div class="explanation-image-container">
-      <img :src="getImageUrl(imagePath)" 
-           alt="Пояснение к заданию" 
-           class="explanation-image"
-           @click="openImageModal(getImageUrl(imagePath))">
-    </div>
-  </div>
-  
-  <div v-else-if="typeof task.image_explanation === 'string'">
-    <div class="explanation-image-container">
-      <img :src="getImageUrl(task.image_explanation)" 
-           alt="Пояснение к заданию" 
-           class="explanation-image"
-           @click="openImageModal(getImageUrl(task.image_explanation))">
-    </div>
-  </div>
-</div>
+                      <div class="explanation-content">
+                        <div v-if="task.explanation" v-html="sanitizeHtml(formatTextWithParagraphs(task.explanation))"></div>
+                        
+                        <!-- Изображения пояснения -->
+                        <div v-if="task.image_explanation && Array.isArray(task.image_explanation)" 
+                             v-for="(imagePath, index) in task.image_explanation" :key="index">
+                          <div class="explanation-image-container">
+                            <img :src="getImageUrl(imagePath)" 
+                                 alt="Пояснение к заданию" 
+                                 class="explanation-image"
+                                 @click="openImageModal(getImageUrl(imagePath))">
+                          </div>
+                        </div>
+                        
+                        <div v-else-if="typeof task.image_explanation === 'string'">
+                          <div class="explanation-image-container">
+                            <img :src="getImageUrl(task.image_explanation)" 
+                                 alt="Пояснение к заданию" 
+                                 class="explanation-image"
+                                 @click="openImageModal(getImageUrl(task.image_explanation))">
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </transition>
                 </div>

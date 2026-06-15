@@ -3,6 +3,16 @@ import { supabase } from '../supabase';
 import DOMPurify from 'dompurify';
 import TaskEditorModal from './TaskEditorModal.vue';
 
+// === Конфигурация прокси сервера ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+};
+
 export default {
   name: 'TutorTaskCard',
   components: {
@@ -124,15 +134,46 @@ export default {
       return formattedText;
     },
 
+    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: получение URL изображения через прокси ===
     getImageUrl(imagePath) {
-      if (imagePath.startsWith('http')) return imagePath;
+      if (!imagePath) return '';
       
-      const { data: { publicUrl } } = supabase
-        .storage
-        .from('task-images')
-        .getPublicUrl(imagePath);
+      let path = String(imagePath);
       
-      return publicUrl;
+      // Если это абсолютный URL
+      if (path.startsWith('http')) {
+        // Если это старый URL Supabase, конвертируем в проксированный
+        if (path.includes('supabase.co')) {
+          const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/);
+          if (match) {
+            return `${PROXY_CONFIG.baseUrl}/task-images/${match[1]}`;
+          }
+        }
+        return path;
+      }
+      
+      // Очищаем путь от возможных префиксов
+      let cleanPath = path;
+      if (cleanPath.startsWith('task-images/')) {
+        cleanPath = cleanPath.replace('task-images/', '');
+      }
+      
+      // Всегда используем прокси, если он включён
+      if (PROXY_CONFIG.enabled) {
+        return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`;
+      }
+      
+      // Fallback только если прокси выключен
+      try {
+        const { data: { publicUrl } } = supabase
+          .storage
+          .from('task-images')
+          .getPublicUrl(cleanPath);
+        return publicUrl;
+      } catch (err) {
+        console.error('Ошибка получения URL изображения:', err);
+        return '';
+      }
     },
 
     openImageModal(imageUrl) {
@@ -182,7 +223,7 @@ export default {
     <div class="task-header">
       <div class="task-meta">
         <span class="task-number">#{{ task.id }}</span>
-        <span class="task-number">Задание №{{ task.number }}</span>
+        <span class="task-number-exam">Задание №{{ task.number }}</span>
         <span class="task-topic">Тема: {{ task.topic }}</span>
         <span class="task-section">Раздел: {{ task.section }}</span>
         <span class="task-points">{{ task.points }} балл(а)</span>
@@ -244,6 +285,7 @@ export default {
           <strong>Правильный ответ:</strong> 
           <span v-html="sanitizeHtml(formattedAnswer)"></span>
           
+          <!-- Изображения ответа -->
           <div v-if="hasAnswerImages" class="answer-images">
             <div class="image-grid">
               <div 
@@ -270,6 +312,7 @@ export default {
           <span v-html="sanitizeHtml(formattedExplanation)"></span>
         </div>
         
+        <!-- Изображения пояснения -->
         <div v-if="hasExplanationImages" class="explanation-images">
           <div class="image-grid">
             <div 
@@ -350,14 +393,21 @@ export default {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .task-number {
   font-weight: bold;
   color: #b241d1;
   font-size: 1.1rem;
+}
+
+.task-number-exam {
+  font-weight: bold;
+  color: #28a745;
+  font-size: 1rem;
 }
 
 .task-topic, .task-section, .task-points, .task-difficulty {
@@ -401,6 +451,10 @@ export default {
 
 .task-text :deep(p) {
   margin-bottom: 0.8rem;
+}
+
+.task-text :deep(p:last-child) {
+  margin-bottom: 0;
 }
 
 .task-text :deep(br) {
@@ -546,6 +600,17 @@ export default {
   color: #2e7d32;
 }
 
+.correct-answer strong {
+  color: #1b5e20;
+}
+
+.answer-images,
+.explanation-images {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(46, 125, 50, 0.2);
+}
+
 .explanation-section {
   margin-top: 1.5rem;
   padding: 1rem;
@@ -593,6 +658,7 @@ export default {
   z-index: 10000;
   padding: 1rem;
 }
+
 .task-table-container :deep(sub),
 .html-table-content :deep(sub) {
   vertical-align: sub;
@@ -604,6 +670,7 @@ export default {
   vertical-align: super;
   font-size: 0.8em;
 }
+
 .modal-content {
   position: relative;
   max-width: 90%;
@@ -649,6 +716,10 @@ export default {
   .task-header {
     flex-direction: column;
     gap: 0.3rem;
+  }
+  
+  .task-meta {
+    flex-wrap: wrap;
   }
   
   .task-actions {

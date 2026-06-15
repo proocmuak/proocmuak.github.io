@@ -2,6 +2,16 @@
 import { supabase } from '../supabase';
 import DOMPurify from 'dompurify';
 
+// === Конфигурация прокси сервера ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+};
+
 export default {
   name: 'TeacherTaskCard',
   props: {
@@ -50,20 +60,53 @@ export default {
   methods: {
     sanitizeHtml(html) {
       return DOMPurify.sanitize(html, {
-        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span'],
-        ALLOWED_ATTR: ['style', 'class']
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'sub', 'sup', 'ul', 'ol', 'li', 'div', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+        ALLOWED_ATTR: ['style', 'class', 'border', 'cellpadding', 'cellspacing', 'width', 'height', 'align', 'valign', 'colspan', 'rowspan']
       });
     },
+
+    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: получение URL изображения через прокси ===
     getImageUrl(imagePath) {
-      if (imagePath.startsWith('http')) return imagePath;
+      if (!imagePath) return '';
       
-      const { data: { publicUrl } } = supabase
-        .storage
-        .from('task-images')
-        .getPublicUrl(imagePath);
+      let path = String(imagePath);
       
-      return publicUrl;
+      // Если это абсолютный URL
+      if (path.startsWith('http')) {
+        // Если это старый URL Supabase, конвертируем в проксированный
+        if (path.includes('supabase.co')) {
+          const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/);
+          if (match) {
+            return `${PROXY_CONFIG.baseUrl}/task-images/${match[1]}`;
+          }
+        }
+        return path;
+      }
+      
+      // Очищаем путь от возможных префиксов
+      let cleanPath = path;
+      if (cleanPath.startsWith('task-images/')) {
+        cleanPath = cleanPath.replace('task-images/', '');
+      }
+      
+      // Всегда используем прокси, если он включён
+      if (PROXY_CONFIG.enabled) {
+        return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`;
+      }
+      
+      // Fallback только если прокси выключен
+      try {
+        const { data: { publicUrl } } = supabase
+          .storage
+          .from('task-images')
+          .getPublicUrl(cleanPath);
+        return publicUrl;
+      } catch (err) {
+        console.error('Ошибка получения URL изображения:', err);
+        return '';
+      }
     },
+
     async checkIfAlreadyAdded() {
       try {
         const { data, error } = await supabase
@@ -97,7 +140,7 @@ export default {
           return;
         }
         
-        // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ - исправленный запрос
+        // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ
         const { data: tasksData, error: tasksError } = await supabase
           .from(this.homeworkTableName)
           .select('number')
@@ -106,10 +149,8 @@ export default {
         
         if (tasksError) {
           console.error('Ошибка получения максимального номера:', tasksError);
-          // Если ошибка, устанавливаем номер 1
           var nextNumber = 1;
         } else {
-          // Определяем следующий номер
           var nextNumber = tasksData && tasksData.length > 0 
             ? Math.max(...tasksData.map(task => task.number || 0)) + 1 
             : 1;
@@ -143,19 +184,20 @@ export default {
         alert('Ошибка при добавлении задания: ' + error.message);
       }
     },
-    async created() {
-      // Проверяем, добавлено ли уже это задание
-      await this.checkIfAlreadyAdded();
-    },
+
     openImageModal(imageUrl) {
       this.selectedImage = imageUrl;
       this.showImageModal = true;
       document.body.style.overflow = 'hidden';
     },
+
     closeImageModal() {
       this.showImageModal = false;
       document.body.style.overflow = '';
     }
+  },
+  async created() {
+    await this.checkIfAlreadyAdded();
   }
 }
 </script>
@@ -166,6 +208,8 @@ export default {
       <div class="task-meta">
         <span class="task-topic">Тема: {{ task.topic }}</span>
         <span class="task-id">#{{ task.id }}</span>
+        <span class="task-number">Задание №{{ task.number }}</span>
+        <span class="task-points">Баллов: {{ task.points }}</span>
       </div>
       <button 
         @click="addToHomework" 
@@ -209,7 +253,27 @@ export default {
 
       <div class="answer-section">
         <div class="correct-answer">
-          Правильный ответ: {{ task.answer }}
+          <strong>Правильный ответ:</strong> 
+          <span v-html="sanitizeHtml(task.answer)"></span>
+          
+          <!-- Изображения ответа -->
+          <div v-if="task.image_answer && task.image_answer.length" class="answer-images">
+            <div class="image-grid">
+              <div 
+                class="image-container" 
+                v-for="(image, index) in task.image_answer" 
+                :key="'answer-'+index"
+              >
+                <img 
+                  :src="getImageUrl(image)" 
+                  :alt="'Изображение ответа ' + task.id" 
+                  class="task-image"
+                  @click="openImageModal(getImageUrl(image))"
+                  loading="lazy"
+                >
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -217,6 +281,25 @@ export default {
     <div v-if="task.explanation" class="explanation-section">
       <div class="explanation-title">Пояснение:</div>
       <div class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
+      
+      <!-- Изображения пояснения -->
+      <div v-if="task.image_explanation && task.image_explanation.length" class="explanation-images">
+        <div class="image-grid">
+          <div 
+            class="image-container" 
+            v-for="(image, index) in task.image_explanation" 
+            :key="'explanation-'+index"
+          >
+            <img 
+              :src="getImageUrl(image)" 
+              :alt="'Изображение пояснения ' + task.id" 
+              class="task-image"
+              @click="openImageModal(getImageUrl(image))"
+              loading="lazy"
+            >
+          </div>
+        </div>
+      </div>
     </div>
     
     <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
@@ -241,24 +324,40 @@ export default {
 .task-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid #eee;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .task-meta {
   display: flex;
   flex-direction: column;
+  gap: 4px;
+  flex: 1;
 }
 
 .task-topic {
   font-weight: bold;
-  margin-bottom: 4px;
+  color: #333;
 }
 
 .task-id {
   color: #666;
+  font-size: 0.9em;
+}
+
+.task-number {
+  color: #b241d1;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.task-points {
+  color: #28a745;
+  font-weight: 600;
   font-size: 0.9em;
 }
 
@@ -272,6 +371,7 @@ export default {
   transition: background-color 0.2s;
   font-size: 0.9rem;
   white-space: nowrap;
+  height: fit-content;
 }
 
 .add-button:hover:not(:disabled) {
@@ -290,6 +390,14 @@ export default {
 .task-text {
   margin-bottom: 16px;
   line-height: 1.5;
+}
+
+.task-text :deep(p) {
+  margin-bottom: 0.8rem;
+}
+
+.task-text :deep(p:last-child) {
+  margin-bottom: 0;
 }
 
 .task-table-container {
@@ -319,16 +427,28 @@ td {
 
 .image-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 10px;
   margin: 16px 0;
 }
 
-.task-image {
-  max-width: 100%;
-  max-height: 200px;
-  cursor: pointer;
+.image-container {
+  position: relative;
+  padding-top: 100%;
+  overflow: hidden;
   border-radius: 4px;
+  border: 1px solid #eee;
+  background: #f8f9fa;
+}
+
+.task-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
   transition: transform 0.2s;
 }
 
@@ -339,28 +459,52 @@ td {
 .answer-section {
   margin-top: 16px;
   padding: 12px;
-  background-color: #f8f9fa;
+  background-color: #f0faf0;
   border-radius: 4px;
+  border-left: 4px solid #2e7d32;
 }
 
 .correct-answer {
-  font-weight: bold;
-  color: #2c3e50;
+  font-weight: 500;
+  color: #2e7d32;
+}
+
+.correct-answer strong {
+  color: #1b5e20;
+}
+
+.answer-images,
+.explanation-images {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(46, 125, 50, 0.2);
 }
 
 .explanation-section {
   margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #eee;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border-left: 4px solid #b241d1;
 }
 
 .explanation-title {
   font-weight: bold;
   margin-bottom: 8px;
+  color: #333;
 }
 
 .explanation-content {
   line-height: 1.5;
+  color: #444;
+}
+
+.explanation-content :deep(p) {
+  margin-bottom: 0.8rem;
+}
+
+.explanation-content :deep(p:last-child) {
+  margin-bottom: 0;
 }
 
 .image-modal {
@@ -369,11 +513,12 @@ td {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: rgba(0, 0, 0, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 1rem;
 }
 
 .modal-content {
@@ -385,17 +530,64 @@ td {
 .modal-image {
   max-width: 100%;
   max-height: 80vh;
-  display: block;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .close-modal {
   position: absolute;
-  top: -40px;
-  right: 0;
-  background: none;
-  border: none;
+  top: -1.5rem;
+  right: -1.5rem;
+  background: #b241d1;
   color: white;
-  font-size: 2rem;
+  border: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  font-size: 1.5rem;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.close-modal:hover {
+  background: #9a36b8;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .task-card {
+    padding: 12px;
+  }
+  
+  .task-header {
+    flex-direction: column;
+  }
+  
+  .add-button {
+    align-self: flex-start;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+  
+  .close-modal {
+    top: -1rem;
+    right: -1rem;
+    width: 2rem;
+    height: 2rem;
+    font-size: 1.2rem;
+  }
+  
+  .task-table-container {
+    overflow-x: auto;
+  }
+  
+  .task-table-container table {
+    min-width: 500px;
+  }
 }
 </style>

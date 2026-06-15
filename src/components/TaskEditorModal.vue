@@ -337,6 +337,16 @@ import { supabase } from '../supabase';
 import CustomDropdown from './CustomDropdown.vue';
 import { chem_ege_sections } from '../assets/arrays/list_of_sections.js';
 
+// === Конфигурация прокси сервера ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+};
+
 const chemTopicsModules = import.meta.glob('../assets/arrays/topics/chem_ege/*.js', { eager: true });
 const bioTopicsModules = import.meta.glob('../assets/arrays/topics/biology_ege/*.js', { eager: true });
 const chemOgeTopicsModules = import.meta.glob('../assets/arrays/topics/chem_oge/*.js', { eager: true });
@@ -531,8 +541,6 @@ export default {
             explanation: newTask.explanation || '',
             has_table: newTask.has_table || false,
             table_data: newTask.table_data || null,
-            
-            // ДОБАВИТЬ:
             images: newTask.images || [],
             image_explanation: newTask.image_explanation || []
           };
@@ -577,7 +585,94 @@ export default {
     });
   },
   methods: {
-    // Новый метод для определения имени таблицы
+    // === Функция для получения пути к изображению (для отображения в редакторе) ===
+    getImageUrl(imagePath) {
+      if (!imagePath) return '';
+      
+      let path = String(imagePath);
+      
+      if (path.startsWith('http')) {
+        if (path.includes('supabase.co')) {
+          const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/);
+          if (match) {
+            return `${PROXY_CONFIG.baseUrl}/task-images/${match[1]}`;
+          }
+        }
+        return path;
+      }
+      
+      let cleanPath = path;
+      if (cleanPath.startsWith('task-images/')) {
+        cleanPath = cleanPath.replace('task-images/', '');
+      }
+      
+      if (PROXY_CONFIG.enabled) {
+        return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`;
+      }
+      
+      try {
+        const { data: { publicUrl } } = supabase
+          .storage
+          .from('task-images')
+          .getPublicUrl(cleanPath);
+        return publicUrl;
+      } catch (err) {
+        console.error('Ошибка получения URL изображения:', err);
+        return '';
+      }
+    },
+
+    // === НОВАЯ ФУНКЦИЯ: загрузка изображения в Storage (возвращает путь) ===
+    async uploadImageToStorage(file, folder) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
+      
+      let subjectFolder;
+      if (this.subject === 'Химия ЕГЭ' || this.subject === 'Химия ОГЭ') {
+        subjectFolder = 'chemistry';
+      } else if (this.subject === 'Биология ЕГЭ' || this.subject === 'Биология ОГЭ') {
+        subjectFolder = 'biology';
+      } else {
+        subjectFolder = 'other';
+      }
+      
+      const examType = this.subject.includes('ЕГЭ') ? 'ege' : 'oge';
+      
+      // Сохраняем ТОЛЬКО путь, а не полный URL!
+      const filePath = `task-images/tasks/${subjectFolder}/${examType}/${folder}/${fileName}`;
+      
+      const { error } = await supabase
+        .storage
+        .from('task-images')
+        .upload(filePath, file, {
+          upsert: false,
+          contentType: file.type
+        });
+      
+      if (error) throw error;
+      
+      return filePath; // Возвращаем путь
+    },
+
+    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: загрузка изображений ===
+    async uploadImages(images, folder) {
+      if (!images.length) return [];
+      
+      const uploadedPaths = [];
+      
+      for (const img of images) {
+        try {
+          const path = await this.uploadImageToStorage(img.file, folder);
+          uploadedPaths.push(path);
+        } catch (error) {
+          console.error('Ошибка загрузки изображения:', error);
+          throw error;
+        }
+      }
+      
+      return uploadedPaths;
+    },
+
     getTaskTableName() {
       const subjectMap = {
         'Химия ЕГЭ': 'chemistry_ege_task_bank',
@@ -594,6 +689,7 @@ export default {
       this.topicsData['Химия ОГЭ'] = processModules(chemOgeTopicsModules);
       this.topicsData['Биология ОГЭ'] = processModules(bioOgeTopicsModules);
     },
+    
     async loadSectionsAndTopics() {
       try {
         if (this.subject === 'Химия ЕГЭ') {
@@ -616,6 +712,7 @@ export default {
         console.error('Ошибка загрузки разделов и тем:', error);
       }
     },
+    
     initializeTableContent(rows, cols) {
       const content = [];
       for (let i = 0; i < rows; i++) {
@@ -627,6 +724,7 @@ export default {
       }
       return content;
     },
+    
     updateTableSize() {
       const newContent = [];
       
@@ -648,6 +746,7 @@ export default {
         this.updateTableCellContents();
       });
     },
+    
     updateTableCellContents() {
       const cells = this.$refs.tableCells;
       if (!cells) return;
@@ -661,11 +760,11 @@ export default {
         }
       });
     },
+    
     resetTableContent() {
       this.tableContent = this.initializeTableContent(this.tableRows, this.tableCols);
     },
     
-    // Методы для работы с таблицей (без прыгающего курсора)
     handleTableCellInput(rowIndex, colIndex, event) {
       this.tableContent[rowIndex][colIndex] = event.target.innerHTML;
     },
@@ -1018,62 +1117,66 @@ export default {
       this.uploadStatus = `Загрузка ${files.length} файла(ов)...`;
       
       try {
-        const uploadPromises = files.map(file => this.uploadImage(file));
-        const uploadedUrls = await Promise.all(uploadPromises);
-        
-        const imageObjects = uploadedUrls.map(url => ({
-          id: uuidv4(),
-          url,
-          preview: url
-        }));
-        
-        if (this.currentUploadType === 'text') {
-          this.uploadedImages.push(...imageObjects);
-        } else if (this.currentUploadType === 'explanation') {
-          this.explanationImages.push(...imageObjects);
+        for (const file of files) {
+          if (file.size > 5 * 1024 * 1024) {
+            this.uploadStatus = `Файл ${file.name} слишком большой (макс. 5MB)`;
+            continue;
+          }
+          
+          if (!file.type.match('image.*')) {
+            this.uploadStatus = `Файл ${file.name} не является изображением`;
+            continue;
+          }
+          
+          const preview = await this.getImagePreview(file);
+          
+          const imageData = {
+            file,
+            preview,
+            name: file.name,
+            id: uuidv4()
+          };
+          
+          if (this.currentUploadType === 'explanation') {
+            this.explanationImages.push(imageData);
+          } else {
+            this.uploadedImages.push(imageData);
+          }
         }
         
-        this.uploadStatus = `Успешно загружено ${files.length} файла(ов)`;
-        
-        setTimeout(() => {
-          this.uploadStatus = 'Файлы не выбраны';
-        }, 3000);
-        
+        this.updateUploadStatus();
       } catch (error) {
         console.error('Ошибка загрузки файлов:', error);
         this.uploadStatus = 'Ошибка загрузки файлов';
       } finally {
         this.isUploading = false;
-        event.target.value = '';
+        this.$refs.fileInput.value = '';
       }
     },
     
-    async uploadImage(file) {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${uuidv4()}.${fileExt}`;
-      const filePath = `task-images/${fileName}`;
+    updateUploadStatus() {
+      const textCount = this.uploadedImages.length;
+      const explanationCount = this.explanationImages.length;
       
-      const { error: uploadError } = await supabase.storage
-        .from('task-images')
-        .upload(filePath, file);
-      
-      if (uploadError) {
-        throw new Error(uploadError.message);
-      }
-      
-      const { data } = supabase.storage
-        .from('task-images')
-        .getPublicUrl(filePath);
-      
-      return data.publicUrl;
+      this.uploadStatus = `Текст: ${textCount}, Пояснение: ${explanationCount}`;
+    },
+    
+    getImagePreview(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.readAsDataURL(file);
+      });
     },
     
     removeImage(index) {
       this.uploadedImages.splice(index, 1);
+      this.updateUploadStatus();
     },
     
     removeExplanationImage(index) {
       this.explanationImages.splice(index, 1);
+      this.updateUploadStatus();
     },
     
     async removeExistingImages(type) {
@@ -1102,11 +1205,20 @@ export default {
         
         const imagesToRemove = taskData[field] || [];
         
-        const deletePromises = imagesToRemove.map(async (imageUrl) => {
-          const fileName = imageUrl.split('/').pop();
+        // Удаляем файлы из Storage
+        const deletePromises = imagesToRemove.map(async (imagePath) => {
+          // Извлекаем путь из полного URL если нужно
+          let cleanPath = imagePath;
+          if (cleanPath.startsWith('http')) {
+            const match = cleanPath.match(/\/storage\/v1\/object\/public\/(.+)$/);
+            if (match) {
+              cleanPath = match[1];
+            }
+          }
+          
           const { error: deleteError } = await supabase.storage
-            .from('images')
-            .remove([`task-images/${fileName}`]);
+            .from('task-images')
+            .remove([cleanPath]);
           
           if (deleteError) {
             console.error('Ошибка удаления файла:', deleteError);
@@ -1115,14 +1227,21 @@ export default {
         
         await Promise.all(deletePromises);
         
-        const { error: updateError } = await supabase
+        // Обновляем запись в БД
+        const { data, error: updateError } = await supabase
           .from(tableName)
           .update({ [field]: [] })
-          .eq('id', this.task.id);
+          .eq('id', this.task.id)
+          .select();
         
         if (updateError) throw updateError;
         
-        this.$emit('task-updated');
+        const updatedTask = {
+          ...data[0],
+          id: this.task.id
+        };
+        
+        this.$emit('task-updated', updatedTask);
         this.closeModal();
         
       } catch (error) {
@@ -1140,6 +1259,15 @@ export default {
       
       try {
         const tableName = this.getTaskTableName();
+        
+        // Загружаем новые изображения и получаем пути
+        const textImagePaths = await this.uploadImages(this.uploadedImages, 'text');
+        const explanationImagePaths = await this.uploadImages(this.explanationImages, 'explanation');
+        
+        // Объединяем существующие изображения с новыми
+        const allTextImages = [...(this.task.images || []), ...textImagePaths];
+        const allExplanationImages = [...(this.task.image_explanation || []), ...explanationImagePaths];
+        
         const updatedTask = {
           section: this.editedTask.section,
           topic: this.editedTask.topic,
@@ -1151,15 +1279,9 @@ export default {
           answer: this.editedTask.answer,
           explanation: this.editedTask.explanation,
           has_table: this.editedTask.has_table,
-          table_data: this.editedTask.table_data, 
-                images: [
-        ...(this.task.images || []), // существующие изображения
-        ...this.uploadedImages.map(img => img.url) // новые изображения
-      ],
-      image_explanation: [
-        ...(this.task.image_explanation || []), // существующие
-        ...this.explanationImages.map(img => img.url) // новые
-      ]
+          table_data: this.editedTask.table_data,
+          images: allTextImages.length ? allTextImages : null,
+          image_explanation: allExplanationImages.length ? allExplanationImages : null,
         };
         
         const { data, error } = await supabase
@@ -1180,7 +1302,7 @@ export default {
         
       } catch (error) {
         console.error('Ошибка сохранения задания:', error);
-        alert('Ошибка сохранения задания');
+        alert('Ошибка сохранения задания: ' + error.message);
       } finally {
         this.isLoading = false;
       }
@@ -1211,69 +1333,7 @@ export default {
         this.isLoading = false;
       }
     },
-    async removeExistingImages(type) {
-    if (!this.task.id) return;
     
-    this.isLoading = true;
-    
-    try {
-      const tableName = this.getTaskTableName();
-      const imageFieldMap = {
-        text: 'images',
-        answer: 'image_answer',
-        explanation: 'image_explanation'
-      };
-      
-      const field = imageFieldMap[type];
-      if (!field) return;
-      
-      const { data: taskData, error: fetchError } = await supabase
-        .from(tableName)
-        .select(field)
-        .eq('id', this.task.id)
-        .single();
-      
-      if (fetchError) throw fetchError;
-      
-      const imagesToRemove = taskData[field] || [];
-      
-      const deletePromises = imagesToRemove.map(async (imageUrl) => {
-        const fileName = imageUrl.split('/').pop();
-        const { error: deleteError } = await supabase.storage
-          .from('images')
-          .remove([`task-images/${fileName}`]);
-        
-        if (deleteError) {
-          console.error('Ошибка удаления файла:', deleteError);
-        }
-      });
-      
-      await Promise.all(deletePromises);
-      
-      const { data, error: updateError } = await supabase
-        .from(tableName)
-        .update({ [field]: [] })
-        .eq('id', this.task.id)
-        .select(); // ← ДОБАВИТЬ .select()
-      
-      if (updateError) throw updateError;
-      
-      // Передаем обновленную задачу
-      const updatedTask = {
-        ...data[0],
-        id: this.task.id
-      };
-      
-      this.$emit('task-updated', updatedTask);
-      this.closeModal();
-      
-    } catch (error) {
-      console.error('Ошибка удаления изображений:', error);
-      alert('Ошибка удаления изображений');
-    } finally {
-      this.isLoading = false;
-    }
-  },
     closeModal() {
       this.$emit('close');
     }

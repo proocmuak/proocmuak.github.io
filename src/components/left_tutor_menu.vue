@@ -1,6 +1,16 @@
 <script setup>
-import { ref, onMounted, defineEmits, onUnmounted} from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { supabase } from '../supabase.js'
+
+// === Конфигурация прокси сервера ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+}
 
 const emit = defineEmits(['component-change'])
 
@@ -15,6 +25,30 @@ let subscription = null
 const switchComponent = (componentName) => {
   emit('component-change', componentName)
 }
+
+// === Функция для получения прокси-URL аватарки ===
+const getAvatarProxyUrl = (ref) => {
+  if (!ref) return null
+  
+  // Если это путь (не URL), добавляем прокси
+  if (!ref.startsWith('http')) {
+    if (PROXY_CONFIG.enabled) {
+      return `${PROXY_CONFIG.baseUrl}/avatar/${ref}`
+    }
+    return ref
+  }
+  
+  // Если это полный URL Supabase, извлекаем путь и проксируем
+  if (ref.includes('supabase.co')) {
+    const match = ref.match(/\/storage\/v1\/object\/public\/avatar\/(.+)$/)
+    if (match) {
+      return `${PROXY_CONFIG.baseUrl}/avatar/${match[1]}`
+    }
+  }
+  
+  return ref
+}
+
 const fetchUserData = async () => {
   try {
     if (!userEmail.value) return
@@ -39,7 +73,8 @@ const fetchUserData = async () => {
         .single()
       
       if (!avatarError && avatarData) {
-        avatarUrl.value = avatarData.ref // используем поле ref вместо https
+        // Используем прокси для аватарки
+        avatarUrl.value = getAvatarProxyUrl(avatarData.ref)
       }
     }
     
@@ -50,6 +85,7 @@ const fetchUserData = async () => {
     loading.value = false
   }
 }
+
 // Подписка на изменения в реальном времени
 const setupRealtime = () => {
   subscription = supabase
@@ -63,11 +99,12 @@ const setupRealtime = () => {
         filter: `email=eq.${userEmail.value}`
       },
       () => {
-        fetchUserData() // При любом изменении обновляем данные
+        fetchUserData()
       }
     )
     .subscribe()
 }
+
 onMounted(async () => {
   try {
     userEmail.value = localStorage.getItem('userEmail') || ''
@@ -99,7 +136,7 @@ onUnmounted(() => {
         </div>
         <div class="about_student" @click="switchComponent('main_tutor_page')">
             <div class="user-info" 
-     :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_student_page')">
+     :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_tutor_page')">
   {{ firstName }} {{ lastName }}
 </div>
           <div class="number_of_points">5465 баллов</div>
@@ -112,8 +149,7 @@ onUnmounted(() => {
         <div class="menu_button">Все домашние задания</div>
         <div class="menu_button"><a href="/task_bank.html" class="black_text_a">Банк заданий</a></div>
         <button @click="switchComponent('editor_bank_task')" class="menu_button">Редактор банка заданий</button>
-                <button class="menu_button"><a href="/TutorTaskBank.html" class="black_text_a">Редактор существующих заданий</a></button>
-
+        <button class="menu_button"><a href="/TutorTaskBank.html" class="black_text_a">Редактор существующих заданий</a></button>
         <div class="menu_button" @click="switchComponent('TutorNotification')">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
         <div class="exit">Выйти</div>
@@ -123,20 +159,21 @@ onUnmounted(() => {
     <div class="aboutcourses">
       <div class="about_courses_bold">Курсы по химии и биологии</div>  
       <div class="second_line"></div>
-      <div class="about_courses_main_text">Тут будет что-то грандиозноеы</div>
+      <div class="about_courses_main_text">Тут будет что-то грандиозное</div>
       <div class="about_courses_button_chose">Выбрать курс</div> 
     </div>
   </div>
 </template>
 
-<style>.leftpartpage{
-      height: 80vh;
-    position: sticky;
-    top: 0;
-    display: grid;
-    place-content: center;
-    grid-template-rows: 40% 55%;
-    gap: 5%;
+<style>
+.leftpartpage{
+  height: 80vh;
+  position: sticky;
+  top: 0;
+  display: grid;
+  place-content: center;
+  grid-template-rows: 40% 55%;
+  gap: 5%;
 }
 .error-message {
   color: #ff0000;
@@ -146,108 +183,107 @@ onUnmounted(() => {
   margin: 10px 0;
 }
 .leftmenu{
-    display: grid;
-    grid-template-rows: 20% 0.65% 60%;
-    gap: 7.5%;
-    background-color: #f9f8ff;
-    border-radius: 5%;
+  display: grid;
+  grid-template-rows: 20% 0.65% 60%;
+  gap: 7.5%;
+  background-color: #f9f8ff;
+  border-radius: 5%;
 }
 
 .about_student_big{
-    display: grid;
-    align-items: center;
-    grid-template-columns: 25% 70%;
-    gap: 5%;
-    padding-left: 10%;
-    padding-top: 2%;
-    cursor: pointer;
+  display: grid;
+  align-items: center;
+  grid-template-columns: 25% 70%;
+  gap: 5%;
+  padding-left: 10%;
+  padding-top: 2%;
+  cursor: pointer;
 }
 .photo_avatar{
-    height: 7vh;
-    width: 7vh;
-    border-radius: 50%;
-    object-fit: cover;
+  height: 7vh;
+  width: 7vh;
+  border-radius: 50%;
+  object-fit: cover;
 }
 .default-avatar {
-    height: 7vh;
-    width: 7vh;
-    border-radius: 50%;
-    background-color: #ccc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7vw;
-    text-align: center;
-    color: #666;
+  height: 7vh;
+  width: 7vh;
+  border-radius: 50%;
+  background-color: #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7vw;
+  text-align: center;
+  color: #666;
 }
 .about_student{
-    display: grid;
-    grid-template-rows: 45% 15%;
-    gap: 5%;
+  display: grid;
+  grid-template-rows: 45% 15%;
+  gap: 5%;
 }
 
 .number_of_points{
-    font-size: 0.9vw;
+  font-size: 0.9vw;
 }
 .line{
-    background-color: #b241d1;
-    width: 80%;
-    margin-left: 10%;
+  background-color: #b241d1;
+  width: 80%;
+  margin-left: 10%;
 }
 .second_line{
-    background-color: #b241d1;
-    width: 100%;
+  background-color: #b241d1;
+  width: 100%;
 }
 .menu{
-    display: grid;
-    grid-template-rows: 12% 12% 12% 12% 12% 12% 12% 12% 12%;
-    gap: 3%;
-    padding-left: 10%;
+  display: grid;
+  grid-template-rows: 12% 12% 12% 12% 12% 12% 12% 12% 12%;
+  gap: 3%;
+  padding-left: 10%;
 }
 .menu_button{
-    background-color: #f9f8ff;
-    border: 0px;
-    font-family: Evolventa;
-    font-size: 1.75vh;
-    cursor: pointer;
-    width: fit-content;
+  background-color: #f9f8ff;
+  border: 0px;
+  font-family: Evolventa;
+  font-size: 1.75vh;
+  cursor: pointer;
+  width: fit-content;
 }
 .aboutcourses{
-    background-color: #f9f8ff;
-    display: grid;
-    grid-template-rows: 18% 0.5% 50% 12%;
-    gap: 2%;
-    padding-left: 10%;
-    padding-right: 5%;
-    padding-top: 5%;
-    border-radius: 5%;
+  background-color: #f9f8ff;
+  display: grid;
+  grid-template-rows: 18% 0.5% 50% 12%;
+  gap: 2%;
+  padding-left: 10%;
+  padding-right: 5%;
+  padding-top: 5%;
+  border-radius: 5%;
 }
 .about_courses_bold{
-    font-size: 1.5vw;
-    font-weight: bold;
+  font-size: 1.5vw;
+  font-weight: bold;
 }
 .about_courses_main_text{
-    font-size: 1vw;
+  font-size: 1vw;
 }
 .about_courses_button_chose{
-    color: white;
-    background-color: #b241d1;
-    display: grid;
-    place-content: center;
-    border-radius: 5vw;
+  color: white;
+  background-color: #b241d1;
+  display: grid;
+  place-content: center;
+  border-radius: 5vw;
 }
 .user-info{
-    font-weight: bold;
+  font-weight: bold;
 }
 .user-info.settings-message {
-  color: #b241d1; /* Красный цвет */
+  color: #b241d1;
   font-size: 1.5vh;
   font-weight: bold;
-
   animation: pulse 1.5s infinite;
 }
 .black_text_a{
-    color: black;
+  color: black;
 }
 @keyframes pulse {
   0% { opacity: 1; }

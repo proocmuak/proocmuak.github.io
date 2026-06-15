@@ -2,6 +2,16 @@
 import { supabase } from '../supabase';
 import DOMPurify from 'dompurify';
 
+// === Конфигурация прокси сервера ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+};
+
 // === список заданий с учётом порядка ===
 const ORDERED_TASKS = {
   chemistry: [6, 7, 8, 14, 15, 22, 23, 24],
@@ -53,7 +63,6 @@ function checkNumericAnswer(userRaw, variant, points, orderMatters) {
   const correctElems = splitNumericElements(variant);
 
   if (orderMatters) {
-    // порядок обязателен
     let matches = 0;
     for (let i = 0; i < correctElems.length; i++) {
       if (userElems[i] === correctElems[i]) matches++;
@@ -77,7 +86,6 @@ function checkNumericAnswer(userRaw, variant, points, orderMatters) {
     }
 
     if (points === 2) {
-      // порядок НЕ важен
       const sortedCorrect = [...correctElems].sort();
       const sortedUser = [...userElems].sort();
 
@@ -85,7 +93,6 @@ function checkNumericAnswer(userRaw, variant, points, orderMatters) {
         return { correct: true, partial: false };
       }
 
-      // частичное совпадение
       const matches = userElems.filter(e => correctElems.includes(e)).length;
       if (
         ((matches === userElems.length || matches === correctElems.length) &&
@@ -302,15 +309,46 @@ export default {
       return formattedText;
     },
 
+    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: получение URL изображения через прокси ===
     getImageUrl(imagePath) {
-      if (imagePath.startsWith('http')) return imagePath;
+      if (!imagePath) return '';
       
-      const { data: { publicUrl } } = supabase
-        .storage
-        .from('task-images')
-        .getPublicUrl(imagePath);
+      let path = String(imagePath);
       
-      return publicUrl;
+      // Если это абсолютный URL
+      if (path.startsWith('http')) {
+        // Если это старый URL Supabase, конвертируем в проксированный
+        if (path.includes('supabase.co')) {
+          const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/);
+          if (match) {
+            return `${PROXY_CONFIG.baseUrl}/task-images/${match[1]}`;
+          }
+        }
+        return path;
+      }
+      
+      // Очищаем путь от возможных префиксов
+      let cleanPath = path;
+      if (cleanPath.startsWith('task-images/')) {
+        cleanPath = cleanPath.replace('task-images/', '');
+      }
+      
+      // Всегда используем прокси, если он включён
+      if (PROXY_CONFIG.enabled) {
+        return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`;
+      }
+      
+      // Fallback только если прокси выключен
+      try {
+        const { data: { publicUrl } } = supabase
+          .storage
+          .from('task-images')
+          .getPublicUrl(cleanPath);
+        return publicUrl;
+      } catch (err) {
+        console.error('Ошибка получения URL изображения:', err);
+        return '';
+      }
     },
 
     showAnswer() {
@@ -368,152 +406,152 @@ export default {
       return 0;
     },
 
-// Сохранение прогресса выполнения задания
-async saveTaskProgress() {
-  if (!this.user?.id) return;
+    // Сохранение прогресса выполнения задания
+    async saveTaskProgress() {
+      if (!this.user?.id) return;
 
-  try {
-    const taskId = Number(this.task.id);
-    const now = new Date().toISOString();
-    
-    const progressTable = this.task.subject.includes('Химия') 
-      ? 'chemistry_ege_progress' 
-      : 'biology_ege_progress';
+      try {
+        const taskId = Number(this.task.id);
+        const now = new Date().toISOString();
+        
+        const progressTable = this.task.subject.includes('Химия') 
+          ? 'chemistry_ege_progress' 
+          : 'biology_ege_progress';
 
-    const mlTableName = this.task.subject.includes('Химия') 
-      ? 'ml_chemistry_ege' 
-      : 'ml_biology_ege';
+        const mlTableName = this.task.subject.includes('Химия') 
+          ? 'ml_chemistry_ege' 
+          : 'ml_biology_ege';
 
-    const { data: existingRecord, error: checkError } = await supabase
-      .from(progressTable)
-      .select('id, score, counted_in_rating')
-      .eq('user_id', this.user.id)
-      .eq('task_id', taskId)
-      .maybeSingle();
+        const { data: existingRecord, error: checkError } = await supabase
+          .from(progressTable)
+          .select('id, score, counted_in_rating')
+          .eq('user_id', this.user.id)
+          .eq('task_id', taskId)
+          .maybeSingle();
 
-    if (checkError) throw checkError;
+        if (checkError) throw checkError;
 
-    const shouldCountInRating = !existingRecord?.counted_in_rating;
-    const counted_in_rating = existingRecord?.counted_in_rating || 
-                              (this.isFullyCorrect && shouldCountInRating);
-    
-    // Сохраняем в таблицу прогресса
-    const { error: upsertError } = await supabase
-      .from(progressTable)
-      .upsert({
-        user_id: this.user.id,
-        task_id: taskId,
-        is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
-        score: this.awardedPoints,
-        user_answer: this.userAnswer,
-        last_updated: now,
-        counted_in_rating: counted_in_rating
-      }, {
-        onConflict: 'user_id,task_id',
-        returning: 'minimal'
-      });
+        const shouldCountInRating = !existingRecord?.counted_in_rating;
+        const counted_in_rating = existingRecord?.counted_in_rating || 
+                                  (this.isFullyCorrect && shouldCountInRating);
+        
+        // Сохраняем в таблицу прогресса
+        const { error: upsertError } = await supabase
+          .from(progressTable)
+          .upsert({
+            user_id: this.user.id,
+            task_id: taskId,
+            is_completed: this.isFullyCorrect || this.isPartiallyCorrect,
+            score: this.awardedPoints,
+            user_answer: this.userAnswer,
+            last_updated: now,
+            counted_in_rating: counted_in_rating
+          }, {
+            onConflict: 'user_id,task_id',
+            returning: 'minimal'
+          });
 
-    if (upsertError) throw upsertError;
+        if (upsertError) throw upsertError;
 
-    // === ДОБАВЛЯЕМ ЗАПИСЬ В ML ТАБЛИЦУ ===
-    const mlData = {
-      user_id: this.user.id,
-      task_id: taskId,
-      number: this.task.number,
-      section: this.task.section,
-      topic: this.task.topic,
-      difficulty: this.task.difficulty,
-      max_score: this.task.points,
-      is_correct: this.isFullyCorrect, // true только если полный балл
-      score: this.awardedPoints,
-      created_at: now
-    };
+        // === ДОБАВЛЯЕМ ЗАПИСЬ В ML ТАБЛИЦУ ===
+        const mlData = {
+          user_id: this.user.id,
+          task_id: taskId,
+          number: this.task.number,
+          section: this.task.section,
+          topic: this.task.topic,
+          difficulty: this.task.difficulty,
+          max_score: this.task.points,
+          is_correct: this.isFullyCorrect,
+          score: this.awardedPoints,
+          created_at: now
+        };
 
-    const { error: mlError } = await supabase
-      .from(mlTableName)
-      .insert([mlData]);
+        const { error: mlError } = await supabase
+          .from(mlTableName)
+          .insert([mlData]);
 
-    if (mlError) {
-      console.error('Ошибка сохранения в ML таблицу:', mlError);
-    } else {
-      console.log('✅ Данные сохранены в ML таблицу:', mlTableName);
-    }
+        if (mlError) {
+          console.error('Ошибка сохранения в ML таблицу:', mlError);
+        } else {
+          console.log('✅ Данные сохранены в ML таблицу:', mlTableName);
+        }
 
-    if (shouldCountInRating) {
-      this.$emit('answer-checked', {
-        taskId: this.task.id,
-        isCorrect: this.isFullyCorrect,
-        isPartiallyCorrect: this.isPartiallyCorrect,
-        awardedPoints: this.awardedPoints,
-        userAnswer: this.userAnswer
-      });
-    } else {
-      this.$emit('answer-retried', {
-        taskId: this.task.id,
-        awardedPoints: this.awardedPoints,
-        userAnswer: this.userAnswer,
-        isCounted: false
-      });
-    }
+        if (shouldCountInRating) {
+          this.$emit('answer-checked', {
+            taskId: this.task.id,
+            isCorrect: this.isFullyCorrect,
+            isPartiallyCorrect: this.isPartiallyCorrect,
+            awardedPoints: this.awardedPoints,
+            userAnswer: this.userAnswer
+          });
+        } else {
+          this.$emit('answer-retried', {
+            taskId: this.task.id,
+            awardedPoints: this.awardedPoints,
+            userAnswer: this.userAnswer,
+            isCounted: false
+          });
+        }
 
-  } catch (error) {
-    console.error('Ошибка сохранения прогресса:', error);
-    throw error;
-  }
-},
+      } catch (error) {
+        console.error('Ошибка сохранения прогресса:', error);
+        throw error;
+      }
+    },
 
-// Функция для ручного выставления баллов (для куратора)
-async setManualScore(manualScore) {
-  if (!this.user?.id) return;
-  
-  try {
-    this.awardedPoints = manualScore;
-    this.isFullyCorrect = manualScore === this.task.points;
-    this.isPartiallyCorrect = manualScore > 0 && manualScore < this.task.points;
-    this.answerChecked = true;
-    
-    await this.saveTaskProgress();
-    
-  } catch (error) {
-    console.error('Ошибка установки ручной оценки:', error);
-  }
-},
+    // Функция для ручного выставления баллов (для куратора)
+    async setManualScore(manualScore) {
+      if (!this.user?.id) return;
+      
+      try {
+        this.awardedPoints = manualScore;
+        this.isFullyCorrect = manualScore === this.task.points;
+        this.isPartiallyCorrect = manualScore > 0 && manualScore < this.task.points;
+        this.answerChecked = true;
+        
+        await this.saveTaskProgress();
+        
+      } catch (error) {
+        console.error('Ошибка установки ручной оценки:', error);
+      }
+    },
 
-async loadTaskProgress() {
-  if (!this.user?.id) return;
-  
-  try {
-    const taskId = Number(this.task.id);
-    
-    const progressTable = this.task.subject.includes('Химия') 
-      ? 'chemistry_ege_progress' 
-      : 'biology_ege_progress';
+    async loadTaskProgress() {
+      if (!this.user?.id) return;
+      
+      try {
+        const taskId = Number(this.task.id);
+        
+        const progressTable = this.task.subject.includes('Химия') 
+          ? 'chemistry_ege_progress' 
+          : 'biology_ege_progress';
 
-    const { data, error } = await supabase
-      .from(progressTable)
-      .select('score, is_completed, user_answer')
-      .eq('user_id', this.user.id)
-      .eq('task_id', taskId)
-      .maybeSingle();
+        const { data, error } = await supabase
+          .from(progressTable)
+          .select('score, is_completed, user_answer')
+          .eq('user_id', this.user.id)
+          .eq('task_id', taskId)
+          .maybeSingle();
 
-    if (error) throw error;
+        if (error) throw error;
 
-    if (data) {
-      this.userAnswer = data.user_answer || '';
-      this.awardedPoints = data.score || 0;
-      this.answerChecked = true;
-      this.updateStatusFlags();
-    } else {
-      this.answerChecked = false;
-      this.awardedPoints = 0;
-      this.userAnswer = '';
-      this.isFullyCorrect = false;
-      this.isPartiallyCorrect = false;
-    }
-  } catch (error) {
-    console.error('Ошибка загрузки прогресса:', error);
-  }
-},
+        if (data) {
+          this.userAnswer = data.user_answer || '';
+          this.awardedPoints = data.score || 0;
+          this.answerChecked = true;
+          this.updateStatusFlags();
+        } else {
+          this.answerChecked = false;
+          this.awardedPoints = 0;
+          this.userAnswer = '';
+          this.isFullyCorrect = false;
+          this.isPartiallyCorrect = false;
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки прогресса:', error);
+      }
+    },
 
     getProgressTableName() {
       return this.task.subject.includes('Химия') 
@@ -521,14 +559,14 @@ async loadTaskProgress() {
         : 'biology_ege_progress';
     },
 
-updateStatusFlags() {
-  this.isFullyCorrect = this.awardedPoints === this.task.points;
-  this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
-  
-  if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
-    this.awardedPoints = 0;
-  }
-},
+    updateStatusFlags() {
+      this.isFullyCorrect = this.awardedPoints === this.task.points;
+      this.isPartiallyCorrect = this.awardedPoints > 0 && this.awardedPoints < this.task.points;
+      
+      if (this.answerChecked && !this.isFullyCorrect && !this.isPartiallyCorrect) {
+        this.awardedPoints = 0;
+      }
+    },
 
     openImageModal(imageUrl) {
       this.selectedImage = imageUrl;
@@ -628,7 +666,7 @@ updateStatusFlags() {
 
       <!-- Блок ответа -->
       <div class="answer-section">
-        <div v-if="isFirstPart" class="answer-input-container"  @copy.prevent>
+        <div v-if="isFirstPart" class="answer-input-container" @copy.prevent>
           <input 
             v-model="userAnswer" 
             type="text" 

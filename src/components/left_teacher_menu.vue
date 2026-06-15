@@ -1,6 +1,16 @@
 <script setup>
-import { ref, onMounted, defineEmits, onUnmounted} from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { supabase } from '../supabase.js'
+
+// === Конфигурация прокси сервера ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+}
 
 const emit = defineEmits(['component-change'])
 
@@ -15,6 +25,30 @@ let subscription = null
 const switchComponent = (componentName) => {
   emit('component-change', componentName)
 }
+
+// === Функция для получения прокси-URL аватарки ===
+const getAvatarProxyUrl = (ref) => {
+  if (!ref) return null
+  
+  // Если это путь (не URL), добавляем прокси
+  if (!ref.startsWith('http')) {
+    if (PROXY_CONFIG.enabled) {
+      return `${PROXY_CONFIG.baseUrl}/avatar/${ref}`
+    }
+    return ref
+  }
+  
+  // Если это полный URL Supabase, извлекаем путь и проксируем
+  if (ref.includes('supabase.co')) {
+    const match = ref.match(/\/storage\/v1\/object\/public\/avatar\/(.+)$/)
+    if (match) {
+      return `${PROXY_CONFIG.baseUrl}/avatar/${match[1]}`
+    }
+  }
+  
+  return ref
+}
+
 const fetchUserData = async () => {
   try {
     if (!userEmail.value) return
@@ -39,7 +73,8 @@ const fetchUserData = async () => {
         .single()
       
       if (!avatarError && avatarData) {
-        avatarUrl.value = avatarData.ref // используем поле ref вместо https
+        // Используем прокси для аватарки
+        avatarUrl.value = getAvatarProxyUrl(avatarData.ref)
       }
     }
     
@@ -50,6 +85,7 @@ const fetchUserData = async () => {
     loading.value = false
   }
 }
+
 const setupRealtime = () => {
   subscription = supabase
     .channel('personal_changes')
@@ -62,7 +98,7 @@ const setupRealtime = () => {
         filter: `email=eq.${userEmail.value}`
       },
       () => {
-        fetchUserData() // При любом изменении обновляем данные
+        fetchUserData()
       }
     )
     .subscribe()
@@ -99,7 +135,7 @@ onUnmounted(() => {
         </div>
         <div class="about_student" @click="switchComponent('main_teacher_page')">
             <div class="user-info" 
-     :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_student_page')">
+     :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_teacher_page')">
   {{ firstName }} {{ lastName }}
 </div>
           <div class="number_of_points">5465 баллов</div>
@@ -114,7 +150,7 @@ onUnmounted(() => {
         <button @click="switchComponent('editor_students')" class="menu_button">Редактор учеников</button>
         <div class="menu_button" @click="switchComponent('editor_homework')">Редактор домашек</div>
         <div class="menu_button" @click="switchComponent('all_students')">Все ученики</div>
-                        <button class="menu_button"><a href="/TutorTaskBank.html" class="black_text_a">Редактор существующих заданий</a></button>
+        <button class="menu_button"><a href="/TutorTaskBank.html" class="black_text_a">Редактор существующих заданий</a></button>
         <div class="menu_button">Уведомления</div>
         <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
         <div class="exit">Выйти</div>
@@ -242,10 +278,9 @@ onUnmounted(() => {
     font-weight: bold;
 }
 .user-info.settings-message {
-  color: #b241d1; /* Красный цвет */
+  color: #b241d1;
   font-size: 1.5vh;
   font-weight: bold;
-
   animation: pulse 1.5s infinite;
 }
 .black_text_a{

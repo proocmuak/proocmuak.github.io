@@ -979,72 +979,63 @@ export default {
       this.updateUploadStatus();
     },
     
-async uploadImagesToStorage(images, folder) {
-  if (!images.length) return [];
-  
-  const uploadedUrls = [];
-  
-  try {
-    // Определяем папку предмета
-    let subjectFolder;
-    if (this.selectedSubject === 'Химия ЕГЭ' || this.selectedSubject === 'Химия ОГЭ') {
-      subjectFolder = 'chemistry';
-    } else if (this.selectedSubject === 'Биология ЕГЭ' || this.selectedSubject === 'Биология ОГЭ') {
-      subjectFolder = 'biology';
-    } else {
-      subjectFolder = 'other';
-    }
-    
-    // Определяем тип экзамена
-    const examType = this.selectedSubject.includes('ЕГЭ') ? 'ege' : 'oge';
-    
-    for (const img of images) {
-      const fileExt = img.name.split('.').pop();
-      const fileName = `${uuidv4()}.${fileExt}`;
+    async uploadImagesToStorage(images, folder) {
+      if (!images.length) return [];
       
-      // Правильный путь: task-images/папка/файл
-      const filePath = `tasks/${subjectFolder}/${examType}/${folder}/${fileName}`;
+      const uploadedPaths = [];
       
-      console.log('Uploading to path:', filePath); // Для отладки
-      
-      const { error } = await supabase
-        .storage
-        .from('task-images')  // Бакет
-        .upload(filePath, img.file, {
-          upsert: false,
-          contentType: img.file.type
-        });
-      
-      if (error) {
-        console.error('Upload error:', error);
+      try {
+        // Определяем папку предмета
+        let subjectFolder;
+        if (this.selectedSubject === 'Химия ЕГЭ' || this.selectedSubject === 'Химия ОГЭ') {
+          subjectFolder = 'chemistry';
+        } else if (this.selectedSubject === 'Биология ЕГЭ' || this.selectedSubject === 'Биология ОГЭ') {
+          subjectFolder = 'biology';
+        } else {
+          subjectFolder = 'other';
+        }
+        
+        // Определяем тип экзамена
+        const examType = this.selectedSubject.includes('ЕГЭ') ? 'ege' : 'oge';
+        
+        for (const img of images) {
+          const fileExt = img.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExt}`;
+          
+          // Сохраняем ТОЛЬКО путь, а не полный URL!
+          const filePath = `task-images/tasks/${subjectFolder}/${examType}/${folder}/${fileName}`;
+          
+          const { error } = await supabase
+            .storage
+            .from('task-images')
+            .upload(filePath, img.file, {
+              upsert: false,
+              contentType: img.file.type
+            });
+          
+          if (error) {
+            console.error('Upload error:', error);
+            throw error;
+          }
+          
+          // Сохраняем только путь к файлу
+          uploadedPaths.push(filePath);
+        }
+        
+        return uploadedPaths;
+      } catch (error) {
+        console.error('Ошибка загрузки:', error);
         throw error;
       }
-      
-      // Получаем публичный URL
-      const { data: { publicUrl } } = supabase
-        .storage
-        .from('task-images')
-        .getPublicUrl(filePath);
-        
-      uploadedUrls.push(publicUrl);
-    }
-    
-    return uploadedUrls;
-  } catch (error) {
-    console.error('Ошибка загрузки:', error);
-    throw error;
-  }
-},
+    },
 
     async saveTask() {
       try {
         this.isUploading = true;
         
-        // Загрузка изображений
-        const [textImageUrls, explanationImageUrls] = await Promise.all([
-          this.uploadImagesToStorage(this.uploadedImages, 'text'),
-          this.uploadImagesToStorage(this.explanationImages, 'explanation')
-        ]);
+        // Загрузка изображений - получаем пути, а не URL
+        const textImagePaths = await this.uploadImagesToStorage(this.uploadedImages, 'text');
+        const explanationImagePaths = await this.uploadImagesToStorage(this.explanationImages, 'explanation');
         
         // Определяем таблицу в зависимости от предмета
         let tableName;
@@ -1064,7 +1055,7 @@ async uploadImagesToStorage(images, folder) {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
         
-        // Сохраняем задание в соответствующую таблицу
+        // Сохраняем задание в соответствующую таблицу (храним пути, а не URL)
         const { data, error } = await supabase
           .from(tableName)
           .insert([{
@@ -1077,8 +1068,8 @@ async uploadImagesToStorage(images, folder) {
             number: this.newTask.number,
             points: this.newTask.points,
             difficulty: parseInt(this.newTask.difficulty),
-            images: textImageUrls.length ? textImageUrls : null,
-            image_explanation: explanationImageUrls.length ? explanationImageUrls : null,
+            images: textImagePaths.length ? textImagePaths : null,
+            image_explanation: explanationImagePaths.length ? explanationImagePaths : null,
             has_table: this.newTask.has_table,
             table_data: this.newTask.table_data,
           }])

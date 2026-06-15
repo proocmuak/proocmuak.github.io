@@ -31,14 +31,13 @@ export default {
         'Биология ЕГЭ': 'biology_ege_rating',
         'Биология ОГЭ': 'biology_oge_rating'
       };
-      return subjectMap[this.selectedSubject] || 'chemistry_ege_rating';
+      return subjectMap[this.selectedSubject];
     },
     filteredStudents() {
       return this.allStudents;
     }
   },
   methods: {
-    // Получение ID текущего пользователя
     async getCurrentUserId() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -49,7 +48,6 @@ export default {
       }
     },
 
-    // Получение данных студента
     async fetchStudentData() {
       try {
         this.user_id = await this.getCurrentUserId();
@@ -74,7 +72,6 @@ export default {
       }
     },
 
-    // Получение предметов пользователя
     async fetchUserSubjects() {
       try {
         const studentData = await this.fetchStudentData();
@@ -100,7 +97,6 @@ export default {
 
         this.subjects = subjects;
         
-        // Устанавливаем первый предмет по умолчанию, если есть доступные предметы
         if (subjects.length > 0) {
           this.selectedSubject = subjects[0].value;
         }
@@ -112,7 +108,6 @@ export default {
     },
 
     async fetchAllStudents() {
-      // Если предмет не выбран, не загружаем данные
       if (!this.selectedSubject) {
         this.allStudents = [];
         return;
@@ -123,42 +118,26 @@ export default {
       this.allStudents = [];
       
       try {
-        // 1. Сначала получаем данные из рейтинговой таблицы
         const { data: ratingData, error: ratingError } = await supabase
           .from(this.ratingTable)
           .select('user_id, total_score')
           .order('total_score', { ascending: false });
         
-        if (ratingError) {
-          console.error('Ошибка рейтинга:', ratingError);
-          throw ratingError;
-        }
+        if (ratingError) throw ratingError;
+        if (!ratingData || ratingData.length === 0) return;
         
-        if (!ratingData || ratingData.length === 0) {
-          return;
-        }
-        
-        // 2. Получаем ID пользователей
         const userIds = ratingData.map(item => item.user_id).filter(id => id);
+        if (userIds.length === 0) return;
         
-        if (userIds.length === 0) {
-          return;
-        }
-        
-        // 3. Получаем данные пользователей из таблицы personalities
-        const { data: personalitiesData, error: personalitiesError } = await supabase
+        const { data: allPersonalities, error: personalitiesError } = await supabase
           .from('personalities')
           .select('user_id, email, first_name, last_name')
-          .in('user_id', userIds);
+          .limit(100);
         
-        if (personalitiesError) {
-          console.error('Ошибка personalities:', personalitiesError);
-          throw personalitiesError;
-        }
+        if (personalitiesError) throw personalitiesError;
         
-        // 4. Объединяем данные
-        const mergedData = ratingData.map(ratingItem => {
-          const personalityData = personalitiesData?.find(person => person.user_id === ratingItem.user_id);
+        this.allStudents = ratingData.map(ratingItem => {
+          const personalityData = allPersonalities?.find(p => p.user_id === ratingItem.user_id);
           return {
             user_id: ratingItem.user_id,
             email: personalityData?.email || 'Не указан',
@@ -166,13 +145,11 @@ export default {
             last_name: personalityData?.last_name || '',
             total_score: ratingItem.total_score || 0
           };
-        });
-        
-        this.allStudents = mergedData;
+        }).filter(s => s.first_name || s.last_name || s.email !== 'Не указан');
         
       } catch (err) {
-        console.error('Полная ошибка загрузки:', err);
-        this.error = err.message || 'Ошибка при загрузке данных';
+        console.error('Ошибка загрузки:', err);
+        this.error = err.message;
       } finally {
         this.loading = false;
       }
@@ -195,11 +172,9 @@ export default {
     }
   },
   async mounted() {
-    // Сначала загружаем предметы пользователя
     await this.fetchUserSubjects();
-    // Затем загружаем студентов для выбранного предмета
     if (this.selectedSubject) {
-      this.fetchAllStudents();
+      await this.fetchAllStudents();
     }
   },
   watch: {
@@ -236,7 +211,7 @@ export default {
         <div v-if="loading" class="loading-indicator">Загрузка рейтинга...</div>
         <div v-else-if="error" class="error-message">Ошибка: {{ error }}</div>
         
-        <div v-if="!loading && !error && selectedSubject" class="table-wrapper">
+        <div v-if="!loading && !error && selectedSubject && filteredStudents.length > 0" class="table-wrapper">
           <table class="rating-table">
             <thead>
               <tr>
@@ -253,7 +228,7 @@ export default {
               </tr>
               
               <tr v-if="filteredStudents.length === 0">
-                <td colspan="4" class="no-data">Нет данных для отображения</td>
+                <td colspan="3" class="no-data">Нет данных для отображения</td>
               </tr>
             </tbody>
           </table>
@@ -356,10 +331,6 @@ export default {
   color: #333;
 }
 
-.email-cell {
-  color: #666;
-}
-
 .score-cell {
   font-weight: 600;
   color: #b241d1;
@@ -404,7 +375,6 @@ export default {
   margin: 1rem 0;
 }
 
-/* Стили для первых трех мест */
 .rating-table tr:first-child .position-cell {
   background: linear-gradient(135deg, #FFD700 0%, #FFC400 100%);
   color: white;

@@ -36,8 +36,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { supabase } from '../supabase.js'
+
+// === Конфигурация прокси ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+}
 
 const props = defineProps({
   currentFiles: {
@@ -91,6 +101,7 @@ const removeFromQueue = (index) => {
   filesQueue.value.splice(index, 1)
 }
 
+// === ИСПРАВЛЕННАЯ ФУНКЦИЯ ЗАГРУЗКИ ===
 const handleFilesUpload = async (event) => {
   const files = Array.from(event.target.files)
   if (!files.length) return
@@ -108,7 +119,7 @@ const handleFilesUpload = async (event) => {
       progress: 0
     }))
 
-    const uploadedUrls = []
+    const uploadedPaths = []
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
@@ -120,31 +131,36 @@ const handleFilesUpload = async (event) => {
         const fileExt = file.name.split('.').pop()
         const randomSuffix = Math.random().toString(36).substr(2, 9)
         
-        // Используем rowId для именования файлов
+        // Формируем имя файла (без дублирования material/)
         const fileName = props.rowId 
           ? `${props.fileType}_${props.rowId}_${Date.now()}_${i}_${randomSuffix}.${fileExt}`
           : `${props.fileType}_${Date.now()}_${i}_${randomSuffix}.${fileExt}`
         
-        const filePath = `material/${fileName}`
+        // ПРАВИЛЬНЫЙ ПУТЬ: только один раз material/
+        const filePath = `${fileName}`
 
+        console.log('Загрузка файла:', filePath)
+
+        // Используем upsert: false и не добавляем лишних заголовков
         const { data, error: uploadError } = await supabase.storage
           .from('material')
           .upload(filePath, file, {
             cacheControl: '3600',
-            upsert: false
+            upsert: false,
+            contentType: file.type
           })
 
-        if (uploadError) throw uploadError
+        if (uploadError) {
+          console.error('Supabase upload error:', uploadError)
+          throw uploadError
+        }
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('material')
-          .getPublicUrl(filePath)
-
-        uploadedUrls.push(publicUrl)
+        // Сохраняем путь (без дублирования)
+        uploadedPaths.push(filePath)
+        
         queueItem.status = 'completed'
         queueItem.progress = 100
         
-        // Обновляем общий прогресс
         const completed = filesQueue.value.filter(f => f.status === 'completed').length
         uploadProgress.value = (completed / files.length) * 100
 
@@ -155,8 +171,8 @@ const handleFilesUpload = async (event) => {
       }
     }
 
-    if (uploadedUrls.length > 0) {
-      emit('files-uploaded', uploadedUrls)
+    if (uploadedPaths.length > 0) {
+      emit('files-uploaded', uploadedPaths)
     }
 
   } catch (err) {
@@ -167,11 +183,30 @@ const handleFilesUpload = async (event) => {
     setTimeout(() => {
       filesQueue.value = []
       if (fileInput.value) {
-        fileInput.value.value = '' // Сбрасываем input
+        fileInput.value.value = ''
       }
     }, 2000)
   }
 }
+
+// Функция для получения прокси-URL (для отображения)
+const getProxyUrl = (filePath) => {
+  if (!filePath) return ''
+  if (filePath.startsWith('http')) {
+    if (filePath.includes('supabase.co')) {
+      const match = filePath.match(/\/storage\/v1\/object\/public\/material\/(.+)$/)
+      if (match) {
+        return `${PROXY_CONFIG.baseUrl}/material/${match[1]}`
+      }
+    }
+    return filePath
+  }
+  return `${PROXY_CONFIG.baseUrl}/material/${filePath}`
+}
+
+onUnmounted(() => {
+  // Очистка
+})
 </script>
 
 <style scoped>
@@ -216,12 +251,6 @@ const handleFilesUpload = async (event) => {
   color: #666;
 }
 
-.upload-stats {
-  font-size: 12px;
-  color: #888;
-  margin-top: 5px;
-}
-
 .error-message {
   margin: 10px 0;
   color: #f44336;
@@ -232,27 +261,6 @@ const handleFilesUpload = async (event) => {
   border: 1px solid #ffcdd2;
 }
 
-/* Прогресс-бар */
-.progress-container {
-  margin: 10px 0;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: #e0e0e0;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: #4CAF50;
-  transition: width 0.3s ease;
-  border-radius: 4px;
-}
-
-/* Очередь файлов */
 .files-queue {
   margin: 15px 0;
   max-height: 200px;
@@ -308,58 +316,6 @@ const handleFilesUpload = async (event) => {
   border-radius: 50%;
 }
 
-/* Загруженные файлы */
-.uploaded-files {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid #eee;
-}
-
-.uploaded-files h4 {
-  margin: 0 0 10px 0;
-  color: #333;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.uploaded-file {
-  display: flex;
-  align-items: center;
-  padding: 6px 0;
-  margin: 2px 0;
-}
-
-.file-link {
-  flex: 1;
-  color: #2196F3;
-  text-decoration: none;
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-link:hover {
-  text-decoration: underline;
-}
-
-.copy-btn {
-  background: none;
-  border: none;
-  color: #666;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 4px;
-  margin-left: 8px;
-  border-radius: 3px;
-}
-
-.copy-btn:hover {
-  background: #f5f5f5;
-  color: #333;
-}
-
-/* Адаптивность */
 @media (max-width: 768px) {
   .file-item {
     flex-direction: column;

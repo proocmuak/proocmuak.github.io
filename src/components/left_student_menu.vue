@@ -2,6 +2,16 @@
 import { ref, onMounted, onUnmounted, defineEmits, computed, onBeforeUnmount } from 'vue'
 import { supabase } from '../supabase.js'
 
+// === Конфигурация прокси сервера ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+}
+
 const emit = defineEmits(['component-change'])
 const userEmail = ref('')
 const firstName = ref('Добавьте имя')
@@ -12,11 +22,34 @@ const error = ref(null)
 const studentData = ref({})
 const currentCardIndex = ref(0)
 const cardInterval = ref(null)
-const transitionDirection = ref('next') // 'next' или 'prev' для анимации
+const transitionDirection = ref('next')
 let subscription = null
 
 const switchComponent = (componentName) => {
   emit('component-change', componentName)
+}
+
+// === Функция для получения прокси-URL аватарки ===
+const getAvatarProxyUrl = (ref) => {
+  if (!ref) return null
+  
+  // Если это путь (не URL), добавляем прокси
+  if (!ref.startsWith('http')) {
+    if (PROXY_CONFIG.enabled) {
+      return `${PROXY_CONFIG.baseUrl}/avatar/${ref}`
+    }
+    return ref
+  }
+  
+  // Если это полный URL Supabase, извлекаем путь и проксируем
+  if (ref.includes('supabase.co')) {
+    const match = ref.match(/\/storage\/v1\/object\/public\/avatar\/(.+)$/)
+    if (match) {
+      return `${PROXY_CONFIG.baseUrl}/avatar/${match[1]}`
+    }
+  }
+  
+  return ref
 }
 
 // Функция для загрузки данных пользователя
@@ -43,7 +76,8 @@ const fetchUserData = async () => {
         .single()
       
       if (!avatarError && avatarData) {
-        avatarUrl.value = avatarData.ref
+        // Используем прокси для аватарки
+        avatarUrl.value = getAvatarProxyUrl(avatarData.ref)
       }
     }
     
@@ -99,7 +133,7 @@ const fetchStudentData = async () => {
   }
 }
 
-// Проверяем, заполнено ли поле (не null, не undefined, не пустая строка)
+// Проверяем, заполнено ли поле
 const isFieldFilled = (field) => {
   return field !== null && field !== undefined && String(field).trim() !== ''
 }
@@ -113,7 +147,7 @@ const getExamType = (subject) => {
   return ''
 }
 
-// Логика для определения текста и ссылки для первой карточки (ВСЕГДА МАТЕМАТИКА)
+// Логика для определения текста и ссылки для первой карточки
 const getFirstCardData = () => {
   if (!studentData.value || Object.keys(studentData.value).length === 0) {
     return null
@@ -121,12 +155,10 @@ const getFirstCardData = () => {
   
   const subjects = [studentData.value.subject1, studentData.value.subject2]
   
-  // Проверяем, есть ли ОГЭ в любом из предметов
   const hasOGE = subjects.some(subject => 
     subject && String(subject).toLowerCase().includes('огэ')
   )
   
-  // Проверяем, есть ли ЕГЭ в любом из предметов
   const hasEGE = subjects.some(subject => 
     subject && String(subject).toLowerCase().includes('егэ')
   )
@@ -163,18 +195,12 @@ const getSecondCardData = () => {
   const subject1 = studentData.value.subject1
   const subject2 = studentData.value.subject2
   
-  // Если оба предмета заполнены - не показываем вторую карточку
   if (isFieldFilled(subject1) && isFieldFilled(subject2)) {
     return null
   }
   
-  // Определяем недостающий предмет
-  
-  // Если нет химии (subject1 пусто), а биология есть
   if (!isFieldFilled(subject1) && isFieldFilled(subject2)) {
-    // Определяем тип экзамена из биологии (предполагаем, что будет тот же тип)
     const examType = getExamType(subject2)
-    
     return {
       text: `Записаться на курс по Химии ${examType}`,
       link: 'https://purtoschool.ru/',
@@ -184,11 +210,8 @@ const getSecondCardData = () => {
     }
   }
   
-  // Если есть химия, а биологии нет
   if (isFieldFilled(subject1) && !isFieldFilled(subject2)) {
-    // Определяем тип экзамена из химии
     const examType = getExamType(subject1)
-    
     return {
       text: `Записаться на курс по Биологии ${examType}`,
       link: 'https://purtoschool.ru/',
@@ -198,7 +221,6 @@ const getSecondCardData = () => {
     }
   }
   
-  // Если оба пустые
   return {
     text: 'Записаться на курс по химии или биологии',
     link: 'https://purtoschool.ru/',
@@ -208,7 +230,7 @@ const getSecondCardData = () => {
   }
 }
 
-// Третья карточка - пригласи друга (без кнопки)
+// Третья карточка - пригласи друга
 const getThirdCardData = () => {
   return {
     text: 'Приведи друга - получите скидку 500₽ каждый!',
@@ -217,7 +239,7 @@ const getThirdCardData = () => {
     type: 'invite',
     emoji: '🎁',
     compact: false,
-    hasButton: false // НЕТ КНОПКИ
+    hasButton: false
   }
 }
 
@@ -230,7 +252,7 @@ const allCards = computed(() => {
   
   if (firstCard) cards.push(firstCard)
   if (secondCard) cards.push(secondCard)
-  cards.push(thirdCard) // Всегда показываем карточку с приглашением
+  cards.push(thirdCard)
   
   return cards
 })
@@ -241,7 +263,7 @@ const currentCard = computed(() => {
   return allCards.value[currentCardIndex.value]
 })
 
-// Переключение на следующую карточку с анимацией
+// Переключение на следующую карточку
 const nextCard = () => {
   if (allCards.value.length <= 1) return
   transitionDirection.value = 'next'
@@ -249,7 +271,7 @@ const nextCard = () => {
   resetTimer()
 }
 
-// Переключение на предыдущую карточку с анимацией
+// Переключение на предыдущую карточку
 const prevCard = () => {
   if (allCards.value.length <= 1) return
   transitionDirection.value = 'prev'
@@ -260,13 +282,12 @@ const prevCard = () => {
 // Переход к конкретной карточке
 const goToCard = (index) => {
   if (index === currentCardIndex.value) return
-  
   transitionDirection.value = index > currentCardIndex.value ? 'next' : 'prev'
   currentCardIndex.value = index
   resetTimer()
 }
 
-// Сброс таймера автоматического переключения
+// Сброс таймера
 const resetTimer = () => {
   if (cardInterval.value) {
     clearInterval(cardInterval.value)
@@ -274,13 +295,12 @@ const resetTimer = () => {
   startCarousel()
 }
 
-// Запуск автоматической карусели
+// Запуск карусели
 const startCarousel = () => {
   if (allCards.value.length <= 1) return
-  
   cardInterval.value = setInterval(() => {
     nextCard()
-  }, 5000) // 5 секунд
+  }, 5000)
 }
 
 // Подписка на изменения в реальном времени
@@ -306,13 +326,11 @@ const setupRealtime = () => {
 onMounted(async () => {
   try {
     userEmail.value = localStorage.getItem('userEmail') || ''
-    
     if (!userEmail.value) throw new Error('Email не найден в localStorage')
     
     await Promise.all([fetchUserData(), fetchStudentData()])
     setupRealtime()
     
-    // Запускаем карусель после загрузки данных
     setTimeout(() => {
       startCarousel()
     }, 1000)
@@ -371,7 +389,6 @@ onUnmounted(() => {
       
       <!-- Карусель с карточками -->
       <div class="carousel-container">
-        <!-- Стрелка назад -->
         <button 
           v-if="allCards.length > 1" 
           @click="prevCard" 
@@ -383,10 +400,8 @@ onUnmounted(() => {
           </svg>
         </button>
         
-        <!-- Контейнер для карточек с внутренними отступами -->
         <div class="carousel-inner-container">
           <div class="carousel">
-            <!-- Текущая карточка -->
             <div 
               v-if="currentCard" 
               class="course-card"
@@ -394,19 +409,16 @@ onUnmounted(() => {
               :key="currentCardIndex"
             >
               <div class="course-card-content">
-                <!-- Эмодзи для карточки приглашения -->
                 <div v-if="currentCard.emoji" class="card-emoji">
                   {{ currentCard.emoji }}
                 </div>
                 
                 <div class="course-text">{{ currentCard.text }}</div>
                 
-                <!-- Описание для карточки приглашения -->
                 <div v-if="currentCard.description" class="course-description">
                   {{ currentCard.description }}
                 </div>
                 
-                <!-- Кнопка только для карточек с hasButton: true -->
                 <a 
                   v-if="currentCard.hasButton" 
                   :href="currentCard.link" 
@@ -418,7 +430,6 @@ onUnmounted(() => {
               </div>
             </div>
             
-            <!-- Если нет карточек для показа -->
             <div v-if="!currentCard" class="no-courses">
               <div class="about_courses_main_text">Тут будет что-то грандиозное</div>
               <a href="https://purtoschool.ru/" target="_blank" class="about_courses_button_chose">Выбрать курс</a>
@@ -426,7 +437,6 @@ onUnmounted(() => {
           </div>
         </div>
         
-        <!-- Стрелка вперед -->
         <button 
           v-if="allCards.length > 1" 
           @click="nextCard" 
@@ -438,7 +448,6 @@ onUnmounted(() => {
           </svg>
         </button>
         
-        <!-- Индикаторы (точки) -->
         <div v-if="allCards.length > 1" class="carousel-indicators">
           <button 
             v-for="(card, index) in allCards" 
@@ -455,7 +464,7 @@ onUnmounted(() => {
 </template>
 
 <style>
-/* Существующие стили остаются без изменений */
+/* Все стили остаются без изменений */
 *{
   font-family: Evolventa;
 }
@@ -605,11 +614,10 @@ onUnmounted(() => {
   justify-content: center;
 }
 
-/* Внутренний контейнер для отступов */
 .carousel-inner-container {
   width: 100%;
   height: 100%;
-  padding: 0 25px; /* Увеличиваем отступы от стрелок */
+  padding: 0 25px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -625,7 +633,6 @@ onUnmounted(() => {
   position: relative;
 }
 
-/* Базовые стили для всех карточек */
 .course-card {
   background: transparent !important;
   border-radius: 8px;
@@ -641,7 +648,6 @@ onUnmounted(() => {
   transition: opacity 0.6s ease, transform 0.6s ease;
 }
 
-/* Компактные карточки (математика и курсы) */
 .course-card.card-compact {
   padding: 15px;
 }
@@ -680,7 +686,6 @@ onUnmounted(() => {
   }
 }
 
-/* Контент карточек */
 .course-card-content {
   display: flex;
   flex-direction: column;
@@ -692,22 +697,19 @@ onUnmounted(() => {
   max-width: 90%;
 }
 
-/* Для карточек с кнопкой */
 .card-compact .course-card-content,
 .with-button .course-card-content {
   gap: 12px;
 }
 
-/* Для карточек БЕЗ кнопки (приглашение) */
 .card-normal .course-card-content,
 .no-button .course-card-content {
   gap: 5px;
   justify-content: center;
 }
 
-/* ЕЩЁ УМЕНЬШЕННАЯ иконка подарка */
 .card-emoji {
-  font-size: 1.8vw; /* Ещё уменьшено с 2vw до 1.8vw */
+  font-size: 1.8vw;
   margin-bottom: 2px;
   animation: float 3s ease-in-out infinite;
 }
@@ -721,7 +723,6 @@ onUnmounted(() => {
   }
 }
 
-/* Текст для компактных карточек */
 .card-compact .course-text {
   font-size: 1.2vw;
   font-weight: 700;
@@ -731,7 +732,6 @@ onUnmounted(() => {
   margin: 3px 0;
 }
 
-/* Текст для нормальных карточек (приглашение) */
 .card-normal .course-text {
   font-size: 1.1vw;
   font-weight: 700;
@@ -750,7 +750,7 @@ onUnmounted(() => {
 }
 
 .course-description {
-  font-size: 0.75vw; /* Уменьшено с 0.8vw */
+  font-size: 0.75vw;
   color: #666;
   line-height: 1.3;
   max-width: 85%;
@@ -758,7 +758,6 @@ onUnmounted(() => {
   font-weight: 400;
 }
 
-/* Кнопки для компактных карточек */
 .card-compact .course-button {
   padding: 10px 20px;
   font-size: 0.85vw;
@@ -766,12 +765,10 @@ onUnmounted(() => {
   margin-top: 5px;
 }
 
-/* Кнопки для нормальных карточек (приглашение) - СКРЫТЫ */
 .card-normal .course-button {
-  display: none; /* Скрываем кнопку для карточки приглашения */
+  display: none;
 }
 
-/* Базовые стили кнопок */
 .course-button {
   color: white;
   background: linear-gradient(135deg, #b241d1, #9a2cb6);
@@ -807,7 +804,6 @@ onUnmounted(() => {
   box-shadow: 0 5px 12px rgba(154, 44, 182, 0.3);
 }
 
-/* Цвета кнопок для разных типов карточек */
 .card-type-invite .course-button {
   background: linear-gradient(135deg, #ff6b6b, #ff8e53);
   box-shadow: 0 3px 8px rgba(255, 107, 107, 0.2);
@@ -837,7 +833,6 @@ onUnmounted(() => {
   padding: 15px;
 }
 
-/* Уменьшенные стрелки карусели с БОЛЬШИМИ ОТСТУПАМИ */
 .carousel-arrow {
   position: absolute;
   top: 50%;
@@ -870,7 +865,6 @@ onUnmounted(() => {
   height: 14px;
 }
 
-/* УВЕЛИЧЕННЫЕ ОТСТУПЫ СТРЕЛОК ОТ КОНТЕНТА */
 .carousel-arrow-prev {
   left: 5px;
 }
@@ -879,7 +873,6 @@ onUnmounted(() => {
   right: 5px;
 }
 
-/* Индикаторы (точки) */
 .carousel-indicators {
   display: flex;
   gap: 6px;
@@ -912,7 +905,6 @@ onUnmounted(() => {
   background-color: rgba(178, 65, 209, 0.3);
 }
 
-/* Эффект свечения для активной карточки */
 .course-card::after {
   content: '';
   position: absolute;
@@ -942,12 +934,10 @@ onUnmounted(() => {
   }
 }
 
-/* Дополнительные стили для лучшего отображения */
 .course-card-content {
   max-width: 85%;
 }
 
-/* Особые стили для карточки приглашения без кнопки */
 .card-normal.no-button .card-emoji {
   margin-bottom: 3px;
 }
