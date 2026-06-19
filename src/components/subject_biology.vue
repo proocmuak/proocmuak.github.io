@@ -13,7 +13,6 @@
       Перейти
     </a>
   </div>
-
 </template>
 
 <script>
@@ -123,35 +122,53 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
 .block {
   background-color: #b241d1;
   border-radius: 5%;
   padding: 8% 5%;
   color: white;
   display: grid;
-  grid-template-rows: 10% 20% 20% 10%;
+  grid-template-rows: auto auto auto auto;
   gap: 10%;
   transition: opacity 0.3s ease;
-  min-height: 320px;
+  min-height: 280px;
+  height: 100%;
 }
+
 .block:hover {
   opacity: 0.75;
 }
+
 .subject_name { 
   font-size: 1.5vw;
   font-weight: bold;
-  border-bottom: #fff solid 0.25vh;
+  border-bottom: #fff solid 2px;
+  padding-bottom: 10px;
 }
+
+.score, .rating {
+  font-size: 1vw;
+}
+
 .button {
   background-color: #fff;
-  color: black;
+  color: #b241d1;
   display: grid;
   justify-content: center;
   align-items: center;
-  border-radius: 5vw;
+  border-radius: 30px;
   text-decoration: none;
+  padding: 10px 20px;
+  font-weight: 600;
+  transition: all 0.3s ease;
 }
+
+.button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
 .loading, .error, .no-data {
   padding: 20px;
   text-align: center;
@@ -160,11 +177,113 @@ export default {
   border-radius: 10px;
   color: #666;
 }
+
 .error {
   color: #ff4444;
   background-color: #fff5f5;
 }
+
 .loading {
-  color: #007bff;
+  color: #b241d1;
+}
+
+/* Адаптивность */
+@media (max-width: 1200px) {
+  .subject_name {
+    font-size: 1.8vw;
+  }
+  
+  .score, .rating {
+    font-size: 1.2vw;
+  }
+}
+
+@media (max-width: 992px) {
+  .block {
+    min-height: 240px;
+    padding: 6% 4%;
+  }
+  
+  .subject_name {
+    font-size: 2vw;
+  }
+  
+  .score, .rating {
+    font-size: 1.3vw;
+  }
+  
+  .button {
+    font-size: 1vw;
+    padding: 8px 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .block {
+    min-height: 200px;
+    padding: 5% 4%;
+    gap: 8%;
+    border-radius: 12px;
+  }
+  
+  .subject_name {
+    font-size: 3.5vw;
+    padding-bottom: 8px;
+  }
+  
+  .score, .rating {
+    font-size: 2.5vw;
+  }
+  
+  .button {
+    font-size: 2.5vw;
+    padding: 8px 16px;
+    border-radius: 25px;
+  }
+}
+
+@media (max-width: 480px) {
+  .block {
+    min-height: 180px;
+    padding: 4% 3%;
+    gap: 6%;
+    border-radius: 10px;
+  }
+  
+  .subject_name {
+    font-size: 4.5vw;
+    padding-bottom: 6px;
+  }
+  
+  .score, .rating {
+    font-size: 3.2vw;
+  }
+  
+  .button {
+    font-size: 3.2vw;
+    padding: 6px 12px;
+    border-radius: 20px;
+  }
+}
+
+@media (max-width: 360px) {
+  .block {
+    min-height: 160px;
+    padding: 3% 3%;
+    gap: 5%;
+  }
+  
+  .subject_name {
+    font-size: 5vw;
+  }
+  
+  .score, .rating {
+    font-size: 3.5vw;
+  }
+  
+  .button {
+    font-size: 3.5vw;
+    padding: 5px 10px;
+  }
 }
 </style>

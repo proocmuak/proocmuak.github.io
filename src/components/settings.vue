@@ -1,92 +1,130 @@
 <template>
-<div class="title">Настройки профиля</div>    
+  <div class="settings-wrapper">
+    <div class="settings-card">
+      <h2 class="settings-title">Настройки профиля</h2>
+      
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Загрузка данных...</p>
+      </div>
+      
+      <form v-else @submit.prevent="saveSettings" class="settings-form">
+        <!-- Аватар секция -->
+        <div class="avatar-section">
+          <div class="avatar-preview" @click="showAvatarModal = true">
+            <img 
+              v-if="avatarPreviewUrl" 
+              :src="avatarPreviewUrl" 
+              class="avatar-image"
+            >
+            <div v-else class="avatar-placeholder"></div>
+            <div class="avatar-overlay">
+              <span>Изменить</span>
+            </div>
+          </div>
+          <button type="button" class="change-avatar-btn" @click="showAvatarModal = true">
+            Выбрать аватарку
+          </button>
+        </div>
+
+        <!-- Форма -->
+        <div class="form-fields">
+          <div class="form-group">
+            <label>Email</label>
+            <input
+              type="email"
+              v-model="form.email"
+              disabled
+              class="form-control"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label>Имя</label>
+            <input
+              type="text"
+              v-model="form.first_name"
+              class="form-control"
+              placeholder="Имя"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label>Фамилия</label>
+            <input
+              type="text"
+              v-model="form.last_name"
+              class="form-control"
+              placeholder="Фамилия"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label>Телефон</label>
+            <input
+              type="tel"
+              v-model="form.phone"
+              class="form-control"
+              placeholder="Телефон"
+            />
+          </div>
+        </div>
+        
+        <button type="submit" class="btn-save" :disabled="saving">
+          {{ saving ? 'Сохранение...' : 'Сохранить' }}
+        </button>
+        
+        <div v-if="message" :class="['toast-message', messageType]">
+          {{ message }}
+        </div>
+      </form>
+    </div>
     
-    <div class="block_of_content">
-    <div v-if="loading" class="loading">Загрузка данных...</div>
-    
-    <form v-else @submit.prevent="saveSettings">
-      <!-- Поле email (только для чтения) -->
-      <div class="form-group">
-        <label>Email:</label>
-        <input
-          type="email"
-          v-model="form.email"
-          disabled
-          class="form-control"
-        />
-      </div>
-      
-      <!-- Поле имени -->
-      <div class="form-group">
-        <label>Имя:</label>
-        <input
-          type="text"
-          v-model="form.first_name"
-          class="form-control"
-          placeholder="Введите ваше имя"
-        />
-      </div>
-      
-      <!-- Поле фамилии -->
-      <div class="form-group">
-        <label>Фамилия:</label>
-        <input
-          type="text"
-          v-model="form.last_name"
-          class="form-control"
-          placeholder="Введите вашу фамилию"
-        />
-      </div>
-      
-      <!-- Поле телефона -->
-      <div class="form-group">
-        <label>Телефон:</label>
-        <input
-          type="tel"
-          v-model="form.phone"
-          class="form-control"
-          placeholder="Введите ваш телефон"
-        />
-      </div>
-      
-      <!-- Кнопка выбора аватарки -->
-      <button type="button" class="btn-avatar" @click="showAvatarModal = true">
-        Выбрать аватарку
-      </button>
-      
-      <!-- Кнопка сохранения -->
-      <button type="submit" class="btn-save" :disabled="saving">
-        {{ saving ? 'Сохранение...' : 'Сохранить' }}
-      </button>
-      
-      <!-- Сообщение о статусе -->
-      <div v-if="message" :class="['message', messageType]">
-        {{ message }}
-      </div>
-      
-      <!-- Модальное окно выбора аватарки -->
-   <div v-if="showAvatarModal" class="avatar-modal">
-    <div class="avatar-modal-content">
-      <span class="close" @click="showAvatarModal = false">&times;</span>
-      <h3>Выберите аватарку</h3>
-      <div class="avatar-grid">
-        <div 
-          v-for="avatar in avatars" 
-          :key="avatar.id"
-          class="avatar-item"
-          @click="selectAvatar(avatar)"
-        >
-          <img :src="avatar.url" :alt="avatar.name" class="avatar-image">
+    <!-- Модальное окно выбора аватарки -->
+    <div v-if="showAvatarModal" class="modal-overlay" @click.self="closeModal">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3>Выберите аватарку</h3>
+          <button class="modal-close" @click="closeModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="avatar-grid">
+            <div 
+              v-for="avatar in avatars" 
+              :key="avatar.id"
+              class="avatar-option"
+              :class="{ 'avatar-option-selected': selectedAvatar?.id === avatar.id }"
+              @click="selectAvatar(avatar)"
+            >
+              <img :src="getAvatarProxyUrl(avatar.url)" :alt="avatar.name" class="avatar-option-img">
+              <div class="avatar-option-check" v-if="selectedAvatar?.id === avatar.id">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="closeModal">Отмена</button>
+          <button class="btn-confirm" @click="confirmAvatarSelection">Выбрать</button>
         </div>
       </div>
     </div>
   </div>
-    </form>
-    </div>
 </template>
 
 <script>
 import { supabase } from '../supabase.js'
+
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
+}
 
 export default {
   name: 'AccountSettings',
@@ -105,7 +143,15 @@ export default {
       messageType: '',
       showAvatarModal: false,
       avatars: [],
-      selectedAvatar: null
+      selectedAvatar: null,
+      currentAvatarUrl: null
+    }
+  },
+  computed: {
+    avatarPreviewUrl() {
+      if (this.currentAvatarUrl) return this.currentAvatarUrl
+      if (this.selectedAvatar) return this.getAvatarProxyUrl(this.selectedAvatar.url)
+      return null
     }
   },
   async mounted() {
@@ -114,98 +160,116 @@ export default {
     this.loading = false
   },
   methods: {
-
-    async loadUserData() {
-  try {
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      throw new Error('Пользователь не авторизован')
-    }
-    
-    this.form.email = user.email
-    
-    // Исправленный запрос - используем правильное имя столбца для user_id
-    const { data: personality, error } = await supabase
-      .from('personalities')
-      .select('first_name, last_name, phone, avatar_id')
-      .eq('user_id', user.id)  // Или 'user_id' в зависимости от вашей схемы БД
-      .single()
-    
-    if (!error && personality) {
-      this.form.first_name = personality.first_name || ''
-      this.form.last_name = personality.last_name || ''
-      this.form.phone = personality.phone || ''
-      this.form.avatar_id = personality.avatar_id || null
+    getAvatarProxyUrl(ref) {
+      if (!ref) return null
       
-      // Если есть аватар, загружаем его данные
-      if (personality.avatar_id) {
-        await this.loadAvatarData(personality.avatar_id)
+      if (!ref.startsWith('http')) {
+        if (PROXY_CONFIG.enabled) {
+          return `${PROXY_CONFIG.baseUrl}/avatar/${ref}`
+        }
+        return ref
       }
-    }
-    
-  } catch (error) {
-    console.error('Ошибка загрузки данных:', error)
-    this.showMessage('Ошибка загрузки данных профиля', 'error')
-  }
-},
-
-async loadAvatarData(avatarId) {
-  try {
-    const { data, error } = await supabase
-      .from('avatar')
-      .select('id, name, ref')
-      .eq('id', avatarId)
-      .single()
-
-    if (!error && data) {
-      this.selectedAvatar = {
-        id: data.id,
-        name: data.name,
-        url: data.ref
+      
+      if (ref.includes('supabase.co')) {
+        const match = ref.match(/\/storage\/v1\/object\/public\/avatar\/(.+)$/)
+        if (match) {
+          return `${PROXY_CONFIG.baseUrl}/avatar/${match[1]}`
+        }
       }
-    }
-  } catch (error) {
-    console.error('Ошибка загрузки аватарки:', error)
-  }
-},
-
-async loadAvatars() {
-  try {
-    const { data, error } = await supabase
-      .from('avatar')
-      .select('id, name, ref')
-      .order('id', { ascending: true })
-
-    if (error) throw error
-
-    this.avatars = data.map(item => ({
-      id: item.id,
-      name: item.name,
-      url: item.ref // используем поле ref как URL изображения
-    }))
-
-  } catch (error) {
-    console.error('Ошибка загрузки аватарок:', error)
-    this.showMessage('Не удалось загрузить аватарки', 'error')
-  }
-},
-    
- getAvatarName(avatarItem) {
-      // Ищем название аватарки в возможных столбцах
-      return  avatarItem.name || avatarItem.title || 'Аватар'
+      
+      return ref
     },
 
-    getAvatarUrl(avatarItem) {
-      // Ищем URL в возможных столбцах
-      return avatarItem.https || avatarItem.url || avatarItem.image || ''
+    async loadUserData() {
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError || !user) {
+          throw new Error('Пользователь не авторизован')
+        }
+        
+        this.form.email = user.email
+        
+        const { data: personality, error } = await supabase
+          .from('personalities')
+          .select('first_name, last_name, phone, avatar_id')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (!error && personality) {
+          this.form.first_name = personality.first_name || ''
+          this.form.last_name = personality.last_name || ''
+          this.form.phone = personality.phone || ''
+          this.form.avatar_id = personality.avatar_id || null
+          
+          if (personality.avatar_id) {
+            await this.loadAvatarData(personality.avatar_id)
+          }
+        }
+        
+      } catch (error) {
+        console.error('Ошибка загрузки данных:', error)
+        this.showMessage('Ошибка загрузки данных профиля', 'error')
+      }
+    },
+
+    async loadAvatarData(avatarId) {
+      try {
+        const { data, error } = await supabase
+          .from('avatar')
+          .select('id, name, ref')
+          .eq('id', avatarId)
+          .single()
+
+        if (!error && data) {
+          this.currentAvatarUrl = this.getAvatarProxyUrl(data.ref)
+          this.selectedAvatar = {
+            id: data.id,
+            name: data.name,
+            url: data.ref
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки аватарки:', error)
+      }
+    },
+
+    async loadAvatars() {
+      try {
+        const { data, error } = await supabase
+          .from('avatar')
+          .select('id, name, ref')
+          .order('id', { ascending: true })
+
+        if (error) throw error
+
+        this.avatars = data.map(item => ({
+          id: item.id,
+          name: item.name,
+          url: item.ref
+        }))
+
+      } catch (error) {
+        console.error('Ошибка загрузки аватарок:', error)
+        this.showMessage('Не удалось загрузить аватарки', 'error')
+      }
     },
 
     selectAvatar(avatar) {
       this.selectedAvatar = avatar
-      this.form.avatar_id = avatar.id
+    },
+
+    confirmAvatarSelection() {
+      if (this.selectedAvatar) {
+        this.form.avatar_id = this.selectedAvatar.id
+        this.currentAvatarUrl = this.getAvatarProxyUrl(this.selectedAvatar.url)
+        this.showAvatarModal = false
+        this.showMessage('Аватарка выбрана! Сохраните изменения.', 'success')
+      }
+    },
+
+    closeModal() {
       this.showAvatarModal = false
-      this.showMessage('Аватарка выбрана! Не забудьте сохранить изменения.', 'success')
     },
 
     async saveSettings() {
@@ -217,11 +281,9 @@ async loadAvatars() {
       this.saving = true
       
       try {
-        // Получаем ID текущего пользователя
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         if (authError || !user) throw new Error('Ошибка авторизации')
         
-        // Обновляем или создаем запись в таблице personalities
         const { error } = await supabase
           .from('personalities')
           .upsert({
@@ -234,12 +296,18 @@ async loadAvatars() {
             updated_at: new Date().toISOString()
           })
         
-        if (error) {
-          console.log('Full error:', error) 
-          throw error
-        }
+        if (error) throw error
         
         this.showMessage('Данные успешно сохранены!', 'success')
+        
+        window.dispatchEvent(new CustomEvent('profile-updated', {
+          detail: {
+            first_name: this.form.first_name,
+            last_name: this.form.last_name,
+            avatar_url: this.currentAvatarUrl
+          }
+        }))
+        
       } catch (error) {
         console.error('Ошибка сохранения:', error)
         this.showMessage('Ошибка сохранения данных', 'error')
@@ -261,296 +329,384 @@ async loadAvatars() {
 </script>
 
 <style scoped>
-/* Стили остаются без изменений */
-*{
-  font-family: Evolventa;
+* {
+  font-family: Evolventa, sans-serif;
 }
-.account-settings {
-  max-width: 500px;
+
+.settings-wrapper {
+  width: 100%;
+  max-width: 550px;
   margin: 0 auto;
   padding: 20px;
-  font-family: Arial, sans-serif;
 }
 
-    .title{
-        font-size: 2vw;
-        font-weight: bold;
-        display: flex;
-        align-items: center;
-    }
-
-.loading {
-  text-align: center;
+.settings-card {
+  width: 100%;
+  background: white;
+  border-radius: 16px;
   padding: 20px;
-  color: #666;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
 }
 
-.form-group {
-  margin-bottom: 15px;
-  width: 100%;
-}
-
-label {
-  display: block;
-  margin-bottom: 5px;
+.settings-title {
+  font-size: 20px;
   font-weight: bold;
-  color: #444;
-}
-
-.form-control {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #b241d1;
-  border-radius: 4px;
-  font-size: 16px;
-}
-
-.form-control:disabled {
-  background-color: #f5f5f5;
-  color: #777;
-}
-
-.btn-save {
-  background-color: #b241d1;
-  color: white;
-  padding: 12px 20px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 16px;
-  width: 100%;
-  margin-top: 10px;
-  transition: background-color 0.3s;
-}
-
-
-
-.btn-save:disabled {
-  background-color: #f9f8ff;
-  cursor: not-allowed;
-}
-    .block_of_content{
-        background-color: #f9f8ff;
-        margin-bottom: 5%;
-        padding: 2.5%;
-        border-radius: 2%;
-    }
-.message {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  padding: 20px 30px;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: bold;
+  color: #333;
+  margin-bottom: 20px;
   text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  animation: fadeInOut 3s ease-in-out forwards;
-  max-width: 80%;
 }
 
-.message.success {
-  background-color: #f0e6ff;
-  color: #b241d1;
-  border: 1px solid #b241d1;
-}
-
-.message.error {
-  background-color: #ffebee;
-  color: #d32f2f;
-  border: 1px solid #d32f2f;
-}
-
-@keyframes fadeInOut {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.9);
-  }
-  15% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  85% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.9);
-  }
-}
-
-/* Существующие стили остаются без изменений */
-.account-settings {
-  max-width: 500px;
-  margin: 0 auto;
-  padding: 20px;
-  font-family: Arial, sans-serif;
-}
-
-.title{
-    font-size: 2vw;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-}
-
-.loading {
+.loading-state {
   text-align: center;
-  padding: 20px;
-  color: #666;
+  padding: 30px;
 }
 
-.form-group {
-  margin-bottom: 15px;
-  width: 100%;
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #f0e6f7;
+  border-top: 3px solid #b241d1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 12px;
 }
 
-label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
-  color: #444;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-.form-control {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #b241d1;
-  border-radius: 4px;
-  font-size: 16px;
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.form-control:disabled {
-  background-color: #f5f5f5;
-  color: #777;
+/* Аватар секция */
+.avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eee;
 }
 
-.btn-save {
-  background-color: #b241d1;
-  color: white;
-  padding: 12px 20px;
-  border: none;
-  border-radius: 4px;
+.avatar-preview {
+  position: relative;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
   cursor: pointer;
-  font-size: 16px;
-  width: 100%;
-  margin-top: 10px;
-  transition: background-color 0.3s;
+  overflow: hidden;
 }
 
-.btn-avatar {
-  background-color: #b241d1;
-  color: white;
-  padding: 12px 20px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 16px;
-  width: 100%;
-  margin-top: 10px;
-  transition: background-color 0.3s;
-}
-
-.btn-save:disabled, .btn-avatar:disabled {
-  background-color: #f9f8ff;
-  cursor: not-allowed;
-}
-
-.block_of_content{
-    background-color: #f9f8ff;
-    margin-bottom: 5%;
-    padding: 2.5%;
-    border-radius: 2%;
-}
-
-.message {
-  margin-top: 15px;
-  padding: 10px;
-  border-radius: 4px;
-  text-align: center;
-  color: #b241d1;
-}
-
-.message.success {
-  color: #b241d1;
-}
-
-.message.error {
-  background-color: #ffebee;
-  color: #d32f2f;
-}
-
-/* Стили для модального окна */
-.avatar-modal {
-  position: fixed;
-  z-index: 1;
-  left: 0;
-  top: 0;
+.avatar-image {
   width: 100%;
   height: 100%;
-  background-color: rgba(0,0,0,0.4);
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #b241d1, #8a2be2);
+}
+
+.avatar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  border-radius: 50%;
+}
+
+.avatar-overlay span {
+  color: white;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.avatar-preview:hover .avatar-overlay {
+  opacity: 1;
+}
+
+.change-avatar-btn {
+  background: none;
+  border: 1px solid #b241d1;
+  color: #b241d1;
+  padding: 5px 12px;
+  border-radius: 16px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.change-avatar-btn:hover {
+  background: rgba(178, 65, 209, 0.1);
+}
+
+/* Форма */
+.form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+label {
+  font-weight: 500;
+  color: #333;
+  font-size: 12px;
+}
+
+.form-control {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.1);
+}
+
+.form-control:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+}
+
+.btn-save {
+  width: 100%;
+  padding: 10px;
+  background: #b241d1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 4px;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #9a36b8;
+  transform: translateY(-1px);
+}
+
+.btn-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.toast-message {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  animation: slideUp 0.3s ease;
+  z-index: 1000;
+}
+
+.toast-message.success {
+  background: #4caf50;
+  color: white;
+}
+
+.toast-message.error {
+  background: #f44336;
+  color: white;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Модальное окно */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   justify-content: center;
   align-items: center;
+  z-index: 1000;
 }
 
-.avatar-modal-content {
-  background-color: #f9f8ff;
-  padding: 20px;
-  border-radius: 8px;
-  width: 80%;
-  max-width: 600px;
+.modal-container {
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 500px;
   max-height: 80vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.close {
-  color: #aaa;
-  float: right;
-  font-size: 28px;
-  font-weight: bold;
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
   cursor: pointer;
+  color: #999;
 }
 
-.close:hover {
-  color: black;
+.modal-close:hover {
+  color: #333;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
 }
 
 .avatar-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
-  margin-top: 20px;
+  gap: 12px;
 }
 
-.avatar-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.avatar-option {
+  position: relative;
   cursor: pointer;
-  padding: 10px;
-  border-radius: 4px;
-  transition: background-color 0.3s;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  aspect-ratio: 1;
 }
 
-.avatar-item:hover {
-  background-color: rgba(178, 65, 209, 0.3);
-}
-
-.avatar-image {
-  width: 80px;
-  height: 80px;
+.avatar-option-img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+}
+
+.avatar-option:hover {
+  transform: scale(1.02);
+}
+
+.avatar-option-selected {
+  outline: 2px solid #b241d1;
+  outline-offset: 1px;
+}
+
+.avatar-option-check {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  background: #b241d1;
   border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
 }
 
-.avatar-name {
-  margin-top: 8px;
-  text-align: center;
-  font-size: 14px;
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
 }
 
+.btn-cancel, .btn-confirm {
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel {
+  background: #f5f5f5;
+  border: none;
+  color: #666;
+}
+
+.btn-cancel:hover {
+  background: #e0e0e0;
+}
+
+.btn-confirm {
+  background: #b241d1;
+  border: none;
+  color: white;
+}
+
+.btn-confirm:hover {
+  background: #9a36b8;
+}
+
+/* Адаптивность */
+@media (max-width: 600px) {
+  .settings-wrapper {
+    padding: 12px;
+  }
+  
+  .settings-card {
+    padding: 16px;
+  }
+  
+  .settings-title {
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
+  
+  .avatar-grid {
+    gap: 8px;
+  }
+}
 </style>

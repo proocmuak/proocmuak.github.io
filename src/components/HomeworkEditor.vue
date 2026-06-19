@@ -28,24 +28,26 @@
           />
         </div>
 
-        <div class="form-group">
-          <label for="lesson-number">Номер урока:</label>
-          <input
-            id="lesson-number"
-            v-model="currentHomework.lesson_number"
-            type="text"
-            placeholder="Введите номер урока"
+        <!-- Выбор урока из выпадающего списка -->
+        <div class="form-group lesson-select-group">
+          <label for="lesson-select">Урок:</label>
+          <CustomDropdown
+            id="lesson-select"
+            :options="lessonOptions"
+            :modelValue="selectedLessonNumber"
+            @update:modelValue="handleLessonSelect"
+            placeholder="Выберите урок"
           />
         </div>
 
-        <div class="form-group">
-          <label for="lesson-name">Название урока:</label>
-          <input
-            id="lesson-name"
-            v-model="currentHomework.lesson_name"
-            type="text"
-            placeholder="Введите название урока"
-          />
+        <!-- Отображение выбранного урока -->
+        <div v-if="selectedLesson" class="selected-lesson-info">
+          <span class="lesson-badge" :title="`Урок ${selectedLesson.number}: ${selectedLesson.title}`">
+            Урок {{ selectedLesson.number }}: {{ truncateText(selectedLesson.title, 40) }}
+          </span>
+          <span v-if="selectedLesson.date" class="lesson-date-badge">
+            📅 {{ formatDate(selectedLesson.date) }}
+          </span>
         </div>
 
         <!-- Поле для дедлайна с типом date -->
@@ -117,7 +119,9 @@ export default {
   data() {
     return {
       homeworks: [],
+      lessons: [],
       selectedHomework: null,
+      selectedLessonNumber: null,
       currentHomework: {
         homework_id: null,
         homework_name: '',
@@ -133,6 +137,9 @@ export default {
   computed: {
     tableName() {
       return `${this.subject}_${this.examType}_homework_list`
+    },
+    lessonsTableName() {
+      return `${this.subject}_${this.examType}`
     },
     subjectName() {
       const subjects = {
@@ -152,6 +159,15 @@ export default {
       }))
       return [{ value: 'new', label: '+ Создать новую домашнюю работу' }, ...options]
     },
+    lessonOptions() {
+      return this.lessons.map(lesson => ({
+        value: lesson.number,
+        label: `Урок ${lesson.number}: ${this.truncateText(lesson.title || 'Без названия', 35)}`
+      }))
+    },
+    selectedLesson() {
+      return this.lessons.find(l => l.number === this.selectedLessonNumber) || null
+    },
     isEditing() {
       return this.selectedHomework !== 'new' && this.selectedHomework !== null
     }
@@ -161,16 +177,23 @@ export default {
       immediate: true,
       handler() {
         this.fetchHomeworks()
+        this.fetchLessons()
       }
     },
     examType: {
       immediate: true,
       handler() {
         this.fetchHomeworks()
+        this.fetchLessons()
       }
     }
   },
   methods: {
+    truncateText(text, maxLength = 40) {
+      if (!text) return ''
+      if (text.length <= maxLength) return text
+      return text.slice(0, maxLength) + '...'
+    },
     async fetchHomeworks() {
       this.isLoading = true
       try {
@@ -181,14 +204,28 @@ export default {
 
         if (error) throw error
         
-        this.homeworks = data
+        this.homeworks = data || []
         this.calculateNextId()
         this.resetForm()
       } catch (error) {
-        console.error(`Ошибка при загрузке домашних работ по ${this.subjectName}:`, error)
-        alert(`Не удалось загрузить список домашних работ по ${this.subjectName}`)
+        console.error(`Ошибка при загрузке домашних работ:`, error)
+        alert(`Не удалось загрузить список домашних работ`)
       } finally {
         this.isLoading = false
+      }
+    },
+    async fetchLessons() {
+      try {
+        const { data, error } = await supabase
+          .from(this.lessonsTableName)
+          .select('number, title, date')
+          .order('number', { ascending: true })
+
+        if (error) throw error
+        
+        this.lessons = data || []
+      } catch (error) {
+        console.error(`Ошибка при загрузке уроков:`, error)
       }
     },
     calculateNextId() {
@@ -211,13 +248,26 @@ export default {
             ...selected,
             deadline: selected.deadline ? this.formatDateForInput(selected.deadline) : null
           }
+          this.selectedLessonNumber = parseInt(selected.lesson_number) || null
         }
+      }
+    },
+    handleLessonSelect(value) {
+      this.selectedLessonNumber = value
+      const lesson = this.lessons.find(l => l.number === value)
+      if (lesson) {
+        this.currentHomework.lesson_number = String(lesson.number)
+        this.currentHomework.lesson_name = lesson.title || ''
       }
     },
     formatDate(dateString) {
       if (!dateString) return ''
       const date = new Date(dateString)
-      return date.toLocaleDateString('ru-RU')
+      return date.toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
     },
     formatDateForInput(dateString) {
       if (!dateString) return ''
@@ -230,21 +280,16 @@ export default {
         return
       }
 
-      if (!this.currentHomework.lesson_number?.trim()) {
-        alert('Пожалуйста, введите номер урока')
-        return
-      }
-
-      if (!this.currentHomework.lesson_name?.trim()) {
-        alert('Пожалуйста, введите название урока')
+      if (!this.selectedLessonNumber) {
+        alert('Пожалуйста, выберите урок')
         return
       }
 
       try {
         const homeworkData = {
           homework_name: this.currentHomework.homework_name.trim(),
-          lesson_number: this.currentHomework.lesson_number.trim(),
-          lesson_name: this.currentHomework.lesson_name.trim(),
+          lesson_number: this.currentHomework.lesson_number,
+          lesson_name: this.currentHomework.lesson_name,
           deadline: this.currentHomework.deadline || null
         }
 
@@ -305,10 +350,12 @@ export default {
         lesson_name: '',
         deadline: null
       }
+      this.selectedLessonNumber = null
       this.selectedHomework = 'new'
     },
     async refreshData() {
       await this.fetchHomeworks()
+      await this.fetchLessons()
     },
     openHomework() {
       if (!this.currentHomework.homework_id) {
@@ -333,14 +380,16 @@ export default {
 </script>
 
 <style scoped>
-*{
-  font-family: Evolventa;
+* {
+  font-family: Evolventa, sans-serif;
+  box-sizing: border-box;
 }
+
 .homework-editor {
   max-width: 100%;
   margin: 0 auto;
   padding: 20px;
-  font-family: 'Evolventa', sans-serif;
+  overflow: hidden;
 }
 
 .header {
@@ -348,6 +397,16 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.header h2 {
+  font-size: clamp(1rem, 2vw, 1.5rem);
+  margin: 0;
+  flex: 1;
+  min-width: 200px;
+  word-break: break-word;
 }
 
 .refresh-button {
@@ -357,6 +416,7 @@ export default {
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s;
+  white-space: nowrap;
 }
 
 .refresh-button:hover {
@@ -365,6 +425,7 @@ export default {
 
 .homework-selector {
   margin-bottom: 30px;
+  max-width: 100%;
 }
 
 .editor-form {
@@ -372,10 +433,13 @@ export default {
   padding: 25px;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .form-group {
   margin-bottom: 20px;
+  max-width: 100%;
 }
 
 .form-group label {
@@ -383,24 +447,70 @@ export default {
   margin-bottom: 8px;
   font-weight: 500;
   color: #333;
+  font-size: 14px;
 }
 
 .form-group input {
   width: 100%;
+  max-width: 100%;
   padding: 10px 15px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 16px;
   transition: border-color 0.2s;
+  box-sizing: border-box;
 }
 
 .form-group input:focus {
   border-color: #b241d1;
   outline: none;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.1);
 }
 
 .form-group input[type="date"] {
   font-family: 'Evolventa', sans-serif;
+  max-width: 200px;
+}
+
+/* Ограничиваем ширину дропдауна выбора урока */
+.lesson-select-group {
+  max-width: 100%;
+}
+
+/* Информация о выбранном уроке */
+.selected-lesson-info {
+  display: flex;
+  gap: 10px;
+  margin-top: -8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.lesson-badge {
+  display: inline-block;
+  background-color: #f0f0ff;
+  border: 1px solid #b241d1;
+  color: #b241d1;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson-date-badge {
+  display: inline-block;
+  background-color: #e8f5e9;
+  border: 1px solid #4caf50;
+  color: #2e7d32;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .action-buttons {
@@ -420,6 +530,8 @@ export default {
   font-weight: 500;
   transition: all 0.2s;
   border: none;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .save-button {
@@ -456,5 +568,67 @@ export default {
 
 .open-button:hover {
   background-color: #369f6e;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .homework-editor {
+    padding: 12px;
+  }
+  
+  .editor-form {
+    padding: 16px;
+  }
+  
+  .header h2 {
+    font-size: 1.1rem;
+    min-width: 150px;
+  }
+  
+  .form-group input {
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+  
+  .form-group input[type="date"] {
+    max-width: 100%;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+  }
+  
+  .save-button,
+  .delete-button,
+  .cancel-button,
+  .open-button {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+  }
+  
+  .selected-lesson-info {
+    flex-direction: column;
+    gap: 6px;
+  }
+  
+  .lesson-badge {
+    max-width: 100%;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .refresh-button {
+    align-self: flex-start;
+  }
 }
 </style>

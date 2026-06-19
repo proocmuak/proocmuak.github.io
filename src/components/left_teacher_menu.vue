@@ -20,9 +20,11 @@ const lastName = ref('в настройках')
 const avatarUrl = ref(null)
 const loading = ref(true)
 const error = ref(null)
+const activeMenu = ref('main_teacher_page')
 let subscription = null
 
 const switchComponent = (componentName) => {
+  activeMenu.value = componentName
   emit('component-change', componentName)
 }
 
@@ -30,7 +32,6 @@ const switchComponent = (componentName) => {
 const getAvatarProxyUrl = (ref) => {
   if (!ref) return null
   
-  // Если это путь (не URL), добавляем прокси
   if (!ref.startsWith('http')) {
     if (PROXY_CONFIG.enabled) {
       return `${PROXY_CONFIG.baseUrl}/avatar/${ref}`
@@ -38,7 +39,6 @@ const getAvatarProxyUrl = (ref) => {
     return ref
   }
   
-  // Если это полный URL Supabase, извлекаем путь и проксируем
   if (ref.includes('supabase.co')) {
     const match = ref.match(/\/storage\/v1\/object\/public\/avatar\/(.+)$/)
     if (match) {
@@ -64,7 +64,6 @@ const fetchUserData = async () => {
     firstName.value = data?.first_name || 'Добавьте имя'
     lastName.value = data?.last_name || 'в настройках'
     
-    // Загружаем аватарку, если она есть
     if (data?.avatar_id) {
       const { data: avatarData, error: avatarError } = await supabase
         .from('avatar')
@@ -73,7 +72,6 @@ const fetchUserData = async () => {
         .single()
       
       if (!avatarError && avatarData) {
-        // Используем прокси для аватарки
         avatarUrl.value = getAvatarProxyUrl(avatarData.ref)
       }
     }
@@ -96,6 +94,17 @@ const setupRealtime = () => {
         schema: 'public',
         table: 'personalities',
         filter: `email=eq.${userEmail.value}`
+      },
+      () => {
+        fetchUserData()
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'avatar'
       },
       () => {
         fetchUserData()
@@ -129,166 +138,370 @@ onUnmounted(() => {
   <div class="leftpartpage">
     <div class="leftmenu">
       <div class="about_student_big" @click="switchComponent('main_teacher_page')">
-        <div class="avatar" @click="switchComponent('main_teacher_page')">
+        <div class="avatar">
           <img v-if="avatarUrl" :src="avatarUrl" class="photo_avatar">
           <div v-else class="default-avatar">Выберите аватарку</div>
         </div>
-        <div class="about_student" @click="switchComponent('main_teacher_page')">
-            <div class="user-info" 
-     :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_teacher_page')">
-  {{ firstName }} {{ lastName }}
-</div>
+        <div class="about_student">
+          <div class="user-info" :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }">
+            {{ firstName }} {{ lastName }}
+          </div>
           <div class="number_of_points">5465 баллов</div>
         </div>
       </div>
 
       <div class="line"></div>
+      
       <div class="menu">
-        <div class="menu_button" @click="switchComponent('main_teacher_page')"> Редактор курса</div>
-        <div class="menu_button" @click="switchComponent('editor_bank_task')">Редактор банка заданий</div>
-        <div class="menu_button"><a href="/task_bank.html" class="black_text_a">Банк заданий</a></div>
-        <button @click="switchComponent('editor_students')" class="menu_button">Редактор учеников</button>
-        <div class="menu_button" @click="switchComponent('editor_homework')">Редактор домашек</div>
-        <div class="menu_button" @click="switchComponent('all_students')">Все ученики</div>
-        <button class="menu_button"><a href="/TutorTaskBank.html" class="black_text_a">Редактор существующих заданий</a></button>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'main_teacher_page' }"
+          @click="switchComponent('main_teacher_page')"
+        >
+          Редактор курса
+        </button>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'editor_bank_task' }"
+          @click="switchComponent('editor_bank_task')"
+        >
+          Редактор банка заданий
+        </button>
+        <a href="/task_bank.html" class="menu_button black_text_a">Банк заданий</a>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'editor_students' }"
+          @click="switchComponent('editor_students')"
+        >
+          Редактор учеников
+        </button>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'editor_homework' }"
+          @click="switchComponent('editor_homework')"
+        >
+          Редактор домашек
+        </button>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'all_students' }"
+          @click="switchComponent('all_students')"
+        >
+          Все ученики
+        </button>
+        <a href="/TutorTaskBank.html" class="menu_button black_text_a">Редактор существующих заданий</a>
         <div class="menu_button">Уведомления</div>
-        <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
-        <div class="exit">Выйти</div>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'settings' }"
+          @click="switchComponent('settings')"
+        >
+          Настройки
+        </button>
       </div>
-    </div>
-    
-    <div class="aboutcourses">
-      <div class="about_courses_bold">Курсы по химии и биологии</div>  
-      <div class="second_line"></div>
-      <div class="about_courses_main_text">Тут будет что-то грандиозное</div>
-      <div class="about_courses_button_chose">Выбрать курс</div> 
     </div>
   </div>
 </template>
 
 <style scoped>
-.leftpartpage{
-    display: grid;
-    place-content: center;
-    grid-template-rows: 40% 55%;
-    gap: 5%;
-    height: 80vh;
-    position: sticky;
-    top: 0;
+* {
+  font-family: Evolventa, sans-serif;
+  box-sizing: border-box;
 }
-.error-message {
-  color: #ff0000;
+
+.leftpartpage {
+  display: grid;
+  place-content: center;
+  height: 80vh;
+  position: sticky;
+  top: 0;
   padding: 10px;
-  background-color: #ffeeee;
-  border-radius: 4px;
-  margin: 10px 0;
-}
-.leftmenu{
-    display: grid;
-    grid-template-rows: 20% 0.65% 60%;
-    gap: 5.5%;
-    background-color: #f9f8ff;
-    border-radius: 5%;
 }
 
-.about_student_big{
-    display: grid;
-    align-items: center;
-    grid-template-columns: 25% 70%;
-    gap: 5%;
-    padding-left: 10%;
-    padding-top: 2%;
-    cursor: pointer;
+.leftmenu {
+  display: grid;
+  grid-template-rows: auto 1px auto;
+  gap: 20px;
+  background-color: #f9f8ff;
+  border-radius: 20px;
+  padding: 28px 0;
+  width: 100%;
+  min-width: 340px;
+  max-width: 420px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
-.photo_avatar{
-    height: 7vh;
-    width: 7vh;
-    border-radius: 50%;
-    object-fit: cover;
+
+.about_student_big {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 28px;
+  cursor: pointer;
 }
+
+.photo_avatar {
+  height: 64px;
+  width: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .default-avatar {
-    height: 7vh;
-    width: 7vh;
-    border-radius: 50%;
-    background-color: #ccc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7vw;
-    text-align: center;
-    color: #666;
-}
-.about_student{
-    display: grid;
-    grid-template-rows: 45% 15%;
-    gap: 5%;
+  height: 64px;
+  width: 64px;
+  border-radius: 50%;
+  background-color: #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  text-align: center;
+  color: #888;
+  padding: 6px;
+  flex-shrink: 0;
 }
 
-.number_of_points{
-    font-size: 0.9vw;
+.about_student {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.line{
-    background-color: #b241d1;
-    width: 80%;
-    margin-left: 10%;
+
+.user-info {
+  font-weight: bold;
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.second_line{
-    background-color: #b241d1;
-    width: 100%;
-}
-.menu{
-    display: grid;
-    grid-template-rows: 12% 12% 12% 12% 12% 12% 12% 12% 12%;
-    gap: 2%;
-    padding-left: 10%;
-}
-.menu_button{
-    background-color: #f9f8ff;
-    border: 0px;
-    font-family: Evolventa;
-    font-size: 1.75vh;
-    cursor: pointer;
-    width: fit-content;
-}
-.aboutcourses{
-    background-color: #f9f8ff;
-    display: grid;
-    grid-template-rows: 18% 0.5% 50% 12%;
-    gap: 2%;
-    padding-left: 10%;
-    padding-right: 5%;
-    padding-top: 5%;
-    border-radius: 5%;
-}
-.about_courses_bold{
-    font-size: 1.5vw;
-    font-weight: bold;
-}
-.about_courses_main_text{
-    font-size: 1vw;
-}
-.about_courses_button_chose{
-    color: white;
-    background-color: #b241d1;
-    display: grid;
-    place-content: center;
-    border-radius: 5vw;
-}
-.user-info{
-    font-weight: bold;
-}
+
 .user-info.settings-message {
   color: #b241d1;
-  font-size: 1.5vh;
-  font-weight: bold;
   animation: pulse 1.5s infinite;
 }
-.black_text_a{
-  color: black;
-}
+
 @keyframes pulse {
-  0% { opacity: 1; }
+  0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
-  100% { opacity: 1; }
+}
+
+.number_of_points {
+  font-size: 14px;
+  color: #666;
+}
+
+.line {
+  background-color: #b241d1;
+  width: 100%;
+  height: 1.5px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 20px;
+}
+
+.menu_button {
+  background: none;
+  border: none;
+  font-family: Evolventa;
+  font-size: 16px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  color: #333;
+  transition: all 0.2s ease;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.menu_button.active {
+  color: #b241d1;
+  font-weight: bold;
+  background-color: rgba(178, 65, 209, 0.1);
+}
+
+.menu_button:hover:not(.active) {
+  background-color: rgba(178, 65, 209, 0.06);
+  color: #b241d1;
+}
+
+.black_text_a {
+  color: #333;
+  text-decoration: none;
+  display: block;
+  width: 100%;
+}
+
+.black_text_a:hover {
+  color: #b241d1;
+}
+
+/* Адаптивность */
+@media (max-width: 1024px) {
+  .leftmenu {
+    min-width: 300px;
+    max-width: 360px;
+    padding: 24px 0;
+    gap: 16px;
+  }
+  
+  .photo_avatar, .default-avatar {
+    height: 56px;
+    width: 56px;
+  }
+  
+  .user-info {
+    font-size: 15px;
+  }
+  
+  .menu_button {
+    font-size: 14px;
+    padding: 8px 14px;
+  }
+  
+  .about_student_big {
+    padding: 0 24px;
+  }
+  
+  .menu {
+    padding: 0 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .leftpartpage {
+    height: auto;
+    position: relative;
+    padding: 8px;
+  }
+  
+  .leftmenu {
+    min-width: unset;
+    max-width: 100%;
+    padding: 20px 0;
+    gap: 14px;
+    border-radius: 16px;
+  }
+  
+  .about_student_big {
+    padding: 0 16px;
+    gap: 12px;
+  }
+  
+  .photo_avatar, .default-avatar {
+    height: 48px;
+    width: 48px;
+  }
+  
+  .user-info {
+    font-size: 14px;
+  }
+  
+  .number_of_points {
+    font-size: 12px;
+  }
+  
+  .menu {
+    padding: 0 12px;
+    gap: 2px;
+  }
+  
+  .menu_button {
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 480px) {
+  .leftmenu {
+    padding: 16px 0;
+    gap: 12px;
+    border-radius: 12px;
+  }
+  
+  .about_student_big {
+    padding: 0 14px;
+    gap: 10px;
+  }
+  
+  .photo_avatar, .default-avatar {
+    height: 44px;
+    width: 44px;
+  }
+  
+  .user-info {
+    font-size: 13px;
+  }
+  
+  .number_of_points {
+    font-size: 11px;
+  }
+  
+  .menu {
+    padding: 0 10px;
+    gap: 2px;
+  }
+  
+  .menu_button {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+/* Альбомная ориентация */
+@media (max-width: 768px) and (orientation: landscape) {
+  .leftpartpage {
+    height: auto;
+  }
+  
+  .leftmenu {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 12px 20px;
+    gap: 10px;
+    max-width: 100%;
+    border-radius: 14px;
+  }
+  
+  .about_student_big {
+    width: auto;
+    padding: 0;
+  }
+  
+  .line {
+    display: none;
+  }
+  
+  .menu {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    padding: 0;
+  }
+  
+  .menu_button {
+    width: auto;
+    padding: 6px 14px;
+    font-size: 13px;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
 }
 </style>

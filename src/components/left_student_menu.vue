@@ -1,385 +1,57 @@
-<script setup>
-import { ref, onMounted, onUnmounted, defineEmits, computed, onBeforeUnmount } from 'vue'
-import { supabase } from '../supabase.js'
-
-// === Конфигурация прокси сервера ===
-const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-
-const PROXY_CONFIG = {
-  enabled: true,
-  baseUrl: isLocalhost 
-    ? 'https://schoolpurto.ru/storage' 
-    : '/storage'
-}
-
-const emit = defineEmits(['component-change'])
-const userEmail = ref('')
-const firstName = ref('Добавьте имя')
-const lastName = ref('в настройках')
-const avatarUrl = ref(null)
-const loading = ref(true)
-const error = ref(null)
-const studentData = ref({})
-const currentCardIndex = ref(0)
-const cardInterval = ref(null)
-const transitionDirection = ref('next')
-let subscription = null
-
-const switchComponent = (componentName) => {
-  emit('component-change', componentName)
-}
-
-// === Функция для получения прокси-URL аватарки ===
-const getAvatarProxyUrl = (ref) => {
-  if (!ref) return null
-  
-  // Если это путь (не URL), добавляем прокси
-  if (!ref.startsWith('http')) {
-    if (PROXY_CONFIG.enabled) {
-      return `${PROXY_CONFIG.baseUrl}/avatar/${ref}`
-    }
-    return ref
-  }
-  
-  // Если это полный URL Supabase, извлекаем путь и проксируем
-  if (ref.includes('supabase.co')) {
-    const match = ref.match(/\/storage\/v1\/object\/public\/avatar\/(.+)$/)
-    if (match) {
-      return `${PROXY_CONFIG.baseUrl}/avatar/${match[1]}`
-    }
-  }
-  
-  return ref
-}
-
-// Функция для загрузки данных пользователя
-const fetchUserData = async () => {
-  try {
-    if (!userEmail.value) return
-    
-    const { data, error: supabaseError } = await supabase
-      .from('personalities')
-      .select('first_name, last_name, avatar_id, user_id')
-      .eq('email', userEmail.value)
-      .single()
-
-    if (supabaseError) throw supabaseError
-    
-    firstName.value = data?.first_name || 'Добавьте имя'
-    lastName.value = data?.last_name || 'в настройках'
-    
-    if (data?.avatar_id) {
-      const { data: avatarData, error: avatarError } = await supabase
-        .from('avatar')
-        .select('id, name, ref')
-        .eq('id', data.avatar_id)
-        .single()
-      
-      if (!avatarError && avatarData) {
-        // Используем прокси для аватарки
-        avatarUrl.value = getAvatarProxyUrl(avatarData.ref)
-      }
-    }
-    
-  } catch (err) {
-    console.error('Ошибка:', err)
-    error.value = err.message
-  }
-}
-
-// Функция для загрузки данных о предметах из таблицы students
-const fetchStudentData = async () => {
-  try {
-    if (!userEmail.value) {
-      console.log('Нет email для загрузки данных студента')
-      studentData.value = {}
-      return
-    }
-    
-    const { data: userData, error: userError } = await supabase
-      .from('personalities')
-      .select('user_id')
-      .eq('email', userEmail.value)
-      .maybeSingle()
-    
-    if (userError) {
-      console.error('Ошибка при получении user_id:', userError)
-      throw userError
-    }
-    
-    if (!userData?.user_id) {
-      console.log('user_id не найден для email:', userEmail.value)
-      studentData.value = {}
-      return
-    }
-    
-    const { data, error: studentsError } = await supabase
-      .from('students')
-      .select('subject1, subject2')
-      .eq('user_id', userData.user_id)
-      .maybeSingle()
-    
-    if (studentsError && studentsError.code !== 'PGRST116') {
-      console.error('Ошибка при запросе students:', studentsError)
-      throw studentsError
-    }
-    
-    console.log('Данные студента из БД:', data)
-    studentData.value = data || {}
-    
-  } catch (err) {
-    console.error('Ошибка при загрузке данных студента:', err)
-    studentData.value = {}
-  }
-}
-
-// Проверяем, заполнено ли поле
-const isFieldFilled = (field) => {
-  return field !== null && field !== undefined && String(field).trim() !== ''
-}
-
-// Извлекаем тип экзамена из строки предмета
-const getExamType = (subject) => {
-  if (!subject) return ''
-  const subjectLower = String(subject).toLowerCase()
-  if (subjectLower.includes('огэ')) return 'ОГЭ'
-  if (subjectLower.includes('егэ')) return 'ЕГЭ'
-  return ''
-}
-
-// Логика для определения текста и ссылки для первой карточки
-const getFirstCardData = () => {
-  if (!studentData.value || Object.keys(studentData.value).length === 0) {
-    return null
-  }
-  
-  const subjects = [studentData.value.subject1, studentData.value.subject2]
-  
-  const hasOGE = subjects.some(subject => 
-    subject && String(subject).toLowerCase().includes('огэ')
-  )
-  
-  const hasEGE = subjects.some(subject => 
-    subject && String(subject).toLowerCase().includes('егэ')
-  )
-  
-  if (hasOGE) {
-    return {
-      text: 'Подготовка к ОГЭ по математике',
-      link: 'https://t.me/math_probaschool',
-      type: 'telegram',
-      compact: true,
-      hasButton: true
-    }
-  }
-  
-  if (hasEGE) {
-    return {
-      text: 'Подготовка к ЕГЭ по базовой математике',
-      link: 'https://t.me/math_probaschool',
-      type: 'telegram',
-      compact: true,
-      hasButton: true
-    }
-  }
-  
-  return null
-}
-
-// Логика для определения текста и ссылки для второй карточки
-const getSecondCardData = () => {
-  if (!studentData.value || Object.keys(studentData.value).length === 0) {
-    return null
-  }
-  
-  const subject1 = studentData.value.subject1
-  const subject2 = studentData.value.subject2
-  
-  if (isFieldFilled(subject1) && isFieldFilled(subject2)) {
-    return null
-  }
-  
-  if (!isFieldFilled(subject1) && isFieldFilled(subject2)) {
-    const examType = getExamType(subject2)
-    return {
-      text: `Записаться на курс по Химии ${examType}`,
-      link: 'https://purtoschool.ru/',
-      type: 'course',
-      compact: true,
-      hasButton: true
-    }
-  }
-  
-  if (isFieldFilled(subject1) && !isFieldFilled(subject2)) {
-    const examType = getExamType(subject1)
-    return {
-      text: `Записаться на курс по Биологии ${examType}`,
-      link: 'https://purtoschool.ru/',
-      type: 'course',
-      compact: true,
-      hasButton: true
-    }
-  }
-  
-  return {
-    text: 'Записаться на курс по химии или биологии',
-    link: 'https://purtoschool.ru/',
-    type: 'course',
-    compact: true,
-    hasButton: true
-  }
-}
-
-// Третья карточка - пригласи друга
-const getThirdCardData = () => {
-  return {
-    text: 'Приведи друга - получите скидку 500₽ каждый!',
-    description: 'Учитесь вместе выгоднее',
-    link: 'https://purtoschool.ru/invite',
-    type: 'invite',
-    emoji: '🎁',
-    compact: false,
-    hasButton: false
-  }
-}
-
-// Все доступные карточки
-const allCards = computed(() => {
-  const cards = []
-  const firstCard = getFirstCardData()
-  const secondCard = getSecondCardData()
-  const thirdCard = getThirdCardData()
-  
-  if (firstCard) cards.push(firstCard)
-  if (secondCard) cards.push(secondCard)
-  cards.push(thirdCard)
-  
-  return cards
-})
-
-// Показываем текущую карточку
-const currentCard = computed(() => {
-  if (allCards.value.length === 0) return null
-  return allCards.value[currentCardIndex.value]
-})
-
-// Переключение на следующую карточку
-const nextCard = () => {
-  if (allCards.value.length <= 1) return
-  transitionDirection.value = 'next'
-  currentCardIndex.value = (currentCardIndex.value + 1) % allCards.value.length
-  resetTimer()
-}
-
-// Переключение на предыдущую карточку
-const prevCard = () => {
-  if (allCards.value.length <= 1) return
-  transitionDirection.value = 'prev'
-  currentCardIndex.value = (currentCardIndex.value - 1 + allCards.value.length) % allCards.value.length
-  resetTimer()
-}
-
-// Переход к конкретной карточке
-const goToCard = (index) => {
-  if (index === currentCardIndex.value) return
-  transitionDirection.value = index > currentCardIndex.value ? 'next' : 'prev'
-  currentCardIndex.value = index
-  resetTimer()
-}
-
-// Сброс таймера
-const resetTimer = () => {
-  if (cardInterval.value) {
-    clearInterval(cardInterval.value)
-  }
-  startCarousel()
-}
-
-// Запуск карусели
-const startCarousel = () => {
-  if (allCards.value.length <= 1) return
-  cardInterval.value = setInterval(() => {
-    nextCard()
-  }, 5000)
-}
-
-// Подписка на изменения в реальном времени
-const setupRealtime = () => {
-  subscription = supabase
-    .channel('personal_changes')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'personalities',
-        filter: `email=eq.${userEmail.value}`
-      },
-      () => {
-        fetchUserData()
-        fetchStudentData()
-      }
-    )
-    .subscribe()
-}
-
-onMounted(async () => {
-  try {
-    userEmail.value = localStorage.getItem('userEmail') || ''
-    if (!userEmail.value) throw new Error('Email не найден в localStorage')
-    
-    await Promise.all([fetchUserData(), fetchStudentData()])
-    setupRealtime()
-    
-    setTimeout(() => {
-      startCarousel()
-    }, 1000)
-    
-  } catch (err) {
-    console.error('Ошибка инициализации:', err)
-    error.value = err.message
-  } finally {
-    loading.value = false
-  }
-})
-
-onBeforeUnmount(() => {
-  if (cardInterval.value) {
-    clearInterval(cardInterval.value)
-  }
-})
-
-onUnmounted(() => {
-  if (subscription) {
-    supabase.removeChannel(subscription)
-  }
-})
-</script>
-
 <template>
   <div class="leftpartpage">
     <div class="leftmenu">
       <div class="about_student_big" @click="switchComponent('main_student_page')">
-        <div class="avatar" @click="switchComponent('main_student_page')">
+        <div class="avatar">
           <img v-if="avatarUrl" :src="avatarUrl" class="photo_avatar">
           <div v-else class="default-avatar">Выберите аватарку</div>
         </div>
-        <div class="about_student" @click="switchComponent('main_student_page')">
-            <div class="user-info" 
-     :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }" @click="switchComponent('main_student_page')">
-  {{ firstName }} {{ lastName }}
-</div>
+        <div class="about_student">
+          <div class="user-info" :class="{ 'settings-message': firstName === 'Добавьте имя' && lastName === 'в настройках' }">
+            {{ firstName }} {{ lastName }}
+          </div>
         </div>
       </div>
 
       <div class="line"></div>
+      
       <div class="menu">
-        <div class="menu_button"> <a href="/task_bank.html" class="black_text_href">Банк заданий</a></div>
-        <div class="menu_button" @click="switchComponent('SubjectRating')">Рейтинг</div>
-        <div class="menu_button" @click="switchComponent('HomeworkList')">Домашние задания</div>
-        <div class="menu_button" @click="switchComponent('StudentStatic')">Статистика</div>
-        <button @click="switchComponent('settings')" class="menu_button">Настройки</button>
-        <div class="exit">Выйти</div>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'main_student_page' }"
+          @click="switchComponent('main_student_page')"
+        >
+          Мои курсы
+        </button>
+        <a href="/task_bank.html" class="menu_button black_text_href">Банк заданий</a>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'SubjectRating' }"
+          @click="switchComponent('SubjectRating')"
+        >
+          Рейтинг
+        </button>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'HomeworkList' }"
+          @click="switchComponent('HomeworkList')"
+        >
+          Домашние задания
+        </button>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'StudentStatic' }"
+          @click="switchComponent('StudentStatic')"
+        >
+          Статистика
+        </button>
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'settings' }"
+          @click="switchComponent('settings')"
+        >
+          Настройки
+        </button>
       </div>
     </div>
     
@@ -387,7 +59,6 @@ onUnmounted(() => {
       <div class="about_courses_bold">Курсы по другим предметам</div>  
       <div class="second_line"></div>
       
-      <!-- Карусель с карточками -->
       <div class="carousel-container">
         <button 
           v-if="allCards.length > 1" 
@@ -463,211 +134,608 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style>
-/* Все стили остаются без изменений */
-*{
-  font-family: Evolventa;
+<script setup>
+import { ref, onMounted, onUnmounted, defineEmits, computed, onBeforeUnmount, watch } from 'vue'
+import { supabase } from '../supabase.js'
+
+// === Конфигурация прокси сервера ===
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const PROXY_CONFIG = {
+  enabled: true,
+  baseUrl: isLocalhost 
+    ? 'https://schoolpurto.ru/storage' 
+    : '/storage'
 }
-.leftpartpage{
-    display: grid;
-    place-content: center;
-    grid-template-rows: 40% 55%;
-    gap: 5%;
-    height: 80vh;
-    position: sticky;
-    top: 0;
+
+const emit = defineEmits(['component-change'])
+const userEmail = ref('')
+const firstName = ref('Добавьте имя')
+const lastName = ref('в настройках')
+const avatarUrl = ref(null)
+const loading = ref(true)
+const error = ref(null)
+const studentData = ref({})
+const currentCardIndex = ref(0)
+const cardInterval = ref(null)
+const transitionDirection = ref('next')
+const activeMenu = ref('main_student_page')
+let subscription = null
+
+const switchComponent = (componentName) => {
+  activeMenu.value = componentName
+  emit('component-change', componentName)
+}
+
+// === Функция для получения прокси-URL аватарки ===
+const getAvatarProxyUrl = (ref) => {
+  if (!ref) return null
+  
+  if (!ref.startsWith('http')) {
+    if (PROXY_CONFIG.enabled) {
+      return `${PROXY_CONFIG.baseUrl}/avatar/${ref}`
+    }
+    return ref
   }
-.error-message {
-  color: #ff0000;
-  padding: 10px;
-  background-color: #ffeeee;
-  border-radius: 4px;
-  margin: 10px 0;
-}
-.leftmenu{
-    display: grid;
-    grid-template-rows: 20% 0.65% 60%;
-    gap: 7.5%;
-    background-color: #f9f8ff;
-    border-radius: 5%;
+  
+  if (ref.includes('supabase.co')) {
+    const match = ref.match(/\/storage\/v1\/object\/public\/avatar\/(.+)$/)
+    if (match) {
+      return `${PROXY_CONFIG.baseUrl}/avatar/${match[1]}`
+    }
+  }
+  
+  return ref
 }
 
-.about_student_big{
-    display: grid;
-    align-items: center;
-    grid-template-columns: 25% 70%;
-    gap: 5%;
-    padding-left: 10%;
-    padding-top: 2%;
-    cursor: pointer;
+// Функция для загрузки данных пользователя
+const fetchUserData = async () => {
+  try {
+    if (!userEmail.value) return
+    
+    const { data, error: supabaseError } = await supabase
+      .from('personalities')
+      .select('first_name, last_name, avatar_id, user_id')
+      .eq('email', userEmail.value)
+      .single()
+
+    if (supabaseError) throw supabaseError
+    
+    firstName.value = data?.first_name || 'Добавьте имя'
+    lastName.value = data?.last_name || 'в настройках'
+    
+    if (data?.avatar_id) {
+      try {
+        const { data: avatarData, error: avatarError } = await supabase
+          .from('avatar')
+          .select('id, name, ref')
+          .eq('id', data.avatar_id)
+          .single()
+        
+        if (!avatarError && avatarData) {
+          avatarUrl.value = getAvatarProxyUrl(avatarData.ref)
+        } else {
+          console.warn('Avatar not found:', avatarError)
+          avatarUrl.value = null
+        }
+      } catch (err) {
+        console.error('Avatar loading error:', err)
+        avatarUrl.value = null
+      }
+    }
+    
+  } catch (err) {
+    console.error('Ошибка:', err)
+    error.value = err.message
+  }
 }
-.photo_avatar{
-    height: 7vh;
-    width: 7vh;
-    border-radius: 50%;
-    object-fit: cover;
+
+// Функция для загрузки данных о предметах
+const fetchStudentData = async () => {
+  try {
+    if (!userEmail.value) {
+      studentData.value = {}
+      return
+    }
+    
+    const { data: userData, error: userError } = await supabase
+      .from('personalities')
+      .select('user_id')
+      .eq('email', userEmail.value)
+      .maybeSingle()
+    
+    if (userError) throw userError
+    
+    if (!userData?.user_id) {
+      studentData.value = {}
+      return
+    }
+    
+    const { data, error: studentsError } = await supabase
+      .from('students')
+      .select('subject1, subject2')
+      .eq('user_id', userData.user_id)
+      .maybeSingle()
+    
+    if (studentsError && studentsError.code !== 'PGRST116') throw studentsError
+    
+    studentData.value = data || {}
+    
+  } catch (err) {
+    console.error('Ошибка при загрузке данных студента:', err)
+    studentData.value = {}
+  }
 }
+
+// Извлекаем тип экзамена
+const getExamType = (subject) => {
+  if (!subject) return ''
+  const subjectLower = String(subject).toLowerCase()
+  if (subjectLower.includes('огэ')) return 'ОГЭ'
+  if (subjectLower.includes('егэ')) return 'ЕГЭ'
+  return ''
+}
+
+const isFieldFilled = (field) => {
+  return field !== null && field !== undefined && String(field).trim() !== ''
+}
+
+// Карточка 1: Математика (ОГЭ или ЕГЭ)
+const getFirstCardData = () => {
+  if (!studentData.value || Object.keys(studentData.value).length === 0) return null
+  
+  const subjects = [studentData.value.subject1, studentData.value.subject2]
+  const hasOGE = subjects.some(s => s && s.toLowerCase().includes('огэ'))
+  const hasEGE = subjects.some(s => s && s.toLowerCase().includes('егэ'))
+  
+  if (hasOGE) {
+    return {
+      text: 'Подготовка к ОГЭ по математике',
+      link: 'https://t.me/math_probaschool',
+      type: 'telegram',
+      compact: true,
+      hasButton: true
+    }
+  }
+  
+  if (hasEGE) {
+    return {
+      text: 'Подготовка к ЕГЭ по базовой математике',
+      link: 'https://t.me/math_probaschool',
+      type: 'telegram',
+      compact: true,
+      hasButton: true
+    }
+  }
+  
+  return null
+}
+
+// Карточка 2: Запись на недостающий курс
+const getSecondCardData = () => {
+  if (!studentData.value || Object.keys(studentData.value).length === 0) return null
+  
+  const subject1 = studentData.value.subject1
+  const subject2 = studentData.value.subject2
+  
+  if (isFieldFilled(subject1) && isFieldFilled(subject2)) return null
+  
+  if (!isFieldFilled(subject1) && isFieldFilled(subject2)) {
+    const examType = getExamType(subject2)
+    return {
+      text: `Записаться на курс по Химии ${examType}`,
+      link: 'https://purtoschool.ru/',
+      type: 'course',
+      compact: true,
+      hasButton: true
+    }
+  }
+  
+  if (isFieldFilled(subject1) && !isFieldFilled(subject2)) {
+    const examType = getExamType(subject1)
+    return {
+      text: `Записаться на курс по Биологии ${examType}`,
+      link: 'https://purtoschool.ru/',
+      type: 'course',
+      compact: true,
+      hasButton: true
+    }
+  }
+  
+  return {
+    text: 'Записаться на курс по химии или биологии',
+    link: 'https://purtoschool.ru/',
+    type: 'course',
+    compact: true,
+    hasButton: true
+  }
+}
+
+// Карточка 3: Пригласи друга
+const getThirdCardData = () => {
+  return {
+    text: 'Приведи друга - получите скидку 500₽ каждый!',
+    description: 'Учитесь вместе выгоднее',
+    link: 'https://purtoschool.ru/invite',
+    type: 'invite',
+    emoji: '🎁',
+    compact: false,
+    hasButton: false
+  }
+}
+
+// Все карточки
+const allCards = computed(() => {
+  const cards = []
+  const firstCard = getFirstCardData()
+  const secondCard = getSecondCardData()
+  const thirdCard = getThirdCardData()
+  
+  if (firstCard) cards.push(firstCard)
+  if (secondCard) cards.push(secondCard)
+  cards.push(thirdCard)
+  
+  return cards
+})
+
+// Следим за изменением количества карточек
+watch(allCards, (newCards, oldCards) => {
+  if (newCards.length !== oldCards?.length && currentCardIndex.value >= newCards.length) {
+    currentCardIndex.value = 0
+  }
+})
+
+const currentCard = computed(() => {
+  if (allCards.value.length === 0) return null
+  return allCards.value[currentCardIndex.value]
+})
+
+const nextCard = () => {
+  if (allCards.value.length <= 1) return
+  transitionDirection.value = 'next'
+  currentCardIndex.value = (currentCardIndex.value + 1) % allCards.value.length
+  resetTimer()
+}
+
+const prevCard = () => {
+  if (allCards.value.length <= 1) return
+  transitionDirection.value = 'prev'
+  currentCardIndex.value = (currentCardIndex.value - 1 + allCards.value.length) % allCards.value.length
+  resetTimer()
+}
+
+const goToCard = (index) => {
+  if (index === currentCardIndex.value) return
+  transitionDirection.value = index > currentCardIndex.value ? 'next' : 'prev'
+  currentCardIndex.value = index
+  resetTimer()
+}
+
+const resetTimer = () => {
+  if (cardInterval.value) {
+    clearInterval(cardInterval.value)
+  }
+  startCarousel()
+}
+
+const startCarousel = () => {
+  if (allCards.value.length <= 1) return
+  cardInterval.value = setInterval(() => {
+    nextCard()
+  }, 5000)
+}
+
+// Подписка на изменения в реальном времени
+const setupRealtime = () => {
+  subscription = supabase
+    .channel('personal_changes')
+    .on('postgres_changes', 
+      { event: '*', schema: 'public', table: 'personalities', filter: `email=eq.${userEmail.value}` },
+      () => {
+        fetchUserData()
+        fetchStudentData()
+      }
+    )
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'avatar' },
+      () => {
+        fetchUserData()
+      }
+    )
+    .subscribe()
+}
+
+onMounted(async () => {
+  try {
+    userEmail.value = localStorage.getItem('userEmail') || ''
+    if (!userEmail.value) throw new Error('Email не найден в localStorage')
+    
+    await Promise.all([fetchUserData(), fetchStudentData()])
+    setupRealtime()
+    
+    setTimeout(() => {
+      startCarousel()
+    }, 1000)
+    
+  } catch (err) {
+    console.error('Ошибка инициализации:', err)
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+})
+
+onBeforeUnmount(() => {
+  if (cardInterval.value) {
+    clearInterval(cardInterval.value)
+  }
+})
+
+onUnmounted(() => {
+  if (subscription) {
+    supabase.removeChannel(subscription)
+  }
+})
+</script>
+
+<style scoped>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+@font-face {
+  font-family: Evolventa;
+  src: local("Evolventa"), url("/src/assets/evolventa/Evolventa-Regular.woff");
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: Evolventa;
+  src: local("Evolventa Oblique"), url("/src/assets/evolventa/Evolventa-Oblique.woff");
+  font-weight: normal;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: Evolventa;
+  src: local("Evolventa Bold"), url("/src/assets/evolventa/Evolventa-Bold.woff");
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: Evolventa;
+  src: local("Evolventa Bold Oblique"), url("/src/assets/evolventa/Evolventa-BoldOblique.woff");
+  font-weight: bold;
+  font-style: italic;
+}
+
+.leftpartpage {
+  width: 100%;
+  max-width: 280px;
+  position: sticky;
+  top: 20px;
+}
+
+.leftmenu {
+  background-color: #f9f8ff;
+  border-radius: 16px;
+  padding: 20px 0;
+  width: 100%;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+}
+
+.about_student_big {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  cursor: pointer;
+  margin-bottom: 15px;
+}
+
+.photo_avatar {
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .default-avatar {
-    height: 7vh;
-    width: 7vh;
-    border-radius: 50%;
-    background-color: #ccc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7vw;
-    text-align: center;
-    color: #666;
-}
-.about_student{
-    display: grid;
-    grid-template-rows: 45% 15%;
-    gap: 5%;
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  background-color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  text-align: center;
+  color: #888;
+  padding: 5px;
+  flex-shrink: 0;
 }
 
-.number_of_points{
-    font-size: 0.9vw;
+.about_student {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
-.line{
-    background-color: #b241d1;
-    width: 80%;
-    margin-left: 10%;
+
+.user-info {
+  font-weight: bold;
+  font-size: 14px;
+  font-family: 'Evolventa', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.second_line{
-    background-color: #b241d1;
-    width: 100%;
-}
-.menu{
-    display: grid;
-    grid-template-rows: 12% 12% 12% 12% 12% 12% 12% 12% 12%;
-    gap: 3%;
-    padding-left: 10%;
-}
-.menu_button{
-    background-color: #f9f8ff;
-    border: 0px;
-    font-family: Evolventa;
-    font-size: 1.75vh;
-    cursor: pointer;
-    width: fit-content;
-}
-.aboutcourses{
-    background-color: #f9f8ff;
-    display: grid;
-    grid-template-rows: 18% 0.5% auto;
-    gap: 2%;
-    padding-left: 10%;
-    padding-right: 5%;
-    padding-top: 5%;
-    padding-bottom: 5%;
-    border-radius: 5%;
-    position: relative;
-    overflow: hidden;
-}
-.about_courses_bold{
-    font-size: 1.5vw;
-    font-weight: bold;
-}
-.about_courses_main_text{
-    font-size: 1vw;
-}
-.about_courses_button_chose{
-    color: white;
-    background-color: #b241d1;
-    display: grid;
-    place-content: center;
-    border-radius: 5vw;
-    padding: 8px 16px;
-    text-decoration: none;
-    text-align: center;
-    font-size: 0.9vw;
-    margin-top: 10px;
-}
-.user-info{
-    font-weight: bold;
-}
+
 .user-info.settings-message {
   color: #b241d1;
-  font-size: 1.5vh;
-  font-weight: bold;
   animation: pulse 1.5s infinite;
 }
 
 @keyframes pulse {
-  0% { opacity: 1; }
+  0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
-  100% { opacity: 1; }
 }
 
-.black_text_href{
-  color: black;
+.line {
+  background-color: #b241d1;
+  width: calc(100% - 32px);
+  height: 1px;
+  margin: 0 auto 15px;
 }
 
-/* Стили для карусели */
+.second_line {
+  background-color: #b241d1;
+  width: 100%;
+  height: 1px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 16px;
+}
+
+.menu_button {
+  background: none;
+  border: none;
+  font-family: 'Evolventa', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  color: #333;
+  transition: all 0.2s ease;
+  border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu_button.active {
+  color: #b241d1;
+  font-weight: bold;
+  background-color: rgba(178, 65, 209, 0.1);
+}
+
+.menu_button:hover:not(.active) {
+  background-color: rgba(178, 65, 209, 0.05);
+  color: #b241d1;
+}
+
+.black_text_href {
+  color: #333;
+  text-decoration: none;
+  display: block;
+  width: 100%;
+  font-family: 'Evolventa', sans-serif;
+}
+
+.black_text_href:hover {
+  color: #b241d1;
+}
+
+/* Блок с курсами - увеличенный отступ сверху */
+.aboutcourses {
+  background-color: #f9f8ff;
+  border-radius: 16px;
+  padding: 16px;
+  margin-top: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.about_courses_bold {
+  font-size: 14px;
+  font-weight: bold;
+  font-family: 'Evolventa', sans-serif;
+  margin-bottom: 10px;
+}
+
+.about_courses_main_text {
+  font-size: 13px;
+  font-family: 'Evolventa', sans-serif;
+  color: #666;
+  margin-top: 10px;
+}
+
+.about_courses_button_chose {
+  color: white;
+  background-color: #b241d1;
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 20px;
+  text-decoration: none;
+  text-align: center;
+  font-size: 13px;
+  font-family: 'Evolventa', sans-serif;
+  margin-top: 10px;
+  transition: all 0.2s ease;
+}
+
+.about_courses_button_chose:hover {
+  background-color: #9a36b8;
+  transform: translateY(-2px);
+}
+
 .carousel-container {
   position: relative;
-  height: 100%;
-  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-height: 140px;
+  margin-top: 5px;
 }
 
 .carousel-inner-container {
   width: 100%;
-  height: 100%;
-  padding: 0 25px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0 28px;
 }
 
 .carousel {
   width: 100%;
-  height: 100%;
+  min-height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
   position: relative;
 }
 
 .course-card {
   background: transparent !important;
-  border-radius: 8px;
   width: 100%;
-  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   position: absolute;
-  box-shadow: none !important;
-  border: none !important;
   opacity: 0;
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.course-card.card-compact {
-  padding: 15px;
-}
-
-.course-card.card-normal {
-  padding: 10px 15px;
+  transition: opacity 0.4s ease, transform 0.4s ease;
 }
 
 .course-card.slide-next {
-  animation: slideInNext 0.6s ease forwards;
+  animation: slideInNext 0.4s ease forwards;
 }
 
 .course-card.slide-prev {
-  animation: slideInPrev 0.6s ease forwards;
+  animation: slideInPrev 0.4s ease forwards;
 }
 
 @keyframes slideInNext {
   0% {
     opacity: 0;
-    transform: translateX(30px);
+    transform: translateX(15px);
   }
   100% {
     opacity: 1;
@@ -678,7 +746,7 @@ onUnmounted(() => {
 @keyframes slideInPrev {
   0% {
     opacity: 0;
-    transform: translateX(-30px);
+    transform: translateX(-15px);
   }
   100% {
     opacity: 1;
@@ -691,78 +759,48 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
   text-align: center;
-  max-width: 90%;
+  width: 100%;
 }
 
-.card-compact .course-card-content,
-.with-button .course-card-content {
-  gap: 12px;
+.card-compact .course-card-content {
+  gap: 6px;
 }
 
-.card-normal .course-card-content,
-.no-button .course-card-content {
-  gap: 5px;
-  justify-content: center;
+.card-normal .course-card-content {
+  gap: 4px;
 }
 
 .card-emoji {
-  font-size: 1.8vw;
-  margin-bottom: 2px;
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-3px);
-  }
+  font-size: 28px;
 }
 
 .card-compact .course-text {
-  font-size: 1.2vw;
+  font-size: 13px;
   font-weight: 700;
+  font-family: 'Evolventa', sans-serif;
   color: #333;
-  line-height: 1.3;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
-  margin: 3px 0;
 }
 
 .card-normal .course-text {
-  font-size: 1.1vw;
+  font-size: 12px;
   font-weight: 700;
-  color: #333;
-  line-height: 1.2;
-  margin: 2px 0;
-  padding: 0 5px;
-}
-
-.card-type-invite .course-text {
+  font-family: 'Evolventa', sans-serif;
   color: #b241d1;
-  background: linear-gradient(45deg, #b241d1, #9a2cb6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .course-description {
-  font-size: 0.75vw;
+  font-size: 11px;
+  font-family: 'Evolventa', sans-serif;
   color: #666;
-  line-height: 1.3;
-  max-width: 85%;
-  margin: 1px auto;
-  font-weight: 400;
 }
 
 .card-compact .course-button {
-  padding: 10px 20px;
-  font-size: 0.85vw;
-  min-width: 150px;
-  margin-top: 5px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-family: 'Evolventa', sans-serif;
+  min-width: 110px;
+  margin-top: 4px;
 }
 
 .card-normal .course-button {
@@ -772,181 +810,354 @@ onUnmounted(() => {
 .course-button {
   color: white;
   background: linear-gradient(135deg, #b241d1, #9a2cb6);
-  border-radius: 22px;
+  border-radius: 20px;
   text-decoration: none;
   text-align: center;
   font-weight: 600;
   transition: all 0.3s ease;
   border: none;
   cursor: pointer;
-  box-shadow: 0 3px 8px rgba(178, 65, 209, 0.2);
-  position: relative;
-  overflow: hidden;
-}
-
-.course-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-  transition: left 0.5s ease;
-}
-
-.course-button:hover::before {
-  left: 100%;
+  box-shadow: 0 2px 6px rgba(178, 65, 209, 0.2);
 }
 
 .course-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 12px rgba(154, 44, 182, 0.3);
-}
-
-.card-type-invite .course-button {
-  background: linear-gradient(135deg, #ff6b6b, #ff8e53);
-  box-shadow: 0 3px 8px rgba(255, 107, 107, 0.2);
-}
-
-.card-type-invite .course-button:hover {
-  box-shadow: 0 5px 12px rgba(255, 107, 107, 0.3);
-}
-
-.card-type-telegram .course-button {
-  background: linear-gradient(135deg, #0088cc, #00aced);
-  box-shadow: 0 3px 8px rgba(0, 136, 204, 0.2);
-}
-
-.card-type-telegram .course-button:hover {
-  box-shadow: 0 5px 12px rgba(0, 136, 204, 0.3);
 }
 
 .no-courses {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
+  gap: 8px;
+  padding: 10px;
   width: 100%;
-  height: 100%;
-  padding: 15px;
 }
 
 .carousel-arrow {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  background-color: rgba(255, 255, 255, 0.9);
+  background-color: white;
   color: #b241d1;
-  border: 1.5px solid #b241d1;
-  width: 32px;
-  height: 32px;
+  border: 1px solid #b241d1;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  font-size: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   z-index: 10;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
 .carousel-arrow:hover {
   background-color: #b241d1;
   color: white;
-  transform: translateY(-50%) scale(1.05);
-  box-shadow: 0 3px 10px rgba(178, 65, 209, 0.2);
-}
-
-.carousel-arrow svg {
-  width: 14px;
-  height: 14px;
 }
 
 .carousel-arrow-prev {
-  left: 5px;
+  left: 0;
 }
 
 .carousel-arrow-next {
-  right: 5px;
+  right: 0;
+}
+
+.carousel-arrow svg {
+  width: 12px;
+  height: 12px;
 }
 
 .carousel-indicators {
   display: flex;
   gap: 6px;
+  justify-content: center;
   margin-top: 10px;
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
 }
 
 .carousel-indicator {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  border: 1.5px solid #b241d1;
+  border: 1px solid #b241d1;
   background-color: transparent;
   cursor: pointer;
-  transition: all 0.3s ease;
-  padding: 0;
+  transition: all 0.2s ease;
 }
 
 .carousel-indicator.active {
   background-color: #b241d1;
-  transform: scale(1.1);
-  box-shadow: 0 0 6px rgba(178, 65, 209, 0.3);
+  transform: scale(1.2);
 }
 
-.carousel-indicator:hover {
-  background-color: rgba(178, 65, 209, 0.3);
-}
+/* ============================================ */
+/* АДАПТАЦИЯ ДЛЯ БУРГЕР-МЕНЮ */
+/* ============================================ */
 
-.course-card::after {
-  content: '';
-  position: absolute;
-  top: -3px;
-  left: -3px;
-  right: -3px;
-  bottom: -3px;
-  border-radius: 8px;
-  background: radial-gradient(circle at center, rgba(178, 65, 209, 0.06), transparent 70%);
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 0.6s ease;
-}
-
-.course-card.slide-next::after,
-.course-card.slide-prev::after {
-  opacity: 1;
-  animation: glow 2s ease-in-out infinite alternate;
-}
-
-@keyframes glow {
-  from {
-    background: radial-gradient(circle at center, rgba(178, 65, 209, 0.06), transparent 70%);
+/* Планшеты */
+@media (max-width: 1024px) {
+  .leftpartpage {
+    max-width: 260px;
   }
-  to {
-    background: radial-gradient(circle at center, rgba(178, 65, 209, 0.1), transparent 70%);
+  
+  .photo_avatar, .default-avatar {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .user-info {
+    font-size: 13px;
+  }
+  
+  .menu_button {
+    font-size: 13px;
+    padding: 8px 10px;
   }
 }
 
-.course-card-content {
-  max-width: 85%;
+/* Мобильные устройства - когда меню в бургере */
+@media (max-width: 768px) {
+  .leftpartpage {
+    max-width: 100%;
+    position: relative;
+    top: 0;
+    margin-bottom: 0;
+    padding: 0 4px;
+  }
+  
+  .leftmenu {
+    border-radius: 12px;
+    padding: 16px 0;
+    width: 100%;
+    margin-bottom: 16px;
+  }
+  
+  .about_student_big {
+    padding: 0 16px;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .photo_avatar, .default-avatar {
+    width: 52px;
+    height: 52px;
+  }
+  
+  .user-info {
+    font-size: 15px;
+  }
+  
+  .line {
+    width: calc(100% - 32px);
+    margin-bottom: 12px;
+  }
+  
+  .menu {
+    padding: 0 14px;
+    gap: 2px;
+  }
+  
+  .menu_button {
+    font-size: 15px;
+    padding: 10px 14px;
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  
+  .aboutcourses {
+    padding: 14px;
+    margin-top: 0;
+    border-radius: 12px;
+  }
+  
+  .about_courses_bold {
+    font-size: 14px;
+  }
+  
+  .carousel-container {
+    min-height: 130px;
+  }
+  
+  .carousel-inner-container {
+    padding: 0 24px;
+  }
+  
+  .card-compact .course-text {
+    font-size: 13px;
+  }
+  
+  .card-emoji {
+    font-size: 24px;
+  }
+  
+  .carousel-arrow {
+    width: 26px;
+    height: 26px;
+  }
 }
 
-.card-normal.no-button .card-emoji {
-  margin-bottom: 3px;
+/* Маленькие телефоны */
+@media (max-width: 480px) {
+  .leftmenu {
+    padding: 14px 0;
+    border-radius: 10px;
+    margin-bottom: 12px;
+  }
+  
+  .about_student_big {
+    padding: 0 14px;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  
+  .photo_avatar, .default-avatar {
+    width: 46px;
+    height: 46px;
+  }
+  
+  .user-info {
+    font-size: 14px;
+  }
+  
+  .menu {
+    padding: 0 12px;
+    gap: 2px;
+  }
+  
+  .menu_button {
+    font-size: 14px;
+    padding: 8px 12px;
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
+    text-overflow: clip;
+    border-radius: 6px;
+  }
+  
+  .aboutcourses {
+    padding: 12px;
+    margin-top: 0;
+    border-radius: 10px;
+  }
+  
+  .about_courses_bold {
+    font-size: 13px;
+  }
+  
+  .carousel-container {
+    min-height: 120px;
+  }
+  
+  .carousel-inner-container {
+    padding: 0 20px;
+  }
+  
+  .card-compact .course-text {
+    font-size: 12px;
+  }
+  
+  .card-emoji {
+    font-size: 20px;
+  }
+  
+  .course-description {
+    font-size: 10px;
+  }
+  
+  .card-compact .course-button {
+    padding: 4px 8px;
+    font-size: 10px;
+    min-width: 90px;
+  }
+  
+  .carousel-arrow {
+    width: 22px;
+    height: 22px;
+  }
+  
+  .carousel-arrow svg {
+    width: 10px;
+    height: 10px;
+  }
 }
 
-.card-normal.no-button .course-text {
-  margin-bottom: 3px;
+/* Очень маленькие телефоны */
+@media (max-width: 360px) {
+  .leftmenu {
+    padding: 12px 0;
+    margin-bottom: 10px;
+  }
+  
+  .about_student_big {
+    padding: 0 10px;
+    gap: 8px;
+  }
+  
+  .photo_avatar, .default-avatar {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .user-info {
+    font-size: 13px;
+  }
+  
+  .menu {
+    padding: 0 8px;
+  }
+  
+  .menu_button {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
 }
 
-.card-normal.no-button .course-description {
-  margin-top: 2px;
+/* Альбомная ориентация */
+@media (max-width: 768px) and (orientation: landscape) {
+  .leftpartpage {
+    max-width: 100%;
+  }
+  
+  .leftmenu {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 16px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .about_student_big {
+    margin-bottom: 0;
+    width: auto;
+    padding: 0;
+  }
+  
+  .line {
+    display: none;
+  }
+  
+  .menu {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 1;
+    padding: 0;
+  }
+  
+  .menu_button {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  
+  .aboutcourses {
+    margin-top: 0;
+    padding: 12px;
+  }
 }
 </style>

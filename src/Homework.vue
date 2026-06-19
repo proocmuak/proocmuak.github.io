@@ -1,16 +1,453 @@
+<template>
+  <div class="allpage">
+    <div class="topmenu">
+      <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
+      <div class="rightparttopmenu">
+        <div class="redirect_menu" @click="redirectToMenu">На главную</div>
+        <div class="go_back"><a href="index.html">Выйти</a></div>
+      </div>
+    </div> 
+    
+    <div class="centerpartpage">
+      <div class="homework-content">
+        <!-- Заголовок домашнего задания -->
+        <div class="homework-header">
+          <h1>{{ homeworkName }}</h1>
+          <div v-if="isTutorMode" class="tutor-mode-banner">
+            📝 Режим проверки куратора
+          </div>
+          <div class="homework-meta">
+            <span class="lesson-info">Урок {{ homeworkData.lesson_number || 'Н/Д' }}: {{ homeworkData.lesson_name || 'Н/Д' }}</span>
+            <span class="deadline" :class="deadlineStatus">
+              Дедлайн: {{ formatDate(homeworkData.deadline) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Список заданий -->
+        <div class="tasks-container">
+          <div v-if="loading" class="loading">Загрузка заданий...</div>
+          <div v-else-if="error" class="error">{{ error }}</div>
+          
+          <div v-else class="tasks-list">
+            <div 
+              v-for="task in sortedTasks" 
+              :key="task.task_id"
+              class="task-item"
+              :class="{ 'extended-task': isSecondPartTask(task) }"
+              :data-task-id="task.task_id"
+            >
+              <div class="task-card">
+                <div class="task-header">
+                  <div class="task-meta">
+                    <span class="task-topic">Тема: {{ task.topic }}</span>
+                    <span class="task-id">#{{ task.number }} ({{ task.points }} балла)</span>
+                    <span v-if="isSecondPartTask(task)" class="task-part-badge">Вторая часть</span>
+                  </div>
+                  <div class="task-status" :class="getTaskStatusClass(task)">
+                    {{ getTaskStatusText(task) }}
+                  </div>
+                </div>
+
+                <div class="task-content">
+                  <div 
+                    class="task-text" 
+                    v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
+                    @copy.prevent
+                    @cut.prevent
+                    @dragstart.prevent
+                  ></div>
+                  
+                  <div v-if="task.has_table && task.table_data" class="task-table-container">
+                    <table :class="{ 'with-borders': task.table_data.borders }">
+                      <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
+                        <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
+                          <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+                  
+                  <div class="task-images" v-if="task.images && task.images.length">
+                    <div class="image-grid">
+                      <div 
+                        class="image-container" 
+                        v-for="(image, index) in task.images" 
+                        :key="index"
+                      >
+                        <img 
+                          :src="getImageUrl(image)" 
+                          :alt="'Изображение задания ' + task.number" 
+                          class="task-image"
+                          @click="openImageModal(getImageUrl(image))"
+                          loading="lazy"
+                        >
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="answer-section">
+                    <!-- Режим редактирования -->
+                    <div v-if="task.isEditing" class="edit-mode">
+                      <div class="answer-input-container">
+                        <textarea 
+                          v-if="isSecondPartTask(task)"
+                          v-model="task.editAnswerInput" 
+                          :placeholder="'Введите развернутый ответ (' + task.points + ' балла)'" 
+                          class="answer-textarea extended"
+                          rows="6"
+                          @keydown.ctrl.enter="saveEditedAnswer(task)"
+                          ref="editInput"
+                        ></textarea>
+                        
+                        <input 
+                          v-else
+                          v-model="task.editAnswerInput" 
+                          type="text" 
+                          :placeholder="'Введите ответ (' + task.points + ' балла)'" 
+                          class="answer-input"
+                          @keyup.enter="saveEditedAnswer(task)"
+                          ref="editInput"
+                        >
+                        
+                        <button @click="saveEditedAnswer(task)" class="submit-button">Сохранить</button>
+                        <button @click="cancelEdit(task)" class="cancel-button">Отмена</button>
+                      </div>
+                      
+                      <div v-if="isSecondPartTask(task)" class="image-upload-section">
+                        <label class="upload-label">
+                          📎 Прикрепить изображения
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            @change="handleImageUpload(task, $event)"
+                            class="file-input"
+                          >
+                        </label>
+                        
+                        <div v-if="task.uploadingImages" class="upload-status-uploading">
+                          ⏳ Загрузка изображений...
+                        </div>
+                        
+                        <div v-if="task.uploadSuccess" class="upload-status-success">
+                          ✅ Изображения успешно сохранены!
+                        </div>
+                        
+                        <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
+                          <div class="images-title">Загруженные изображения:</div>
+                          <div class="images-grid">
+                            <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                              <img 
+                                :src="getAnswerImageUrl(imagePath)" 
+                                :alt="'Изображение ответа ' + (imgIndex + 1)"
+                                class="answer-image"
+                                @click="openImageModal(getAnswerImageUrl(imagePath))"
+                              >
+                              <button 
+                                @click="removeAnswerImage(task, imgIndex)"
+                                class="remove-image-btn"
+                                title="Удалить изображение"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                          <button @click="saveAnswer(task)" class="save-images-btn">
+                            💾 Сохранить изменения
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- Режим ввода нового ответа -->
+                    <div v-else-if="!task.userAnswer && !isViewMode && !isCompleted">
+                      <div v-if="!task.answerImages || task.answerImages.length === 0" class="answer-input-container">
+                        <textarea 
+                          v-if="isSecondPartTask(task)"
+                          v-model="task.userAnswerInput" 
+                          :placeholder="'Введите развернутый ответ (' + task.points + ' балла)'" 
+                          class="answer-textarea extended"
+                          rows="6"
+                          @keydown.ctrl.enter="saveAnswer(task)"
+                        ></textarea>
+                        
+                        <input 
+                          v-else
+                          v-model="task.userAnswerInput" 
+                          type="text" 
+                          :placeholder="'Введите ответ (' + task.points + ' балла)'" 
+                          class="answer-input"
+                          @keyup.enter="saveAnswer(task)"
+                        >
+                        
+                        <button @click="saveAnswer(task)" class="submit-button">Сохранить</button>
+                      </div>
+                      
+                      <div v-if="isSecondPartTask(task)" class="image-upload-section">
+                        <label class="upload-label">
+                          📎 Прикрепить изображения
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            @change="handleImageUpload(task, $event)"
+                            class="file-input"
+                          >
+                        </label>
+                        <div v-if="task.uploadingImages" class="uploading-text">
+                          Загрузка...
+                        </div>
+                        
+                        <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
+                          <div class="images-title">Загруженные изображения:</div>
+                          <div class="images-grid">
+                            <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                              <img 
+                                :src="getAnswerImageUrl(imagePath)" 
+                                :alt="'Изображение ответа ' + (imgIndex + 1)"
+                                class="answer-image"
+                                @click="openImageModal(getAnswerImageUrl(imagePath))"
+                              >
+                              <button 
+                                @click="removeAnswerImage(task, imgIndex)"
+                                class="remove-image-btn"
+                                title="Удалить изображение"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                          <button @click="saveAnswer(task)" class="submit-button">Сохранить ответ</button>
+                        </div>
+                      </div>
+                      
+                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
+                    </div>
+                    
+                    <!-- Отображаем ответы только после завершения работы -->
+                    <div v-else-if="(isCompleted || task.userAnswer || (task.answerImages && task.answerImages.length > 0)) && showAnswers" class="answer-result">
+                      <div class="answer-feedback" :class="getFeedbackClass(task)">
+                        <div class="feedback-content">
+                          <span v-if="task.isCorrect" class="correct-icon">✓</span>
+                          <span v-else-if="task.isPartiallyCorrect" class="partial-icon">±</span>
+                          <span v-else class="incorrect-icon">✗</span>
+                          
+                          <div v-if="task.userAnswer" class="user-answer-container">
+                            <strong>Ответ студента:</strong> 
+                            <div class="user-answer-text" :class="{ 'multiline': isSecondPartTask(task) }">
+                              <pre v-if="isSecondPartTask(task)" style="white-space: pre-wrap; font-family: inherit; margin: 0.5rem 0;">{{ task.userAnswer }}</pre>
+                              <span v-else>{{ task.userAnswer }}</span>
+                            </div>
+                          </div>
+                          
+                          <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
+                            <div class="images-title">Прикрепленные изображения:</div>
+                            <div class="images-grid">
+                              <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                                <img 
+                                  :src="getAnswerImageUrl(imagePath)" 
+                                  :alt="'Изображение ответа ' + (imgIndex + 1)"
+                                  class="answer-image"
+                                  @click="openImageModal(getAnswerImageUrl(imagePath))"
+                                >
+                                <button 
+                                  v-if="!isCompleted && !isTutorMode"
+                                  @click="removeAnswerImage(task, imgIndex)"
+                                  class="remove-image-btn"
+                                  title="Удалить изображение"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <span class="correct-answer-text">
+                            <strong>Правильный ответ:</strong> 
+                            <span v-html="sanitizeHtml(formatAnswerText(task.answer))"></span>
+                          </span>
+                          
+                          <div v-if="isTutorMode" class="tutor-scoring-panel">
+                            <span class="score-label">Оценка куратора:</span>
+                            <select 
+                              v-model="task.manualScore" 
+                              @change="setTutorScore(task, parseInt($event.target.value))"
+                              class="score-select"
+                              :disabled="task.saving"
+                            >
+                              <option v-for="n in task.points + 1" :value="n - 1" :key="n">
+                                {{ n - 1 }} баллов
+                              </option>
+                            </select>
+                            <span v-if="task.saving" class="saving-status">Сохранение...</span>
+                          </div>
+                          
+                          <span class="current-score" v-if="task.awardedPoints !== null">
+                            Набрано баллов: {{ task.awardedPoints }}/{{ task.points }}
+                          </span>
+                          
+                          <button 
+                            v-if="!isCompleted && !isTutorMode" 
+                            @click="startEdit(task)" 
+                            class="edit-answer-btn"
+                            title="Редактировать ответ"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- Ответ сохранен, но домашнее задание не завершено -->
+                    <div v-else-if="(task.userAnswer || (task.answerImages && task.answerImages.length > 0) || task.answerSaved) && !showAnswers" class="answer-saved">
+                      <span class="saved-icon">✓</span> Ответ сохранен
+                      
+                      <div v-if="task.userAnswer" class="user-answer-container">
+                        <div class="user-answer-text" :class="{ 'multiline': isSecondPartTask(task) }">
+                          <pre v-if="isSecondPartTask(task)" style="white-space: pre-wrap; font-family: inherit; margin: 0.5rem 0;">{{ task.userAnswer }}</pre>
+                          <span v-else>{{ task.userAnswer }}</span>
+                        </div>
+                      </div>
+                      
+                      <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
+                        <div class="images-title">Прикрепленные изображения:</div>
+                        <div class="images-grid">
+                          <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
+                            <img 
+                              :src="getAnswerImageUrl(imagePath)" 
+                              :alt="'Изображение ответа ' + (imgIndex + 1)"
+                              class="answer-image"
+                              @click="openImageModal(getAnswerImageUrl(imagePath))"
+                            >
+                            <button 
+                              @click="removeAnswerImage(task, imgIndex)"
+                              class="remove-image-btn"
+                              title="Удалить изображение"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <button 
+                        @click="startEdit(task)" 
+                        class="edit-answer-btn"
+                        title="Редактировать ответ"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                    
+                  </div>
+                </div>
+
+                <!-- Пояснение к заданию -->
+                <div v-if="showAnswers && (task.explanation || (task.image_explanation && task.image_explanation.length))" 
+                     class="explanation-section">
+                  <div class="explanation-header" @click="toggleExplanation(task)" style="cursor: pointer;">
+                    <div class="explanation-title">
+                      Пояснение: 
+                      <span class="explanation-toggle">
+                        {{ task.showExplanation ? '▲' : '▼' }}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <transition name="slide">
+                    <div v-if="task.showExplanation" class="explanation-content-container">
+                      <div class="explanation-content">
+                        <div v-if="task.explanation" v-html="sanitizeHtml(formatTextWithParagraphs(task.explanation))"></div>
+                        
+                        <div v-if="task.image_explanation && Array.isArray(task.image_explanation)" 
+                             v-for="(imagePath, index) in task.image_explanation" :key="index">
+                          <div class="explanation-image-container">
+                            <img :src="getImageUrl(imagePath)" 
+                                 alt="Пояснение к заданию" 
+                                 class="explanation-image"
+                                 @click="openImageModal(getImageUrl(imagePath))">
+                          </div>
+                        </div>
+                        
+                        <div v-else-if="typeof task.image_explanation === 'string'">
+                          <div class="explanation-image-container">
+                            <img :src="getImageUrl(task.image_explanation)" 
+                                 alt="Пояснение к заданию" 
+                                 class="explanation-image"
+                                 @click="openImageModal(getImageUrl(task.image_explanation))">
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </transition>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Блок итоговой оценки куратора -->
+        <div v-if="isTutorMode" class="tutor-final-assessment">
+          <h3>Итоговая оценка</h3>
+          
+          <div class="student-info">
+            <div class="student-name">
+              <strong>Ученик:</strong> {{ studentFullName }}
+            </div>
+          </div>
+          
+          <div class="final-score">
+            Общий балл: {{ totalScore }}/{{ maxScore }}
+            <div class="completion-percent">
+              Выполнено на: {{ completionPercent }}%
+            </div>
+          </div>
+          
+          <div class="tutor-actions">
+            <button @click="updateHomeworkCompletedOnly" class="save-final-score-btn">
+              Сохранить итоговую оценку (без уведомления)
+            </button>
+          </div>
+        </div>
+
+        <!-- Кнопка завершения -->
+        <div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
+          <button @click="completeHomework" class="complete-btn">
+            Завершить домашнее задание
+          </button>
+        </div>
+
+        <div v-if="isCompleted" class="completion-result">
+          <h3>Домашнее задание завершено!</h3>
+          <p>Набрано баллов: {{ totalScore }}/{{ maxScore }}</p>
+          <p>Выполнено на: {{ completionPercent }}%</p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Модальное окно для изображений -->
+    <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
+      <div class="modal-content">
+        <img :src="selectedImage" class="modal-image">
+        <button class="close-modal" @click="closeImageModal">×</button>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script>
+// Весь script остается без изменений
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { supabase } from './supabase.js'
 import DOMPurify from 'dompurify'
 
 // === Конфигурация прокси сервера ===
-// Позволяет принудительно направлять запросы к Storage через ваш сервер/прокси
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
 
 const PROXY_CONFIG = {
   enabled: true,
-  // На локалке стучимся напрямую к твоему боевому серверу,
-  // а на проде используем относительный путь, чтобы всё работало внутри одного домена
   baseUrl: isLocalhost 
     ? 'https://schoolpurto.ru/storage' 
     : '/storage'
@@ -156,10 +593,8 @@ function checkAnswerComponent(userAnswerRaw, correctAnswerRaw, points, shortSubj
 // === Функция для конвертации старых URL в пути ===
 function extractPathFromUrl(url) {
   if (!url || typeof url !== 'string') return url
-  // Если это уже путь (не содержит http), возвращаем как есть
   if (!url.startsWith('http')) return url
   
-  // Извлекаем путь из полного URL Supabase
   const patterns = [
     /\/storage\/v1\/object\/public\/task-images\/(.+)$/,
     /\/storage\/v1\/object\/public\/answers\/(.+)$/,
@@ -201,7 +636,6 @@ export default {
     const editInput = ref(null)
     const studentInfo = ref(null)
 
-    // Получаем параметры из URL
     const getUrlParams = () => {
       const params = new URLSearchParams(window.location.search)
       const subjectParam = params.get('subject')
@@ -429,16 +863,12 @@ export default {
       return formatTextWithParagraphs(task.text)
     }
 
-    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: получение URL изображения задания через прокси ===
     const getImageUrl = (imagePath) => {
       if (!imagePath) return ''
       
-      // Обработка строки
       let path = String(imagePath)
       
-      // Если это абсолютный URL
       if (path.startsWith('http')) {
-        // Если это старый URL Supabase, конвертируем в проксированный
         if (path.includes('supabase.co')) {
           const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/)
           if (match) {
@@ -448,18 +878,15 @@ export default {
         return path
       }
       
-      // Очищаем путь от возможных префиксов
       let cleanPath = path
       if (cleanPath.startsWith('task-images/')) {
         cleanPath = cleanPath.replace('task-images/', '')
       }
       
-      // Всегда используем прокси, если он включён
       if (PROXY_CONFIG.enabled) {
         return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`
       }
       
-      // Fallback только если прокси выключен
       try {
         const { data: { publicUrl } } = supabase
           .storage
@@ -472,16 +899,12 @@ export default {
       }
     }
 
-    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: получение URL изображения ответа через прокси ===
     const getAnswerImageUrl = (imagePath) => {
       if (!imagePath) return ''
       
-      // Обработка строки
       let path = String(imagePath)
       
-      // Если это абсолютный URL
       if (path.startsWith('http')) {
-        // Если это старый URL Supabase, конвертируем в проксированный
         if (path.includes('supabase.co')) {
           const match = path.match(/\/storage\/v1\/object\/public\/answers\/(.+)$/)
           if (match) {
@@ -491,18 +914,15 @@ export default {
         return path
       }
       
-      // Очищаем путь от возможных префиксов
       let cleanPath = path
       if (cleanPath.startsWith('answers/')) {
         cleanPath = cleanPath.replace('answers/', '')
       }
       
-      // Всегда используем прокси, если он включён
       if (PROXY_CONFIG.enabled) {
         return `${PROXY_CONFIG.baseUrl}/answers/${cleanPath}`
       }
       
-      // Fallback только если прокси выключен
       try {
         const { data: { publicUrl } } = supabase
           .storage
@@ -539,7 +959,6 @@ export default {
       return content
     }
 
-    // === Загрузка изображения ответа (сохраняем только путь, не URL) ===
     const uploadAnswerImage = async (task, file) => {
       if (!user_id.value) return null
       try {
@@ -551,7 +970,7 @@ export default {
           .upload(fileName, file)
 
         if (uploadError) throw uploadError
-        return fileName // Возвращаем ТОЛЬКО путь
+        return fileName
       } catch (err) {
         console.error('Ошибка загрузки изображения:', err)
         error.value = 'Ошибка загрузки изображения: ' + err.message
@@ -873,18 +1292,14 @@ export default {
       }
     }
 
-    // === Миграция старых путей изображений ===
     const migrateOldImagePaths = () => {
       tasks.value = tasks.value.map(task => {
-        // Миграция изображений ответов
         if (task.answerImages && Array.isArray(task.answerImages)) {
           task.answerImages = task.answerImages.map(img => extractPathFromUrl(img))
         }
-        // Миграция изображений задания
         if (task.images && Array.isArray(task.images)) {
           task.images = task.images.map(img => extractPathFromUrl(img))
         }
-        // Миграция изображений пояснения
         if (task.image_explanation) {
           if (Array.isArray(task.image_explanation)) {
             task.image_explanation = task.image_explanation.map(img => extractPathFromUrl(img))
@@ -969,10 +1384,7 @@ export default {
         })
 
         await loadTasksProgress()
-        
-        // Мигрируем старые пути изображений
         migrateOldImagePaths()
-        
         await checkHomeworkCompletion()
 
         if (isTutorMode.value) {
@@ -1310,500 +1722,47 @@ export default {
 }
 </script>
 
-
-<template>
-  <div class="allpage">
-    <div class="topmenu">
-      <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
-      <div class="rightparttopmenu">
-        <div class="redirect_menu" @click="redirectToMenu">На главную</div>
-        <div class="go_back"><a href="index.html">Выйти</a></div>
-      </div>
-    </div> 
-    
-    <div class="centerpartpage">
-      <div class="homework-content">
-        <!-- Заголовок домашнего задания -->
-        <div class="homework-header">
-          <h1>{{ homeworkName }}</h1>
-          <div v-if="isTutorMode" class="tutor-mode-banner">
-            📝 Режим проверки куратора
-          </div>
-          <div class="homework-meta">
-            <span class="lesson-info">Урок {{ homeworkData.lesson_number || 'Н/Д' }}: {{ homeworkData.lesson_name || 'Н/Д' }}</span>
-            <span class="deadline" :class="deadlineStatus">
-              Дедлайн: {{ formatDate(homeworkData.deadline) }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Список заданий -->
-        <div class="tasks-container">
-          <div v-if="loading" class="loading">Загрузка заданий...</div>
-          <div v-else-if="error" class="error">{{ error }}</div>
-          
-          <div v-else class="tasks-list">
-            <div 
-              v-for="task in sortedTasks" 
-              :key="task.task_id"
-              class="task-item"
-              :class="{ 'extended-task': isSecondPartTask(task) }"
-              :data-task-id="task.task_id"
-            >
-              <div class="task-card">
-                <div class="task-header">
-                  <div class="task-meta">
-                    <span class="task-topic">Тема: {{ task.topic }}</span>
-                    <span class="task-id">#{{ task.number }} ({{ task.points }} балла)</span>
-                    <span v-if="isSecondPartTask(task)" class="task-part-badge">Вторая часть</span>
-                  </div>
-                  <div class="task-status" :class="getTaskStatusClass(task)">
-                    {{ getTaskStatusText(task) }}
-                  </div>
-                </div>
-
-                <div class="task-content">
-                  <div 
-                    class="task-text" 
-                    v-html="sanitizeHtml(getTaskTextWithoutTables(task))"
-                    @copy.prevent
-                    @cut.prevent
-                    @dragstart.prevent
-                  ></div>
-                  
-                  <div v-if="task.has_table && task.table_data" class="task-table-container">
-                    <table :class="{ 'with-borders': task.table_data.borders }">
-                      <tr v-for="(row, rowIndex) in task.table_data.content" :key="'row-'+rowIndex">
-                        <td v-for="(cell, colIndex) in row" :key="'cell-'+rowIndex+'-'+colIndex">
-                          <div v-html="sanitizeHtml(cell || '&nbsp;')"></div>
-                        </td>
-                      </tr>
-                    </table>
-                  </div>
-                  
-                  <div class="task-images" v-if="task.images && task.images.length">
-                    <div class="image-grid">
-                      <div 
-                        class="image-container" 
-                        v-for="(image, index) in task.images" 
-                        :key="index"
-                      >
-                        <img 
-                          :src="getImageUrl(image)" 
-                          :alt="'Изображение задания ' + task.number" 
-                          class="task-image"
-                          @click="openImageModal(getImageUrl(image))"
-                          loading="lazy"
-                        >
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="answer-section">
-                    <!-- Режим редактирования -->
-                    <div v-if="task.isEditing" class="edit-mode">
-                      <div class="answer-input-container">
-                        <!-- Для второй части - textarea -->
-                        <textarea 
-                          v-if="isSecondPartTask(task)"
-                          v-model="task.editAnswerInput" 
-                          :placeholder="'Введите развернутый ответ (' + task.points + ' балла)'" 
-                          class="answer-textarea extended"
-                          rows="6"
-                          @keydown.ctrl.enter="saveEditedAnswer(task)"
-                          ref="editInput"
-                        ></textarea>
-                        
-                        <!-- Для первой части - обычный input -->
-                        <input 
-                          v-else
-                          v-model="task.editAnswerInput" 
-                          type="text" 
-                          :placeholder="'Введите ответ (' + task.points + ' балла)'" 
-                          class="answer-input"
-                          @keyup.enter="saveEditedAnswer(task)"
-                          ref="editInput"
-                        >
-                        
-                        <button @click="saveEditedAnswer(task)" class="submit-button">Сохранить</button>
-                        <button @click="cancelEdit(task)" class="cancel-button">Отмена</button>
-                      </div>
-                      
-                      <!-- Загрузка изображений для второй части -->
-                      <div v-if="isSecondPartTask(task)" class="image-upload-section">
-                        <label class="upload-label">
-                          📎 Прикрепить изображения
-                          <input
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            @change="handleImageUpload(task, $event)"
-                            class="file-input"
-                          >
-                        </label>
-                        
-                        <div v-if="task.uploadingImages" class="upload-status-uploading">
-                          ⏳ Загрузка изображений...
-                        </div>
-                        
-                        <div v-if="task.uploadSuccess" class="upload-status-success">
-                          ✅ Изображения успешно сохранены!
-                        </div>
-                        
-                        <!-- Отображение загруженных изображений -->
-                        <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
-                          <div class="images-title">Загруженные изображения:</div>
-                          <div class="images-grid">
-                            <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
-                              <img 
-                                :src="getAnswerImageUrl(imagePath)" 
-                                :alt="'Изображение ответа ' + (imgIndex + 1)"
-                                class="answer-image"
-                                @click="openImageModal(getAnswerImageUrl(imagePath))"
-                              >
-                              <button 
-                                @click="removeAnswerImage(task, imgIndex)"
-                                class="remove-image-btn"
-                                title="Удалить изображение"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          </div>
-                          <button @click="saveAnswer(task)" class="save-images-btn">
-                            💾 Сохранить изменения
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <!-- Режим ввода нового ответа -->
-                    <div v-else-if="!task.userAnswer && !isViewMode && !isCompleted">
-                      <!-- Показываем поле ввода только если нет изображений -->
-                      <div v-if="!task.answerImages || task.answerImages.length === 0" class="answer-input-container">
-                        <!-- Для второй части - textarea -->
-                        <textarea 
-                          v-if="isSecondPartTask(task)"
-                          v-model="task.userAnswerInput" 
-                          :placeholder="'Введите развернутый ответ (' + task.points + ' балла)'" 
-                          class="answer-textarea extended"
-                          rows="6"
-                          @keydown.ctrl.enter="saveAnswer(task)"
-                        ></textarea>
-                        
-                        <!-- Для первой части - обычный input -->
-                        <input 
-                          v-else
-                          v-model="task.userAnswerInput" 
-                          type="text" 
-                          :placeholder="'Введите ответ (' + task.points + ' балла)'" 
-                          class="answer-input"
-                          @keyup.enter="saveAnswer(task)"
-                        >
-                        
-                        <button @click="saveAnswer(task)" class="submit-button">Сохранить</button>
-                      </div>
-                      
-                      <!-- Загрузка изображений для второй части -->
-                      <div v-if="isSecondPartTask(task)" class="image-upload-section">
-                        <label class="upload-label">
-                          📎 Прикрепить изображения
-                          <input
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            @change="handleImageUpload(task, $event)"
-                            class="file-input"
-                          >
-                        </label>
-                        <div v-if="task.uploadingImages" class="uploading-text">
-                          Загрузка...
-                        </div>
-                        
-                        <!-- Отображение загруженных изображений -->
-                        <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images-preview">
-                          <div class="images-title">Загруженные изображения:</div>
-                          <div class="images-grid">
-                            <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
-                              <img 
-                                :src="getAnswerImageUrl(imagePath)" 
-                                :alt="'Изображение ответа ' + (imgIndex + 1)"
-                                class="answer-image"
-                                @click="openImageModal(getAnswerImageUrl(imagePath))"
-                              >
-                              <button 
-                                @click="removeAnswerImage(task, imgIndex)"
-                                class="remove-image-btn"
-                                title="Удалить изображение"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          </div>
-                          <button @click="saveAnswer(task)" class="submit-button">Сохранить ответ</button>
-                        </div>
-                      </div>
-                      
-                      <div v-if="task.saving" class="saving-status">Сохранение...</div>
-                    </div>
-                    
-                    <!-- Отображаем ответы только после завершения работы -->
-                    <div v-else-if="(isCompleted || task.userAnswer || (task.answerImages && task.answerImages.length > 0)) && showAnswers" class="answer-result">
-                      <div class="answer-feedback" :class="getFeedbackClass(task)">
-                        <div class="feedback-content">
-                          <span v-if="task.isCorrect" class="correct-icon">✓</span>
-                          <span v-else-if="task.isPartiallyCorrect" class="partial-icon">±</span>
-                          <span v-else class="incorrect-icon">✗</span>
-                          
-                          <div v-if="task.userAnswer" class="user-answer-container">
-                            <strong>Ответ студента:</strong> 
-                            <div class="user-answer-text" :class="{ 'multiline': isSecondPartTask(task) }">
-                              <pre v-if="isSecondPartTask(task)" style="white-space: pre-wrap; font-family: inherit; margin: 0.5rem 0;">{{ task.userAnswer }}</pre>
-                              <span v-else>{{ task.userAnswer }}</span>
-                            </div>
-                          </div>
-                          
-                          <!-- Изображения ответа -->
-                          <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
-                            <div class="images-title">Прикрепленные изображения:</div>
-                            <div class="images-grid">
-                              <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
-                                <img 
-                                  :src="getAnswerImageUrl(imagePath)" 
-                                  :alt="'Изображение ответа ' + (imgIndex + 1)"
-                                  class="answer-image"
-                                  @click="openImageModal(getAnswerImageUrl(imagePath))"
-                                >
-                                <button 
-                                  v-if="!isCompleted && !isTutorMode"
-                                  @click="removeAnswerImage(task, imgIndex)"
-                                  class="remove-image-btn"
-                                  title="Удалить изображение"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          <span class="correct-answer-text">
-                            <strong>Правильный ответ:</strong> 
-                            <span v-html="sanitizeHtml(formatAnswerText(task.answer))"></span>
-                          </span>
-                          
-                          <!-- Панель оценки куратора для заданий второй части -->
-                          <div v-if="isTutorMode" class="tutor-scoring-panel">
-                            <span class="score-label">Оценка куратора:</span>
-                            <select 
-                              v-model="task.manualScore" 
-                              @change="setTutorScore(task, parseInt($event.target.value))"
-                              class="score-select"
-                              :disabled="task.saving"
-                            >
-                              <option v-for="n in task.points + 1" :value="n - 1" :key="n">
-                                {{ n - 1 }} баллов
-                              </option>
-                            </select>
-                            <span v-if="task.saving" class="saving-status">Сохранение...</span>
-                          </div>
-                          
-                          <span class="current-score" v-if="task.awardedPoints !== null">
-                            Набрано баллов: {{ task.awardedPoints }}/{{ task.points }}
-                          </span>
-                          
-                          <!-- Кнопка редактирования (только если не завершено) -->
-                          <button 
-                            v-if="!isCompleted && !isTutorMode" 
-                            @click="startEdit(task)" 
-                            class="edit-answer-btn"
-                            title="Редактировать ответ"
-                          >
-                            ✏️
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <!-- Ответ сохранен, но домашнее задание не завершено -->
-                    <div v-else-if="(task.userAnswer || (task.answerImages && task.answerImages.length > 0) || task.answerSaved) && !showAnswers" class="answer-saved">
-                      <span class="saved-icon">✓</span> Ответ сохранен
-                      
-                      <!-- Текстовый ответ -->
-                      <div v-if="task.userAnswer" class="user-answer-container">
-                        <div class="user-answer-text" :class="{ 'multiline': isSecondPartTask(task) }">
-                          <pre v-if="isSecondPartTask(task)" style="white-space: pre-wrap; font-family: inherit; margin: 0.5rem 0;">{{ task.userAnswer }}</pre>
-                          <span v-else>{{ task.userAnswer }}</span>
-                        </div>
-                      </div>
-                      
-                      <!-- Изображения ответа -->
-                      <div v-if="task.answerImages && task.answerImages.length > 0" class="answer-images">
-                        <div class="images-title">Прикрепленные изображения:</div>
-                        <div class="images-grid">
-                          <div v-for="(imagePath, imgIndex) in task.answerImages" :key="imgIndex" class="image-item">
-                            <img 
-                              :src="getAnswerImageUrl(imagePath)" 
-                              :alt="'Изображение ответа ' + (imgIndex + 1)"
-                              class="answer-image"
-                              @click="openImageModal(getAnswerImageUrl(imagePath))"
-                            >
-                            <button 
-                              @click="removeAnswerImage(task, imgIndex)"
-                              class="remove-image-btn"
-                              title="Удалить изображение"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <button 
-                        @click="startEdit(task)" 
-                        class="edit-answer-btn"
-                        title="Редактировать ответ"
-                      >
-                        ✏️
-                      </button>
-                    </div>
-                    
-                  </div>
-                </div>
-
-                <!-- Пояснение к заданию -->
-                <div v-if="showAnswers && (task.explanation || (task.image_explanation && task.image_explanation.length))" 
-                     class="explanation-section">
-                  <div class="explanation-header" @click="toggleExplanation(task)" style="cursor: pointer;">
-                    <div class="explanation-title">
-                      Пояснение: 
-                      <span class="explanation-toggle">
-                        {{ task.showExplanation ? '▲' : '▼' }}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <transition name="slide">
-                    <div v-if="task.showExplanation" class="explanation-content-container">
-                      <div class="explanation-content">
-                        <div v-if="task.explanation" v-html="sanitizeHtml(formatTextWithParagraphs(task.explanation))"></div>
-                        
-                        <!-- Изображения пояснения -->
-                        <div v-if="task.image_explanation && Array.isArray(task.image_explanation)" 
-                             v-for="(imagePath, index) in task.image_explanation" :key="index">
-                          <div class="explanation-image-container">
-                            <img :src="getImageUrl(imagePath)" 
-                                 alt="Пояснение к заданию" 
-                                 class="explanation-image"
-                                 @click="openImageModal(getImageUrl(imagePath))">
-                          </div>
-                        </div>
-                        
-                        <div v-else-if="typeof task.image_explanation === 'string'">
-                          <div class="explanation-image-container">
-                            <img :src="getImageUrl(task.image_explanation)" 
-                                 alt="Пояснение к заданию" 
-                                 class="explanation-image"
-                                 @click="openImageModal(getImageUrl(task.image_explanation))">
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </transition>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Блок итоговой оценки куратора -->
-        <div v-if="isTutorMode" class="tutor-final-assessment">
-          <h3>Итоговая оценка</h3>
-          
-          <div class="student-info">
-            <div class="student-name">
-              <strong>Ученик:</strong> {{ studentFullName }}
-            </div>
-          </div>
-          
-          <div class="final-score">
-            Общий балл: {{ totalScore }}/{{ maxScore }}
-            <div class="completion-percent">
-              Выполнено на: {{ completionPercent }}%
-            </div>
-          </div>
-          
-          <div class="tutor-actions">
-            <button @click="updateHomeworkCompletedOnly" class="save-final-score-btn">
-              Сохранить итоговую оценку (без уведомления)
-            </button>
-          </div>
-        </div>
-
-        <!-- Кнопка завершения -->
-        <div v-if="!isViewMode && !isCompleted && hasAnswers" class="completion-section">
-          <button @click="completeHomework" class="complete-btn">
-            Завершить домашнее задание
-          </button>
-        </div>
-
-        <div v-if="isCompleted" class="completion-result">
-          <h3>Домашнее задание завершено!</h3>
-          <p>Набрано баллов: {{ totalScore }}/{{ maxScore }}</p>
-          <p>Выполнено на: {{ completionPercent }}%</p>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- Модальное окно для изображений -->
-    <div v-if="showImageModal" class="image-modal" @click.self="closeImageModal">
-      <div class="modal-content">
-        <img :src="selectedImage" class="modal-image">
-        <button class="close-modal" @click="closeImageModal">×</button>
-      </div>
-    </div>
-  </div>
-</template>
-
-
 <style scoped>
-/* Все оригинальные стили остаются без изменений */
+/* ============================================ */
+/* БАЗОВЫЕ СТИЛИ */
+/* ============================================ */
+
 .homework-content {
   max-width: 1000px;
   margin: 0 auto;
-  padding: clamp(1rem, 3vw, 2rem);
+  padding: 24px;
 }
 
 .homework-header {
-  margin-bottom: clamp(1.5rem, 4vw, 2rem);
+  margin-bottom: 24px;
   text-align: center;
 }
 
 .homework-header h1 {
   color: #333;
-  font-size: clamp(1.8rem, 5vw, 2.5rem);
-  margin-bottom: clamp(0.5rem, 2vw, 1rem);
+  font-size: 2rem;
+  margin-bottom: 8px;
   line-height: 1.2;
 }
 
 .homework-meta {
   display: flex;
   justify-content: center;
-  gap: clamp(1rem, 3vw, 1.5rem);
+  gap: 16px;
   flex-wrap: wrap;
   align-items: center;
 }
 
 .lesson-info {
   color: #666;
-  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+  font-size: 1rem;
 }
 
 .deadline {
-  padding: 0.4rem 0.8rem;
-  border-radius: 1rem;
+  padding: 4px 12px;
+  border-radius: 16px;
   font-weight: 500;
-  font-size: clamp(0.8rem, 2vw, 0.95rem);
+  font-size: 0.9rem;
 }
 
 .deadline.overdue {
@@ -1826,40 +1785,61 @@ export default {
   color: #757575;
 }
 
+.tutor-mode-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  margin: 8px 0;
+  font-weight: bold;
+  text-align: center;
+}
+
+/* ===== ЗАДАНИЯ ===== */
 .tasks-container {
-  margin-bottom: clamp(1.5rem, 4vw, 2rem);
+  margin-bottom: 24px;
 }
 
 .tasks-list {
   display: flex;
   flex-direction: column;
-  gap: clamp(1rem, 3vw, 1.5rem);
+  gap: 16px;
 }
 
 .task-item {
   border: 1px solid #e0e0e0;
-  border-radius: 0.8rem;
-  padding: clamp(1rem, 3vw, 1.5rem);
+  border-radius: 12px;
+  padding: 20px;
   background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   width: 100%;
 }
 
-.task-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.8rem;
-  margin-bottom: 1rem;
-  padding-bottom: 0.8rem;
-  border-bottom: 1px solid #eee;
+.extended-task {
+  border-left: 4px solid #b241d1;
 }
 
-@media (min-width: 768px) {
-  .task-header {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: flex-start;
-  }
+.extended-task .task-header {
+  background-color: rgba(178, 65, 209, 0.05);
+  padding: 16px;
+  margin: -20px -20px 16px -20px;
+  border-radius: 12px 12px 0 0;
+}
+
+.extended-task .task-id {
+  color: #b241d1;
+  font-weight: bold;
+}
+
+.task-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
 }
 
 .task-meta {
@@ -1870,7 +1850,7 @@ export default {
 .task-topic {
   font-weight: 500;
   color: #333;
-  font-size: clamp(1rem, 2.5vw, 1.2rem);
+  font-size: 1.1rem;
   display: block;
   line-height: 1.4;
   word-wrap: break-word;
@@ -1878,55 +1858,40 @@ export default {
 
 .task-id {
   color: #888;
-  font-size: clamp(0.85rem, 2vw, 0.95rem);
+  font-size: 0.9rem;
   font-weight: bold;
   display: block;
-  margin-top: 0.4rem;
+  margin-top: 4px;
 }
 
 .task-part-badge {
   background: #b241d1;
   color: white;
-  padding: 0.2rem 0.6rem;
-  border-radius: 0.3rem;
+  padding: 2px 10px;
+  border-radius: 4px;
   font-size: 0.75rem;
   font-weight: bold;
-  margin-left: 0.5rem;
+  margin-left: 8px;
+  display: inline-block;
 }
 
 .task-status {
-  padding: 0.4rem 0.8rem;
-  border-radius: 0.4rem;
-  font-size: clamp(0.75rem, 2vw, 0.85rem);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
   font-weight: bold;
-  align-self: flex-start;
-}
-.completion-section {
-  margin-top: 2rem;
-  text-align: center;
-  padding: 1.5rem;
-  border-top: 2px solid #eee;
-  width: 100%;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.complete-btn {
-  padding: 1rem 2rem;
-  background-color: #28a745;
-  color: white;
-  border: none;
-  border-radius: 0.6rem;
-  font-size: clamp(1rem, 2.5vw, 1.1rem);
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  min-width: min(100%, 300px);
-}
-
-.complete-btn:hover {
-  background-color: #218838;
-}
 .status-not-completed {
   background: #f5f5f5;
   color: #666;
+}
+
+.status-saved {
+  background: #e3f2fd;
+  color: #1565c0;
 }
 
 .status-correct {
@@ -1944,16 +1909,31 @@ export default {
   color: #c62828;
 }
 
+/* ===== ТЕКСТ ЗАДАНИЯ ===== */
 .task-content {
-  margin-bottom: 1.2rem;
+  margin-bottom: 16px;
 }
 
 .task-text {
   line-height: 1.6;
   color: #333;
-  margin-bottom: 1.2rem;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+  margin-bottom: 16px;
+  font-size: 1rem;
   width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+  position: relative;
+}
+
+.task-text ::selection {
+  background: transparent;
+}
+
+.task-text ::-moz-selection {
+  background: transparent;
 }
 
 .task-text :deep(sub),
@@ -1975,11 +1955,11 @@ export default {
 .task-text :deep(table) {
   width: 100%;
   border-collapse: collapse;
-  margin: 1rem 0;
+  margin: 12px 0;
 }
 
 .task-text :deep(table td) {
-  padding: 0.5rem;
+  padding: 8px;
   border: 1px solid #ddd;
   vertical-align: top;
 }
@@ -1992,13 +1972,190 @@ export default {
   font-style: italic;
 }
 
-.answer-feedback {
-  padding: 0.75rem;
-  border-radius: 0.4rem;
-  font-weight: 500;
-  margin-top: 0.9rem;
+/* ===== ТАБЛИЦЫ ===== */
+.task-table-container {
+  margin: 16px 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.task-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  min-width: 300px;
+}
+
+.task-table-container table.with-borders {
+  border: 1px solid #ddd;
+}
+
+.task-table-container table.with-borders td {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+.task-table-container td {
+  padding: 8px;
+  vertical-align: top;
+  font-size: 0.95rem;
+}
+
+.task-table-container :deep(sub),
+.task-table-container :deep(sup) {
+  font-size: 0.75em;
+  line-height: 1;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.task-table-container :deep(sub) {
+  bottom: -0.25em;
+}
+
+.task-table-container :deep(sup) {
+  top: -0.5em;
+}
+
+.task-table-container :deep(p) {
+  margin: 0;
+  padding: 0;
+}
+
+.task-table-container :deep(strong) {
+  font-weight: 600;
+}
+
+/* ===== ИЗОБРАЖЕНИЯ ===== */
+.task-images {
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.image-container {
+  position: relative;
+  padding-top: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid #eee;
+  background: #f8f9fa;
+  cursor: pointer;
+}
+
+.task-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.task-image:hover {
+  transform: scale(1.03);
+}
+
+/* ===== ОТВЕТЫ ===== */
+.answer-section {
+  margin-top: 16px;
+  width: 100%;
+}
+
+.answer-input-container {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.answer-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
   font-size: 1rem;
-  transition: all 0.3s ease;
+  min-width: 200px;
+}
+
+.answer-input:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
+}
+
+.answer-textarea {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  min-width: 200px;
+  min-height: 80px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+  width: 100%;
+}
+
+.answer-textarea:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
+}
+
+.answer-textarea.extended {
+  min-height: 120px;
+}
+
+.submit-button {
+  padding: 10px 20px;
+  background-color: #b241d1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.submit-button:hover {
+  background-color: #9a36b8;
+}
+
+.cancel-button {
+  padding: 10px 20px;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.cancel-button:hover {
+  background-color: #5a6268;
+}
+
+/* ===== ФИДБЕК ===== */
+.answer-feedback {
+  padding: 12px;
+  border-radius: 6px;
+  font-weight: 500;
+  margin-top: 10px;
+  font-size: 1rem;
+  width: 100%;
 }
 
 .correct-feedback {
@@ -2021,12 +2178,16 @@ export default {
 
 .feedback-content {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.correct-icon, .partial-icon, .incorrect-icon {
+.correct-icon,
+.partial-icon,
+.incorrect-icon {
   font-size: 1.2rem;
+  flex-shrink: 0;
 }
 
 .correct-icon {
@@ -2039,14 +2200,6 @@ export default {
 
 .incorrect-icon {
   color: #c62828;
-}
-
-.fade-enter-active, .fade-leave-active {
-  transition: opacity 0.5s ease;
-}
-
-.fade-enter-from, .fade-leave-to {
-  opacity: 0;
 }
 
 .feedback-content strong {
@@ -2065,131 +2218,191 @@ export default {
   color: #b71c1c;
 }
 
-.task-table-container {
-  font-family: Evolventa !important;
-  margin: 1.2rem 0;
-  overflow-x: auto;
+.correct-answer-text {
   width: 100%;
 }
 
-.task-table-container table {
-    font-family: Evolventa !important;
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 1.2rem;
-  min-width: 300px;
-}
-
-.task-table-container table.with-borders {
-  font-family: Evolventa !important;
-  border: 1px solid #ddd;
-}
-
-.task-table-container table.with-borders td {
-  font-family: Evolventa !important;
-  border: 1px solid #ddd;
-  padding: 0.6rem;
-}
-
-.task-table-container td {
-  font-family: Evolventa !important;
-  padding: 0.6rem;
-  vertical-align: top;
-  font-size: clamp(0.9rem, 2vw, 1rem);
-}
-
-.task-table-container :deep(sub),
-.task-table-container :deep(sup) {
-  font-family: Evolventa !important;
-  font-size: 0.75em;
-  line-height: 1;
-  position: relative;
-  vertical-align: baseline;
-}
-
-.task-table-container :deep(sub) {
-  font-family: Evolventa !important;
-  bottom: -0.25em;
-}
-
-.task-table-container :deep(sup) {
-  font-family: Evolventa !important;
-  top: -0.5em;
-}
-
-.task-table-container :deep(p) {
-  font-family: Evolventa !important;
-  margin: 0;
-  padding: 0;
-}
-
-.task-table-container :deep(strong) {
-  font-family: Evolventa !important;
+.current-score {
   font-weight: 600;
+  color: #4a5568;
 }
 
-.task-table-container :deep(em) {
-  font-family: Evolventa !important;
-  font-style: italic;
+/* ===== ОТВЕТ СОХРАНЕН ===== */
+.answer-saved {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background-color: #e8f5e9;
+  border-radius: 6px;
+  border-left: 4px solid #28a745;
+  flex-direction: column;
+  transition: all 0.3s ease;
 }
 
-.task-images {
-  margin-bottom: 1.25rem;
+.saved-icon {
+  font-size: 1.2rem;
+}
+
+.user-answer-container {
   width: 100%;
 }
 
-.image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 0.8rem;
-  margin-top: 0.8rem;
+.user-answer-text {
+  margin-left: 4px;
+  color: #155724;
 }
 
-.image-container {
-  position: relative;
-  padding-top: 100%;
-  overflow: hidden;
-  border-radius: 0.4rem;
-  border: 1px solid #eee;
+.user-answer-text.multiline {
+  white-space: pre-wrap;
+  word-wrap: break-word;
   background: #f8f9fa;
-  cursor: pointer;
+  padding: 10px;
+  border-radius: 6px;
+  border-left: 3px solid #b241d1;
+  margin: 6px 0;
+  line-height: 1.5;
+  font-family: inherit;
 }
 
-.task-image {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s ease;
+.edit-answer-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  font-size: 1.1rem;
+  transition: background-color 0.2s;
 }
-.upload-status {
-  padding: 0.5rem;
-  border-radius: 0.3rem;
-  margin: 0.5rem 0;
-  font-size: 0.9rem;
+
+.edit-answer-btn:hover {
+  background-color: rgba(178, 65, 209, 0.1);
+}
+
+.saving-status {
+  color: #6c757d;
+  font-style: italic;
+  margin-top: 6px;
+}
+
+/* ===== ИЗОБРАЖЕНИЯ ОТВЕТОВ ===== */
+.image-upload-section {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px dashed #dee2e6;
+}
+
+.upload-label {
+  display: inline-block;
+  background: #b241d1;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 10px;
+}
+
+.upload-label:hover {
+  background: #9a36b8;
+}
+
+.file-input {
+  display: none;
+}
+
+.uploading-text {
+  color: #6c757d;
+  font-style: italic;
+  margin-top: 6px;
 }
 
 .upload-status-uploading {
   background-color: #fff3cd;
   color: #856404;
+  padding: 8px;
+  border-radius: 4px;
+  margin: 6px 0;
   border: 1px solid #ffeaa7;
 }
 
 .upload-status-success {
   background-color: #d4edda;
   color: #155724;
+  padding: 8px;
+  border-radius: 4px;
+  margin: 6px 0;
   border: 1px solid #c3e6cb;
 }
 
+.answer-images-preview {
+  margin-top: 12px;
+}
+
+.images-title {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.image-item {
+  position: relative;
+  display: inline-block;
+}
+
+.answer-image {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.answer-image:hover {
+  transform: scale(1.05);
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #dc3545;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.remove-image-btn:hover {
+  background: #c82333;
+}
+
 .save-images-btn {
-  margin-top: 1rem;
-  padding: 0.6rem 1rem;
+  padding: 8px 16px;
   background-color: #28a745;
   color: white;
   border: none;
-  border-radius: 0.3rem;
+  border-radius: 6px;
   cursor: pointer;
   transition: background-color 0.2s;
 }
@@ -2197,10 +2410,87 @@ export default {
 .save-images-btn:hover {
   background-color: #218838;
 }
-.task-image:hover {
-  transform: scale(1.03);
+
+/* ===== ПОЯСНЕНИЕ ===== */
+.explanation-section {
+  margin-top: 20px;
+  padding: 16px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #b241d1;
 }
 
+.explanation-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.explanation-title {
+  font-weight: 600;
+  color: #333;
+  font-size: 1.05rem;
+}
+
+.explanation-toggle {
+  font-size: 0.8rem;
+  color: #b241d1;
+}
+
+.explanation-content-container {
+  margin-top: 8px;
+}
+
+.explanation-content {
+  line-height: 1.6;
+  color: #444;
+}
+
+.explanation-content :deep(p) {
+  margin-bottom: 10px;
+}
+
+.explanation-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.explanation-content :deep(br) {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.explanation-content :deep(ul),
+.explanation-content :deep(ol) {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.explanation-content :deep(li) {
+  margin-bottom: 4px;
+}
+
+.explanation-image-container {
+  margin: 12px 0;
+  text-align: center;
+}
+
+.explanation-image {
+  max-width: 100%;
+  height: auto;
+  max-height: 300px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.explanation-image:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== МОДАЛЬНОЕ ОКНО ===== */
 .image-modal {
   position: fixed;
   top: 0;
@@ -2212,7 +2502,7 @@ export default {
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  padding: 1rem;
+  padding: 16px;
 }
 
 .modal-content {
@@ -2228,19 +2518,19 @@ export default {
   max-width: 100%;
   max-height: 90vh;
   object-fit: contain;
-  border-radius: 0.4rem;
+  border-radius: 6px;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
 }
 
 .close-modal {
   position: absolute;
-  top: -1.5rem;
-  right: -1.5rem;
+  top: -20px;
+  right: -20px;
   background: #b241d1;
   color: white;
   border: none;
-  width: 3rem;
-  height: 3rem;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   font-size: 1.5rem;
   cursor: pointer;
@@ -2255,52 +2545,1173 @@ export default {
   background: #9a36b8;
 }
 
+/* ===== КУРАТОР ===== */
+.tutor-scoring-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px;
+  background-color: rgba(102, 126, 234, 0.1);
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+
+.score-label {
+  font-weight: 600;
+  color: #667eea;
+}
+
+.score-select {
+  padding: 6px 12px;
+  border: 1px solid #667eea;
+  border-radius: 4px;
+  background: white;
+  color: #333;
+}
+
+.score-select:focus {
+  outline: none;
+  border-color: #5a67d8;
+  box-shadow: 0 0 0 2px rgba(90, 103, 216, 0.2);
+}
+
+.tutor-final-assessment {
+  margin-top: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.tutor-final-assessment h3 {
+  margin-bottom: 12px;
+  font-size: 1.3rem;
+}
+
+.tutor-final-assessment .student-info {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  text-align: center;
+  color: #333;
+}
+
+.tutor-final-assessment .student-info .student-name {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.tutor-final-assessment .student-info strong {
+  color: #667eea;
+  margin-right: 4px;
+}
+
+.final-score {
+  font-size: 1.4rem;
+  font-weight: bold;
+  margin: 12px 0;
+  color: white;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.completion-percent {
+  font-size: 1rem;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
+.tutor-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.save-final-score-btn {
+  padding: 10px 20px;
+  background: white;
+  color: #f5576c;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.save-final-score-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ===== ЗАВЕРШЕНИЕ ===== */
+.completion-section {
+  margin-top: 24px;
+  text-align: center;
+  padding: 20px;
+  border-top: 2px solid #eee;
+  width: 100%;
+}
+
+.complete-btn {
+  padding: 12px 32px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.complete-btn:hover {
+  background-color: #218838;
+}
+
+.completion-result {
+  margin-top: 24px;
+  padding: 20px;
+  background-color: #e8f5e9;
+  border-radius: 8px;
+  text-align: center;
+  border-left: 4px solid #28a745;
+  width: 100%;
+}
+
+.completion-result h3 {
+  color: #2e7d32;
+  margin-bottom: 8px;
+  font-size: 1.3rem;
+}
+
+.completion-result p {
+  color: #388e3c;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+/* ===== ЗАГРУЗКА И ОШИБКИ ===== */
+.loading {
+  text-align: center;
+  padding: 40px;
+  font-size: 1.1rem;
+  color: #666;
+}
+
+.error {
+  color: #ff4757;
+  padding: 16px;
+  text-align: center;
+  background: #ffe6e6;
+  border-radius: 8px;
+  border: 1px solid #ff4757;
+}
+
+/* ===== АНИМАЦИИ ===== */
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.3s ease;
+  max-height: 1000px;
+  overflow: hidden;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* ============================================ */
+/* АДАПТИВНОСТЬ */
+/* ============================================ */
+
+/* Планшеты и маленькие ноутбуки */
+@media (max-width: 1024px) {
+  .homework-content {
+    padding: 20px;
+  }
+  
+  .task-item {
+    padding: 16px;
+  }
+  
+  .extended-task .task-header {
+    padding: 12px;
+    margin: -16px -16px 12px -16px;
+  }
+}
+
+/* Телефоны в портретной ориентации */
 @media (max-width: 768px) {
-  .close-modal {
-    top: -1rem;
-    right: -1rem;
-    width: 2.5rem;
-    height: 2.5rem;
-    font-size: 1.2rem;
+  .homework-content {
+    padding: 12px;
+  }
+  
+  .homework-header h1 {
+    font-size: 1.4rem;
+  }
+  
+  .homework-meta {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+  
+  .lesson-info {
+    text-align: center;
+    font-size: 0.9rem;
+  }
+  
+  .deadline {
+    text-align: center;
+    font-size: 0.85rem;
+  }
+  
+  .task-item {
+    padding: 12px;
+    border-radius: 8px;
+    margin: 0 -6px;
+    border-left: none;
+    border-right: none;
+  }
+  
+  .extended-task .task-header {
+    padding: 10px;
+    margin: -12px -12px 10px -12px;
+    border-radius: 8px 8px 0 0;
+  }
+  
+  .task-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .task-status {
+    align-self: stretch;
+    text-align: center;
+  }
+  
+  .task-meta {
+    width: 100%;
+  }
+  
+  .task-topic {
+    font-size: 0.95rem;
+  }
+  
+  .task-id {
+    font-size: 0.85rem;
+  }
+  
+  .task-part-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+  }
+  
+  .task-text {
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  
+  .answer-input-container {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .answer-input {
+    font-size: 0.95rem;
+    padding: 8px 12px;
+    width: 100%;
+    min-width: unset;
+  }
+  
+  .answer-textarea {
+    font-size: 0.95rem;
+    padding: 8px 12px;
+    min-height: 80px;
+    min-width: unset;
+  }
+  
+  .answer-textarea.extended {
+    min-height: 120px;
+  }
+  
+  .submit-button {
+    font-size: 0.95rem;
+    padding: 8px 16px;
+    width: 100%;
+    white-space: normal;
+  }
+  
+  .cancel-button {
+    font-size: 0.95rem;
+    padding: 8px 16px;
+    width: 100%;
+    white-space: normal;
+  }
+  
+  .answer-feedback {
+    font-size: 0.95rem;
+    padding: 10px;
+  }
+  
+  .feedback-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  
+  .correct-icon,
+  .partial-icon,
+  .incorrect-icon {
+    font-size: 1rem;
   }
   
   .image-grid {
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+  }
+  
+  .task-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .task-table-container table {
+    min-width: 400px;
+    font-size: 0.9rem;
+  }
+  
+  .task-table-container td {
+    padding: 6px;
+    font-size: 0.9rem;
+  }
+  
+  .images-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+  }
+  
+  .answer-image {
+    height: 60px;
+  }
+  
+  .answer-saved {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 10px;
+  }
+  
+  .user-answer-text {
+    font-size: 0.9rem;
+  }
+  
+  .user-answer-text.multiline {
+    padding: 8px;
+    font-size: 0.9rem;
+  }
+  
+  .edit-answer-btn {
+    margin-left: 0;
+    margin-top: 6px;
+  }
+  
+  .explanation-section {
+    padding: 10px;
+    margin-top: 12px;
+  }
+  
+  .explanation-title {
+    font-size: 0.95rem;
+  }
+  
+  .explanation-content {
+    font-size: 0.95rem;
+  }
+  
+  .explanation-image {
+    max-height: 200px;
+  }
+  
+  .tutor-scoring-panel {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px;
+  }
+  
+  .score-select {
+    width: 100%;
+  }
+  
+  .current-score {
+    margin-left: 0;
+    margin-top: 4px;
+    text-align: center;
+  }
+  
+  .tutor-final-assessment {
+    padding: 12px;
+    margin-top: 16px;
+  }
+  
+  .tutor-final-assessment h3 {
+    font-size: 1.1rem;
+  }
+  
+  .tutor-final-assessment .student-info {
+    padding: 10px;
+    font-size: 0.9rem;
+  }
+  
+  .final-score {
+    font-size: 1.2rem;
+  }
+  
+  .completion-percent {
+    font-size: 0.95rem;
+  }
+  
+  .tutor-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .save-final-score-btn {
+    padding: 8px 16px;
+    width: 100%;
+  }
+  
+  .completion-section {
+    padding: 12px;
+    margin-top: 16px;
+  }
+  
+  .complete-btn {
+    padding: 10px 20px;
+    font-size: 0.95rem;
+    width: 100%;
+  }
+  
+  .completion-result {
+    padding: 12px;
+    margin-top: 16px;
+  }
+  
+  .completion-result h3 {
+    font-size: 1.1rem;
+  }
+  
+  .completion-result p {
+    font-size: 0.95rem;
+  }
+  
+  .image-upload-section {
+    padding: 10px;
+    margin: 8px 0;
+  }
+  
+  .upload-label {
+    padding: 8px 14px;
+    font-size: 0.9rem;
+    width: 100%;
+    text-align: center;
+  }
+  
+  .remove-image-btn {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+    top: -6px;
+    right: -6px;
+  }
+  
+  .close-modal {
+    top: -14px;
+    right: -14px;
+    width: 32px;
+    height: 32px;
+    font-size: 1.2rem;
   }
 }
 
-.task-image:hover {
-  transform: scale(1.05);
+/* Маленькие телефоны */
+@media (max-width: 480px) {
+  .homework-content {
+    padding: 8px;
+  }
+  
+  .homework-header h1 {
+    font-size: 1.2rem;
+  }
+  
+  .lesson-info {
+    font-size: 0.8rem;
+  }
+  
+  .deadline {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+  }
+  
+  .task-item {
+    padding: 8px;
+    border-radius: 4px;
+  }
+  
+  .extended-task .task-header {
+    padding: 6px;
+    margin: -8px -8px 6px -8px;
+  }
+  
+  .task-topic {
+    font-size: 0.85rem;
+  }
+  
+  .task-id {
+    font-size: 0.75rem;
+  }
+  
+  .task-text {
+    font-size: 0.85rem;
+  }
+  
+  .task-status {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+  }
+  
+  .answer-input {
+    font-size: 0.85rem;
+    padding: 6px 10px;
+  }
+  
+  .answer-textarea {
+    font-size: 0.85rem;
+    padding: 6px 10px;
+    min-height: 60px;
+  }
+  
+  .answer-textarea.extended {
+    min-height: 100px;
+  }
+  
+  .submit-button {
+    font-size: 0.85rem;
+    padding: 6px 12px;
+  }
+  
+  .cancel-button {
+    font-size: 0.85rem;
+    padding: 6px 12px;
+  }
+  
+  .answer-feedback {
+    font-size: 0.85rem;
+    padding: 8px;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 6px;
+  }
+  
+  .images-grid {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 6px;
+  }
+  
+  .answer-image {
+    height: 50px;
+  }
+  
+  .task-table-container table {
+    min-width: 300px;
+    font-size: 0.8rem;
+  }
+  
+  .task-table-container td {
+    padding: 4px;
+    font-size: 0.8rem;
+  }
+  
+  .explanation-section {
+    padding: 8px;
+  }
+  
+  .explanation-title {
+    font-size: 0.85rem;
+  }
+  
+  .explanation-content {
+    font-size: 0.85rem;
+  }
+  
+  .explanation-image {
+    max-height: 150px;
+  }
+  
+  .tutor-final-assessment {
+    padding: 8px;
+  }
+  
+  .final-score {
+    font-size: 1rem;
+  }
+  
+  .completion-percent {
+    font-size: 0.85rem;
+  }
+  
+  .complete-btn {
+    font-size: 0.85rem;
+    padding: 8px 16px;
+  }
+  
+  .upload-label {
+    font-size: 0.8rem;
+    padding: 6px 12px;
+  }
+  
+  .remove-image-btn {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+  
+  .close-modal {
+    top: -10px;
+    right: -10px;
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+  }
 }
 
+/* Альбомная ориентация на телефонах */
+@media (max-width: 768px) and (orientation: landscape) {
+  .homework-content {
+    padding: 12px;
+  }
+  
+  .task-item {
+    padding: 10px;
+  }
+  
+  .answer-input-container {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .answer-input {
+    flex: 1 1 60%;
+    min-width: 150px;
+  }
+  
+  .submit-button {
+    flex: 1 1 30%;
+    width: auto;
+    min-width: 80px;
+  }
+  
+  .cancel-button {
+    flex: 1 1 30%;
+    width: auto;
+    min-width: 80px;
+  }
+  
+  .answer-textarea {
+    min-height: 60px;
+  }
+  
+  .answer-textarea.extended {
+    min-height: 80px;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+  
+  .images-grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  }
+  
+  .task-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .task-status {
+    align-self: flex-start;
+  }
+}
+
+/* Очень маленькие экраны (до 360px) */
+@media (max-width: 360px) {
+  .homework-content {
+    padding: 4px;
+  }
+  
+  .homework-header h1 {
+    font-size: 1rem;
+  }
+  
+  .task-item {
+    padding: 6px;
+    border-radius: 4px;
+  }
+  
+  .task-topic {
+    font-size: 0.8rem;
+  }
+  
+  .task-text {
+    font-size: 0.8rem;
+  }
+  
+  .answer-input {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+  }
+  
+  .answer-textarea {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    min-height: 50px;
+  }
+  
+  .answer-textarea.extended {
+    min-height: 70px;
+  }
+  
+  .submit-button {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+  }
+  
+  .cancel-button {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 4px;
+  }
+  
+  .images-grid {
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 4px;
+  }
+  
+  .answer-image {
+    height: 40px;
+  }
+}
+</style>
+
+<style scoped>
+/* ============================================ */
+/* БАЗОВЫЕ СТИЛИ */
+/* ============================================ */
+
+.homework-content {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.homework-header {
+  margin-bottom: 24px;
+  text-align: center;
+  width: 100%;
+}
+
+.homework-header h1 {
+  color: #333;
+  font-size: clamp(1.2rem, 4vw, 2rem);
+  margin-bottom: 8px;
+  line-height: 1.2;
+  word-wrap: break-word;
+}
+
+.homework-meta {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.lesson-info {
+  color: #666;
+  font-size: clamp(0.8rem, 2vw, 1rem);
+  word-wrap: break-word;
+  text-align: center;
+}
+
+.deadline {
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-weight: 500;
+  font-size: clamp(0.75rem, 1.8vw, 0.9rem);
+  white-space: nowrap;
+}
+
+.deadline.overdue {
+  background-color: #ffebee;
+  color: #d32f2f;
+}
+
+.deadline.today {
+  background-color: #fff3e0;
+  color: #f57c00;
+}
+
+.deadline.future {
+  background-color: #e8f5e8;
+  color: #388e3c;
+}
+
+.deadline.no-deadline {
+  background-color: #f5f5f5;
+  color: #757575;
+}
+
+.tutor-mode-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  margin: 8px 0;
+  font-weight: bold;
+  text-align: center;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+}
+
+/* ===== ЗАДАНИЯ ===== */
+.tasks-container {
+  margin-bottom: 24px;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.task-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: clamp(12px, 2vw, 20px);
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.extended-task {
+  border-left: 4px solid #b241d1;
+}
+
+.extended-task .task-header {
+  background-color: rgba(178, 65, 209, 0.05);
+  padding: clamp(10px, 1.5vw, 16px);
+  margin: clamp(-12px, -2vw, -20px) clamp(-12px, -2vw, -20px) clamp(10px, 1.5vw, 16px) clamp(-12px, -2vw, -20px);
+  border-radius: 12px 12px 0 0;
+}
+
+.extended-task .task-id {
+  color: #b241d1;
+  font-weight: bold;
+}
+
+.task-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.task-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-topic {
+  font-weight: 500;
+  color: #333;
+  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+  display: block;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.task-id {
+  color: #888;
+  font-size: clamp(0.75rem, 2vw, 0.9rem);
+  font-weight: bold;
+  display: block;
+  margin-top: 4px;
+}
+
+.task-part-badge {
+  background: #b241d1;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: clamp(0.6rem, 1.5vw, 0.75rem);
+  font-weight: bold;
+  margin-left: 6px;
+  display: inline-block;
+}
+
+.task-status {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: clamp(0.65rem, 1.5vw, 0.8rem);
+  font-weight: bold;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-not-completed {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.status-saved {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.status-correct {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-partial {
+  background: #fff3e0;
+  color: #ff8f00;
+}
+
+.status-incorrect {
+  background: #ffebee;
+  color: #c62828;
+}
+
+/* ===== ТЕКСТ ЗАДАНИЯ ===== */
+.task-content {
+  margin-bottom: 12px;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.task-text {
+  line-height: 1.6;
+  color: #333;
+  margin-bottom: 12px;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+  width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+  position: relative;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.task-text ::selection {
+  background: transparent;
+}
+
+.task-text ::-moz-selection {
+  background: transparent;
+}
+
+.task-text :deep(sub),
+.task-text :deep(sup) {
+  font-size: 0.75em;
+  line-height: 1;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.task-text :deep(sub) {
+  bottom: -0.25em;
+}
+
+.task-text :deep(sup) {
+  top: -0.5em;
+}
+
+.task-text :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  max-width: 100%;
+}
+
+.task-text :deep(table td) {
+  padding: 8px;
+  border: 1px solid #ddd;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.task-text :deep(strong) {
+  font-weight: 600;
+}
+
+.task-text :deep(em) {
+  font-style: italic;
+}
+
+/* ===== ТАБЛИЦЫ ===== */
+.task-table-container {
+  margin: 12px 0;
+  overflow-x: auto;
+  width: 100%;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+
+.task-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  min-width: 300px;
+  max-width: 100%;
+}
+
+.task-table-container table.with-borders {
+  border: 1px solid #ddd;
+}
+
+.task-table-container table.with-borders td {
+  border: 1px solid #ddd;
+  padding: 6px 8px;
+}
+
+.task-table-container td {
+  padding: 6px 8px;
+  vertical-align: top;
+  font-size: clamp(0.8rem, 1.8vw, 0.95rem);
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.task-table-container :deep(sub),
+.task-table-container :deep(sup) {
+  font-size: 0.75em;
+  line-height: 1;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.task-table-container :deep(sub) {
+  bottom: -0.25em;
+}
+
+.task-table-container :deep(sup) {
+  top: -0.5em;
+}
+
+.task-table-container :deep(p) {
+  margin: 0;
+  padding: 0;
+}
+
+.task-table-container :deep(strong) {
+  font-weight: 600;
+}
+
+/* ===== ИЗОБРАЖЕНИЯ ===== */
+.task-images {
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(100px, 15vw, 150px), 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.image-container {
+  position: relative;
+  padding-top: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid #eee;
+  background: #f8f9fa;
+  cursor: pointer;
+}
+
+.task-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.task-image:hover {
+  transform: scale(1.03);
+}
+
+/* ===== ОТВЕТЫ ===== */
 .answer-section {
-  margin-top: 1.2rem;
+  margin-top: 12px;
   width: 100%;
 }
 
 .answer-input-container {
   display: flex;
-  flex-direction: column;
-  gap: 0.8rem;
-  margin-bottom: 0.8rem;
+  gap: 8px;
+  margin-bottom: 8px;
   width: 100%;
-}
-
-@media (min-width: 480px) {
-  .answer-input-container {
-    flex-direction: row;
-    align-items: center;
-  }
+  flex-wrap: wrap;
 }
 
 .answer-input {
   flex: 1;
-  padding: 0.8rem 1rem;
+  padding: 8px 12px;
   border: 1px solid #ddd;
-  border-radius: 0.4rem;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
-  min-width: 0;
+  border-radius: 6px;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+  min-width: 150px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .answer-input:focus {
@@ -2309,19 +3720,19 @@ export default {
   box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.2);
 }
 
-/* Стили для текстовой области */
 .answer-textarea {
   flex: 1;
-  padding: 0.8rem 1rem;
+  padding: 8px 12px;
   border: 1px solid #ddd;
-  border-radius: 0.4rem;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
-  min-width: 0;
-  width: 100%;
+  border-radius: 6px;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+  min-width: 150px;
   min-height: 80px;
   resize: vertical;
   font-family: inherit;
   line-height: 1.4;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .answer-textarea:focus {
@@ -2332,20 +3743,17 @@ export default {
 
 .answer-textarea.extended {
   min-height: 120px;
-  font-size: 1rem;
-  line-height: 1.5;
 }
 
 .submit-button {
-  padding: 0.8rem 1.2rem;
+  padding: 8px 16px;
   background-color: #b241d1;
   color: white;
   border: none;
-  border-radius: 0.4rem;
+  border-radius: 6px;
   cursor: pointer;
   transition: background-color 0.2s;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
-  min-width: fit-content;
+  font-size: clamp(0.85rem, 2vw, 1rem);
   white-space: nowrap;
 }
 
@@ -2353,13 +3761,31 @@ export default {
   background-color: #9a36b8;
 }
 
+.cancel-button {
+  padding: 8px 16px;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+  white-space: nowrap;
+}
+
+.cancel-button:hover {
+  background-color: #5a6268;
+}
+
+/* ===== ФИДБЕК ===== */
 .answer-feedback {
-  padding: 1rem;
-  border-radius: 0.4rem;
+  padding: 10px;
+  border-radius: 6px;
   font-weight: 500;
-  margin-top: 0.8rem;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+  margin-top: 8px;
+  font-size: clamp(0.85rem, 2vw, 1rem);
   width: 100%;
+  box-sizing: border-box;
 }
 
 .correct-feedback {
@@ -2380,12 +3806,31 @@ export default {
   border-left: 4px solid #c62828;
 }
 
-.fade-enter-active, .fade-leave-active {
-  transition: opacity 0.5s ease;
+.feedback-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
-.fade-enter-from, .fade-leave-to {
-  opacity: 0;
+.correct-icon,
+.partial-icon,
+.incorrect-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.correct-icon {
+  color: #2e7d32;
+}
+
+.partial-icon {
+  color: #ff8f00;
+}
+
+.incorrect-icon {
+  color: #c62828;
 }
 
 .feedback-content strong {
@@ -2404,151 +3849,308 @@ export default {
   color: #b71c1c;
 }
 
-.task-table-container {
-  margin: 1.2rem 0;
-  overflow-x: auto;
+.correct-answer-text {
   width: 100%;
+  word-break: break-word;
 }
-.completion-result {
-  margin-top: 2rem;
-  padding: 1.5rem;
+
+.current-score {
+  font-weight: 600;
+  color: #4a5568;
+}
+
+/* ===== ОТВЕТ СОХРАНЕН ===== */
+.answer-saved {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
   background-color: #e8f5e9;
-  border-radius: 0.6rem;
-  text-align: center;
+  border-radius: 6px;
   border-left: 4px solid #28a745;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.saved-icon {
+  font-size: 1.2rem;
+}
+
+.user-answer-container {
   width: 100%;
 }
 
-.completion-result h3 {
-  color: #2e7d32;
-  margin-bottom: 0.8rem;
-  font-size: clamp(1.2rem, 3vw, 1.5rem);
+.user-answer-text {
+  margin-left: 4px;
+  color: #155724;
+  word-break: break-word;
 }
 
-.completion-result p {
-  color: #388e3c;
-  font-size: clamp(1rem, 2.5vw, 1.1rem);
-  font-weight: 500;
-}
-.task-table-container table {
-  font-family: Evolventa !important;
+.user-answer-text.multiline {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: #f8f9fa;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 3px solid #b241d1;
+  margin: 6px 0;
+  line-height: 1.5;
+  font-family: inherit;
   width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 1.2rem;
-  min-width: 300px;
+  box-sizing: border-box;
 }
 
-.task-table-container table.with-borders {
-  font-family: Evolventa !important;
-  border: 1px solid #ddd;
-}
-
-.task-table-container table.with-borders td {
-  font-family: Evolventa !important;
-  border: 1px solid #ddd;
-  padding: 0.6rem;
-}
-
-.task-table-container td {
-  font-family: Evolventa !important;
-  padding: 0.6rem;
-  vertical-align: top;
-  font-size: clamp(0.9rem, 2vw, 1rem);
-}
-
-.task-table-container :deep(sub),
-.task-table-container :deep(sup) {
-  font-family: Evolventa !important;
-  font-size: 0.75em;
-  line-height: 1;
-  position: relative;
-  vertical-align: baseline;
-}
-
-.task-table-container :deep(sub) {
-  font-family: Evolventa !important;
-  bottom: -0.25em;
-}
-
-.task-table-container :deep(sup) {
-  font-family: Evolventa !important;
-  top: -0.5em;
-}
-
-.task-table-container :deep(p) {
-  font-family: Evolventa !important;
+.user-answer-text.multiline pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
   margin: 0;
   padding: 0;
-}
-
-.task-table-container :deep(strong) {
-  font-family: Evolventa !important;
-  font-weight: 600;
-}
-
-.task-table-container :deep(em) {
-  font-family: Evolventa !important;
-  font-style: italic;
-}
-
-.task-images {
-  margin-bottom: 1.25rem;
   width: 100%;
 }
 
-.image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 0.8rem;
-  margin-top: 0.8rem;
-}
-
-.image-container {
-  position: relative;
-  padding-top: 100%;
-  overflow: hidden;
-  border-radius: 0.4rem;
-  border: 1px solid #eee;
-  background: #f8f9fa;
+.edit-answer-btn {
+  background: none;
+  border: none;
   cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 1.1rem;
+  transition: background-color 0.2s;
 }
 
-.task-image {
-  position: absolute;
-  top: 0;
-  left: 0;
+.edit-answer-btn:hover {
+  background-color: rgba(178, 65, 209, 0.1);
+}
+
+.saving-status {
+  color: #6c757d;
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* ===== ИЗОБРАЖЕНИЯ ОТВЕТОВ ===== */
+.image-upload-section {
+  margin: 10px 0;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px dashed #dee2e6;
   width: 100%;
-  height: 100%;
+  box-sizing: border-box;
+}
+
+.upload-label {
+  display: inline-block;
+  background: #b241d1;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 8px;
+  font-size: clamp(0.8rem, 1.8vw, 0.95rem);
+  width: auto;
+}
+
+.upload-label:hover {
+  background: #9a36b8;
+}
+
+.file-input {
+  display: none;
+}
+
+.uploading-text {
+  color: #6c757d;
+  font-style: italic;
+  margin-top: 4px;
+  font-size: clamp(0.8rem, 1.8vw, 0.9rem);
+}
+
+.upload-status-uploading {
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin: 4px 0;
+  border: 1px solid #ffeaa7;
+  font-size: clamp(0.8rem, 1.8vw, 0.9rem);
+}
+
+.upload-status-success {
+  background-color: #d4edda;
+  color: #155724;
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin: 4px 0;
+  border: 1px solid #c3e6cb;
+  font-size: clamp(0.8rem, 1.8vw, 0.9rem);
+}
+
+.answer-images-preview {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.images-title {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+  font-size: clamp(0.8rem, 1.8vw, 0.9rem);
+}
+
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(70px, 12vw, 100px), 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.image-item {
+  position: relative;
+  display: inline-block;
+}
+
+.answer-image {
+  width: 100%;
+  height: clamp(60px, 10vw, 80px);
   object-fit: cover;
-  transition: transform 0.3s ease;
-}
-.completion-section {
-  margin-top: 2rem;
-  text-align: center;
-  padding: 1.5rem;
-  border-top: 2px solid #eee;
-  width: 100%;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+  cursor: pointer;
+  transition: transform 0.2s ease;
 }
 
-.complete-btn {
-  padding: 1rem 2rem;
+.answer-image:hover {
+  transform: scale(1.05);
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: clamp(18px, 3vw, 22px);
+  height: clamp(18px, 3vw, 22px);
+  border-radius: 50%;
+  background: #dc3545;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: clamp(9px, 1.5vw, 12px);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.remove-image-btn:hover {
+  background: #c82333;
+}
+
+.save-images-btn {
+  padding: 6px 14px;
   background-color: #28a745;
   color: white;
   border: none;
-  border-radius: 0.6rem;
-  font-size: clamp(1rem, 2.5vw, 1.1rem);
+  border-radius: 6px;
   cursor: pointer;
-  transition: background-color 0.3s ease;
-  min-width: min(100%, 300px);
+  transition: background-color 0.2s;
+  font-size: clamp(0.8rem, 1.8vw, 0.95rem);
 }
 
-.complete-btn:hover {
+.save-images-btn:hover {
   background-color: #218838;
 }
-.task-image:hover {
-  transform: scale(1.03);
+
+/* ===== ПОЯСНЕНИЕ ===== */
+.explanation-section {
+  margin-top: 16px;
+  padding: clamp(10px, 1.5vw, 16px);
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #b241d1;
+  width: 100%;
+  box-sizing: border-box;
 }
 
+.explanation-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.explanation-title {
+  font-weight: 600;
+  color: #333;
+  font-size: clamp(0.9rem, 2vw, 1.05rem);
+}
+
+.explanation-toggle {
+  font-size: 0.8rem;
+  color: #b241d1;
+}
+
+.explanation-content-container {
+  margin-top: 6px;
+}
+
+.explanation-content {
+  line-height: 1.6;
+  color: #444;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+}
+
+.explanation-content :deep(p) {
+  margin-bottom: 8px;
+}
+
+.explanation-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.explanation-content :deep(br) {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.explanation-content :deep(ul),
+.explanation-content :deep(ol) {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.explanation-content :deep(li) {
+  margin-bottom: 4px;
+}
+
+.explanation-image-container {
+  margin: 10px 0;
+  text-align: center;
+  width: 100%;
+}
+
+.explanation-image {
+  max-width: 100%;
+  height: auto;
+  max-height: clamp(150px, 30vw, 300px);
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.explanation-image:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== МОДАЛЬНОЕ ОКНО ===== */
 .image-modal {
   position: fixed;
   top: 0;
@@ -2560,7 +4162,7 @@ export default {
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  padding: 1rem;
+  padding: 16px;
 }
 
 .modal-content {
@@ -2576,21 +4178,21 @@ export default {
   max-width: 100%;
   max-height: 90vh;
   object-fit: contain;
-  border-radius: 0.4rem;
+  border-radius: 6px;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
 }
 
 .close-modal {
   position: absolute;
-  top: -1.5rem;
-  right: -1.5rem;
+  top: clamp(-14px, -2vw, -20px);
+  right: clamp(-14px, -2vw, -20px);
   background: #b241d1;
   color: white;
   border: none;
-  width: 3rem;
-  height: 3rem;
+  width: clamp(32px, 5vw, 40px);
+  height: clamp(32px, 5vw, 40px);
   border-radius: 50%;
-  font-size: 1.5rem;
+  font-size: clamp(1rem, 2vw, 1.5rem);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2603,61 +4205,33 @@ export default {
   background: #9a36b8;
 }
 
-@media (max-width: 768px) {
-  .close-modal {
-    top: -1rem;
-    right: -1rem;
-    width: 2.5rem;
-    height: 2.5rem;
-    font-size: 1.2rem;
-  }
-  
-  .task-header {
-    gap: 0.6rem;
-  }
-  
-  .answer-input-container {
-    gap: 0.6rem;
-  }
-}
-
-.tutor-mode-banner {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 0.4rem;
-  margin: 0.5rem 0;
-  font-weight: bold;
-  text-align: center;
-}
-
-.extended-task {
-  border-left: 4px solid #b241d1;
-  background-color: white;
-}
-
+/* ===== КУРАТОР ===== */
 .tutor-scoring-panel {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
-  margin-top: 0.8rem;
-  padding: 0.8rem;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
   background-color: rgba(102, 126, 234, 0.1);
-  border-radius: 0.4rem;
+  border-radius: 6px;
   flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .score-label {
   font-weight: 600;
   color: #667eea;
+  font-size: clamp(0.8rem, 1.8vw, 0.95rem);
 }
 
 .score-select {
-  padding: 0.4rem 0.8rem;
+  padding: 4px 10px;
   border: 1px solid #667eea;
-  border-radius: 0.3rem;
+  border-radius: 4px;
   background: white;
   color: #333;
+  font-size: clamp(0.8rem, 1.8vw, 0.95rem);
 }
 
 .score-select:focus {
@@ -2666,75 +4240,72 @@ export default {
   box-shadow: 0 0 0 2px rgba(90, 103, 216, 0.2);
 }
 
-.current-score {
-  font-weight: 600;
-  color: #4a5568;
-  margin-left: auto;
-}
-
 .tutor-final-assessment {
-  margin-top: 2rem;
-  padding: 1.5rem;
+  margin-top: 20px;
+  padding: clamp(12px, 2vw, 20px);
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   color: white;
-  border-radius: 0.8rem;
+  border-radius: 12px;
   text-align: center;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .tutor-final-assessment h3 {
-  margin-bottom: 1rem;
-  font-size: 1.3rem;
+  margin-bottom: 10px;
+  font-size: clamp(1rem, 2.5vw, 1.3rem);
 }
 
 .tutor-final-assessment .student-info {
   background: rgba(255, 255, 255, 0.9);
-  border-radius: 0.6rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
   text-align: center;
   color: #333;
 }
 
 .tutor-final-assessment .student-info .student-name {
-  font-size: 1.2rem;
+  font-size: clamp(0.9rem, 2vw, 1.1rem);
   font-weight: 500;
 }
 
 .tutor-final-assessment .student-info strong {
   color: #667eea;
-  margin-right: 0.5rem;
+  margin-right: 4px;
 }
 
 .final-score {
-  font-size: 1.5rem;
+  font-size: clamp(1rem, 2.5vw, 1.4rem);
   font-weight: bold;
-  margin: 1rem 0;
+  margin: 10px 0;
   color: white;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .completion-percent {
-  font-size: 1.1rem;
+  font-size: clamp(0.85rem, 2vw, 1rem);
   opacity: 0.9;
-  margin-top: 0.5rem;
+  margin-top: 4px;
 }
 
 .tutor-actions {
   display: flex;
-  gap: 1rem;
+  gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
 }
 
 .save-final-score-btn {
-  padding: 0.8rem 1.5rem;
+  padding: 8px 16px;
   background: white;
   color: #f5576c;
   border: none;
-  border-radius: 0.4rem;
+  border-radius: 6px;
   font-weight: bold;
   cursor: pointer;
   transition: transform 0.2s;
+  font-size: clamp(0.8rem, 1.8vw, 0.95rem);
 }
 
 .save-final-score-btn:hover {
@@ -2742,297 +4313,75 @@ export default {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-@media (max-width: 768px) {
-  .tutor-scoring-panel {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  
-  .current-score {
-    margin-left: 0;
-    margin-top: 0.5rem;
-  }
-  
-  .score-select {
-    width: 100%;
-  }
-  
-  .tutor-actions {
-    flex-direction: column;
-  }
-  
-  .tutor-final-assessment {
-    padding: 1rem;
-  }
-  
-  .tutor-final-assessment .student-info {
-    padding: 0.8rem;
-    font-size: 0.9rem;
-  }
-}
-
-.extended-task .task-header {
-  background-color: rgba(178, 65, 209, 0.05);
-  padding: 1rem;
-  margin: -1rem -1rem 1rem -1rem;
-  border-radius: 0.8rem 0.8rem 0 0;
-}
-
-.extended-task .task-id {
-  color: #b241d1;
-  font-weight: bold;
-}
-
-/* Новые стили для загрузки изображений */
-.image-upload-section {
-  margin: 1rem 0;
-  padding: 1rem;
-  background: #f8f9fa;
-  border-radius: 0.4rem;
-  border: 1px dashed #dee2e6;
-}
-
-.upload-label {
-  display: inline-block;
-  background: #b241d1;
-  color: white;
-  padding: 0.8rem 1.2rem;
-  border-radius: 0.4rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  margin-bottom: 1rem;
-}
-
-.upload-label:hover {
-  background: #9a36b8;
-}
-
-.file-input {
-  display: none;
-}
-
-.uploading-text {
-  color: #6c757d;
-  font-style: italic;
-  margin-top: 0.5rem;
-}
-
-.answer-images-preview {
-  margin-top: 1rem;
-}
-
-.images-title {
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 0.8rem;
-  font-size: 0.9rem;
-}
-
-.images-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 0.8rem;
-  margin-bottom: 1rem;
-}
-
-.image-item {
-  position: relative;
-  display: inline-block;
-}
-
-.answer-image {
-  width: 100%;
-  height: 80px;
-  object-fit: cover;
-  border-radius: 0.4rem;
-  border: 1px solid #dee2e6;
-  cursor: pointer;
-  transition: transform 0.2s ease;
-}
-
-.answer-image:hover {
-  transform: scale(1.05);
-}
-
-.remove-image-btn {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #dc3545;
-  color: white;
-  border: none;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.remove-image-btn:hover {
-  background: #c82333;
-}
-
-.answer-saved {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.8rem;
-  padding: 1rem;
-  background-color: #e8f5e9;
-  border-radius: 0.4rem;
-  border-left: 4px solid #28a745;
-  flex-direction: column;
-  transition: all 0.3s ease;
-}
-
-.answer-saved.fade-out {
-  opacity: 0.7;
-  background-color: #f8f9fa;
-}
-
-.user-answer-container {
-  width: 100%;
-}
-
-.user-answer-text {
-  margin-left: 0.5rem;
-  color: #155724;
-}
-
-.user-answer-text.multiline {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  background: #f8f9fa;
-  padding: 0.8rem;
-  border-radius: 0.4rem;
-  border-left: 3px solid #b241d1;
-  margin: 0.5rem 0;
-  line-height: 1.5;
-  font-family: inherit;
-}
-
-.edit-answer-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.4rem;
-  border-radius: 0.3rem;
-  font-size: 1.1rem;
-  transition: background-color 0.2s;
-  margin-left: auto;
-}
-
-.edit-answer-btn:hover {
-  background-color: rgba(178, 65, 209, 0.1);
-}
-
-.cancel-button {
-  padding: 0.8rem 1.2rem;
-  background-color: #6c757d;
-  color: white;
-  border: none;
-  border-radius: 0.4rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
-  min-width: fit-content;
-  white-space: nowrap;
-}
-
-.cancel-button:hover {
-  background-color: #5a6268;
-}
-
-.saving-status {
-  color: #6c757d;
-  font-style: italic;
-  margin-top: 0.5rem;
-}
-
-/* Стили для пояснения (взяты из TaskCard) */
-.explanation-section {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 0.5rem;
-  border-left: 4px solid #b241d1;
-}
-
-.explanation-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.explanation-title {
-  font-weight: 600;
-  color: #333;
-  font-size: 1.1rem;
-}
-
-.explanation-toggle {
-  font-size: 0.8rem;
-  color: #b241d1;
-}
-
-.explanation-content-container {
-  margin-top: 0.5rem;
-}
-
-.explanation-content {
-  line-height: 1.6;
-  color: #444;
-}
-
-.explanation-content :deep(p) {
-  margin-bottom: 0.8rem;
-}
-
-.explanation-content :deep(p:last-child) {
-  margin-bottom: 0;
-}
-
-.explanation-content :deep(br) {
-  content: "";
-  display: block;
-  margin-bottom: 0.4rem;
-}
-
-.explanation-content :deep(ul),
-.explanation-content :deep(ol) {
-  margin: 0.5rem 0;
-  padding-left: 1.5rem;
-}
-
-.explanation-content :deep(li) {
-  margin-bottom: 0.3rem;
-}
-
-.explanation-image-container {
-  margin: 1rem 0;
+/* ===== ЗАВЕРШЕНИЕ ===== */
+.completion-section {
+  margin-top: 20px;
   text-align: center;
+  padding: 16px;
+  border-top: 2px solid #eee;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.explanation-image {
-  max-width: 100%;
-  height: auto;
-  max-height: 300px;
-  border-radius: 0.4rem;
-  border: 1px solid #ddd;
+.complete-btn {
+  padding: 10px 24px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: clamp(0.9rem, 2vw, 1.05rem);
   cursor: pointer;
-  transition: transform 0.2s ease;
+  transition: background-color 0.3s ease;
+  width: auto;
+  min-width: 200px;
 }
 
-.explanation-image:hover {
-  transform: scale(1.02);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+.complete-btn:hover {
+  background-color: #218838;
 }
 
+.completion-result {
+  margin-top: 20px;
+  padding: 16px 20px;
+  background-color: #e8f5e9;
+  border-radius: 8px;
+  text-align: center;
+  border-left: 4px solid #28a745;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.completion-result h3 {
+  color: #2e7d32;
+  margin-bottom: 6px;
+  font-size: clamp(1rem, 2.5vw, 1.3rem);
+}
+
+.completion-result p {
+  color: #388e3c;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+  font-weight: 500;
+}
+
+/* ===== ЗАГРУЗКА И ОШИБКИ ===== */
+.loading {
+  text-align: center;
+  padding: 40px 20px;
+  font-size: clamp(1rem, 2.5vw, 1.1rem);
+  color: #666;
+}
+
+.error {
+  color: #ff4757;
+  padding: 14px 16px;
+  text-align: center;
+  background: #ffe6e6;
+  border-radius: 8px;
+  border: 1px solid #ff4757;
+  font-size: clamp(0.9rem, 2vw, 1rem);
+}
+
+/* ===== АНИМАЦИИ ===== */
 .slide-enter-active,
 .slide-leave-active {
   transition: all 0.3s ease;
@@ -3046,40 +4395,196 @@ export default {
   opacity: 0;
 }
 
-/* Адаптивность */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* ============================================ */
+/* МОБИЛЬНАЯ АДАПТИВНОСТЬ */
+/* ============================================ */
+
+/* Телефоны в портретной ориентации */
 @media (max-width: 768px) {
+  .homework-content {
+    padding: 12px;
+  }
+  
+  .homework-header h1 {
+    font-size: 1.4rem;
+  }
+  
+  .homework-meta {
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+  }
+  
+  .lesson-info {
+    text-align: center;
+  }
+  
+  .deadline {
+    white-space: normal;
+    text-align: center;
+  }
+  
+  .task-item {
+    padding: 10px;
+    border-radius: 8px;
+    margin: 0 -4px;
+    border-left: none;
+    border-right: none;
+  }
+  
+  .extended-task .task-header {
+    padding: 8px 10px;
+    margin: -10px -10px 8px -10px;
+  }
+  
+  .task-header {
+    flex-direction: column;
+    gap: 6px;
+  }
+  
+  .task-status {
+    align-self: stretch;
+    text-align: center;
+    white-space: normal;
+  }
+  
+  .answer-input-container {
+    flex-direction: column;
+    gap: 6px;
+  }
+  
+  .answer-input {
+    min-width: unset;
+  }
+  
+  .answer-textarea {
+    min-width: unset;
+    min-height: 70px;
+  }
+  
+  .answer-textarea.extended {
+    min-height: 100px;
+  }
+  
+  .submit-button,
+  .cancel-button {
+    width: 100%;
+    white-space: normal;
+    text-align: center;
+  }
+  
+  .feedback-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+  
   .images-grid {
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
   }
   
   .answer-image {
     height: 60px;
   }
   
-  .answer-saved {
-    flex-direction: column;
-    align-items: flex-start;
+  .task-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   
-  .edit-answer-btn {
+  .task-table-container table {
+    min-width: 400px;
+  }
+  
+  .tutor-scoring-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .score-select {
+    width: 100%;
+  }
+  
+  .current-score {
     margin-left: 0;
-    margin-top: 0.5rem;
+    text-align: center;
   }
   
-  .answer-input-container {
+  .tutor-actions {
     flex-direction: column;
   }
   
-  .answer-textarea {
-    min-height: 80px;
+  .save-final-score-btn {
+    width: 100%;
   }
   
-  .answer-textarea.extended {
-    min-height: 100px;
+  .complete-btn {
+    width: 100%;
+    min-width: unset;
+  }
+  
+  .upload-label {
+    width: 100%;
+    text-align: center;
+  }
+  
+  .close-modal {
+    top: -12px;
+    right: -12px;
+    width: 32px;
+    height: 32px;
+    font-size: 1.2rem;
   }
 }
 
+/* Маленькие телефоны */
 @media (max-width: 480px) {
+  .homework-content {
+    padding: 8px;
+  }
+  
+  .homework-header h1 {
+    font-size: 1.1rem;
+  }
+  
+  .task-item {
+    padding: 8px;
+    border-radius: 4px;
+  }
+  
+  .extended-task .task-header {
+    padding: 6px 8px;
+    margin: -8px -8px 6px -8px;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 4px;
+  }
+  
+  .images-grid {
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 4px;
+  }
+  
+  .answer-image {
+    height: 50px;
+  }
+  
   .answer-textarea {
     min-height: 60px;
   }
@@ -3087,10 +4592,130 @@ export default {
   .answer-textarea.extended {
     min-height: 80px;
   }
+  
+  .task-table-container table {
+    min-width: 320px;
+    font-size: 0.8rem;
+  }
+  
+  .task-table-container td {
+    padding: 4px 6px;
+    font-size: 0.8rem;
+  }
+  
+  .explanation-image {
+    max-height: 150px;
+  }
+  
+  .close-modal {
+    top: -10px;
+    right: -10px;
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+  }
+  
+  .remove-image-btn {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+    top: -5px;
+    right: -5px;
+  }
+}
+
+/* Очень маленькие экраны */
+@media (max-width: 360px) {
+  .homework-content {
+    padding: 4px;
+  }
+  
+  .homework-header h1 {
+    font-size: 1rem;
+  }
+  
+  .task-item {
+    padding: 6px;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  }
+  
+  .images-grid {
+    grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  }
+  
+  .answer-image {
+    height: 40px;
+  }
+  
+  .task-table-container table {
+    min-width: 280px;
+    font-size: 0.75rem;
+  }
+  
+  .task-table-container td {
+    padding: 3px 4px;
+    font-size: 0.75rem;
+  }
+}
+
+/* Альбомная ориентация */
+@media (max-width: 768px) and (orientation: landscape) {
+  .homework-content {
+    padding: 12px;
+  }
+  
+  .answer-input-container {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .answer-input {
+    flex: 1 1 60%;
+    min-width: 120px;
+  }
+  
+  .submit-button {
+    flex: 1 1 30%;
+    width: auto;
+  }
+  
+  .cancel-button {
+    flex: 1 1 30%;
+    width: auto;
+  }
+  
+  .answer-textarea {
+    min-height: 60px;
+  }
+  
+  .answer-textarea.extended {
+    min-height: 80px;
+  }
+  
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+  
+  .images-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+  
+  .task-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .task-status {
+    align-self: flex-start;
+  }
 }
 </style>
 
 <style>
+/* Глобальные стили (без scoped) */
 * {
   margin: 0;
   padding: 0;
@@ -3134,6 +4759,7 @@ body {
   width: 100%;
   min-height: 100vh;
   line-height: 1.4;
+  overflow-x: hidden;
 }
 
 a {
@@ -3145,13 +4771,15 @@ a {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .topmenu {
   width: 100%;
-  padding: clamp(0.8rem, 2vw, 1rem) clamp(1rem, 5%, 2rem);
+  padding: 12px 24px;
   color: white;
-  font-size: clamp(1rem, 2vw, 1.4rem);
+  font-size: clamp(0.9rem, 2vw, 1.2rem);
   background-image: url(./assets/background_line.png);
   background-size: cover;
   background-position: center;
@@ -3160,39 +4788,43 @@ a {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 10px;
 }
 
 .logo {
   font-weight: bold;
   white-space: nowrap;
+  font-size: clamp(0.8rem, 1.8vw, 1.1rem);
 }
 
 .rightparttopmenu {
   display: flex;
-  gap: clamp(1rem, 3vw, 2rem);
+  gap: clamp(12px, 3vw, 20px);
   align-items: center;
   flex-wrap: wrap;
-  font-size: clamp(0.9rem, 1.8vw, 1.1rem);
+  font-size: clamp(0.8rem, 1.8vw, 1rem);
 }
 
-.redirect_menu, .go_back {
-  padding: 0.5rem 1rem;
-  border-radius: 0.4rem;
+.redirect_menu,
+.go_back {
+  padding: 4px 10px;
+  border-radius: 6px;
   transition: background-color 0.2s;
   cursor: pointer;
 }
 
-.redirect_menu:hover, .go_back:hover {
+.redirect_menu:hover,
+.go_back:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
 .centerpartpage {
   flex: 1;
   width: 100%;
-  padding: clamp(1rem, 3vw, 2rem);
+  padding: clamp(8px, 2vw, 16px) clamp(12px, 3vw, 24px);
   display: flex;
   justify-content: center;
+  overflow-x: hidden;
 }
 
 .mainpart {
@@ -3200,84 +4832,60 @@ a {
   max-width: 1200px;
   display: flex;
   flex-direction: column;
-  gap: clamp(1rem, 3vw, 2rem);
+  gap: 16px;
+  overflow-x: hidden;
 }
 
 table {
   font-family: Evolventa !important;
 }
 
-td, th {
+td,
+th {
   font-family: Evolventa !important;
 }
 
-/* Для всех элементов внутри таблиц */
 table * {
   font-family: Evolventa !important;
 }
 
+/* Глобальная адаптивность для topmenu */
 @media (max-width: 768px) {
   .topmenu {
     flex-direction: column;
     text-align: center;
-    gap: 0.8rem;
+    gap: 6px;
+    padding: 8px 16px;
   }
   
   .rightparttopmenu {
     justify-content: center;
   }
   
-  .homework-content {
-    padding: 1rem;
-  }
-  
-  .task-item {
-    padding: 1rem;
-    margin: 0 -0.5rem;
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
+  .centerpartpage {
+    padding: 6px 8px;
   }
 }
 
 @media (max-width: 480px) {
-  .homework-header h1 {
-    font-size: 1.5rem;
+  .topmenu {
+    padding: 6px 12px;
+    font-size: 0.8rem;
   }
   
-  .homework-meta {
-    flex-direction: column;
-    gap: 0.8rem;
+  .logo {
+    font-size: 0.75rem;
   }
   
-  .task-status {
-    align-self: stretch;
-    text-align: center;
+  .rightparttopmenu {
+    font-size: 0.75rem;
+    gap: 8px;
   }
   
-  .image-grid {
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  .redirect_menu,
+  .go_back {
+    padding: 3px 6px;
   }
-}
-.task-text {
-  user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  cursor: default;
-}
-
-.task-text ::selection {
-  background: transparent;
-}
-
-.task-text ::-moz-selection {
-  background: transparent;
-}
-
-/* Дополнительная защита через псевдо-элемент */
-.task-text {
-  position: relative;
 }
 
 .task-text::before {

@@ -1,5 +1,8 @@
 <template>
-    <div class="title"> <DailyMotivation /> </div>
+  <div class="title">
+    <DailyMotivation />
+  </div>
+  
   <div class="teacher-menu">
     <!-- Отображаем редактор, если выбран предмет -->
     <TableEditor
@@ -116,52 +119,82 @@ const openAdditionalCourses = () => {
 import DailyMotivation from './DailyMotivation.vue'
 
 export default {
-     components: {
+  components: {
     DailyMotivation,
-}
+  }
 }
 </script>
 
-<style>
-    .title{
-        font-size: 2vw;
-        font-weight: bold;
-        display: flex;
-        align-items: center;
-        }
+<style scoped>
+* {
+  font-family: Evolventa, sans-serif;
+  box-sizing: border-box;
+}
+
+.title {
+  font-size: 2vw;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  margin-bottom: 20px;
+}
 
 .teacher-menu {
-  padding: 20px;
+  padding: 0 20px 20px 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .subjects-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: 100%;
+  justify-content: center;
 }
 
-/* Адаптивность для мобильных устройств */
-@media (max-width: 768px) {
+/* Адаптивность */
+@media (max-width: 1024px) {
+  .title {
+    font-size: 2.5vw;
+  }
+  
   .subjects-grid {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
+    gap: 14px;
+  }
+}
+
+@media (max-width: 768px) {
+  .teacher-menu {
+    padding: 0 15px 15px 15px;
+  }
+  
+  .subjects-grid {
+    gap: 12px;
   }
   
   .title {
     font-size: 4vw;
+    padding: 0 15px;
+    margin-bottom: 15px;
   }
 }
 
 @media (max-width: 480px) {
+  .teacher-menu {
+    padding: 0 10px 10px 10px;
+  }
+  
   .subjects-grid {
-    grid-template-columns: 1fr;
     gap: 10px;
   }
   
-  .teacher-menu {
-    padding: 10px;
+  .title {
+    font-size: 5vw;
+    padding: 0 10px;
+    margin-bottom: 10px;
   }
 }
 </style>

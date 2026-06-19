@@ -1,11 +1,12 @@
 <script>
+import { markRaw } from 'vue';
 import Left_student_menu from './components/left_student_menu.vue';
 import settings from './components/settings.vue';
 import main_student_page from './components/main_student_page.vue';
 import SubjectRating from './components/SubjectRating.vue';
 import StudentStatic from './components/StudentStatic.vue';
 import HomeworkList from './components/HomeworkList.vue';
-import { supabase } from './supabase'; // Импортируем Supabase клиент
+import { supabase } from './supabase';
 
 export default{
     components: {
@@ -18,24 +19,59 @@ export default{
     },
     data() {
         return {
-            currentComponent: main_student_page,
-            userAccess: true, // По умолчанию доступ разрешен
+            currentComponent: markRaw(main_student_page), // <-- Используем markRaw
+            userAccess: true,
             userData: null,
             isLoading: true,
-            error: null
+            error: null,
+            isMobileMenuOpen: false,
+            isMobile: window.innerWidth <= 768
         }
     },
     methods: {
         setCurrentComponent(componentName) {
-            this.currentComponent = componentName;
+            // Используем switch для выбора компонента
+            switch(componentName) {
+                case 'main_student_page':
+                    this.currentComponent = markRaw(main_student_page);
+                    break;
+                case 'settings':
+                    this.currentComponent = markRaw(settings);
+                    break;
+                case 'SubjectRating':
+                    this.currentComponent = markRaw(SubjectRating);
+                    break;
+                case 'HomeworkList':
+                    this.currentComponent = markRaw(HomeworkList);
+                    break;
+                case 'StudentStatic':
+                    this.currentComponent = markRaw(StudentStatic);
+                    break;
+                default:
+                    this.currentComponent = markRaw(main_student_page);
+            }
+            
+            if (this.isMobile) {
+                this.isMobileMenuOpen = false;
+            }
         },
-        // Метод для получения данных пользователя из Supabase
+        toggleMobileMenu() {
+            this.isMobileMenuOpen = !this.isMobileMenuOpen;
+        },
+        closeMobileMenu() {
+            this.isMobileMenuOpen = false;
+        },
+        handleResize() {
+            this.isMobile = window.innerWidth <= 768;
+            if (!this.isMobile) {
+                this.isMobileMenuOpen = false;
+            }
+        },
         async fetchUserData() {
             try {
                 this.isLoading = true;
                 this.error = null;
                 
-                // Получаем текущего аутентифицированного пользователя
                 const { data: { user }, error: authError } = await supabase.auth.getUser();
                 
                 if (authError) {
@@ -46,7 +82,6 @@ export default{
                     throw new Error('Пользователь не аутентифицирован');
                 }
                 
-                // Получаем данные студента из таблицы students
                 const { data: studentData, error: studentError } = await supabase
                     .from('students')
                     .select('*')
@@ -55,7 +90,6 @@ export default{
                 
                 if (studentError) {
                     if (studentError.code === 'PGRST116') {
-                        // Запись не найдена - создаем новую
                         const { data: newStudent, error: insertError } = await supabase
                             .from('students')
                             .insert([
@@ -65,7 +99,7 @@ export default{
                                     first_name: null,
                                     last_name: null,
                                     created_at: new Date(),
-                                    access: true // По умолчанию даем доступ
+                                    access: true
                                 }
                             ])
                             .select()
@@ -88,12 +122,11 @@ export default{
             } catch (error) {
                 console.error('Ошибка при получении данных пользователя:', error);
                 this.error = error.message;
-                this.userAccess = false; // В случае ошибки запрещаем доступ
+                this.userAccess = false;
             } finally {
                 this.isLoading = false;
             }
         },
-        // Метод для выхода из системы
         async logout() {
             try {
                 const { error } = await supabase.auth.signOut();
@@ -107,8 +140,11 @@ export default{
         }
     },
     mounted() {
-        // При загрузке компонента получаем данные пользователя
         this.fetchUserData();
+        window.addEventListener('resize', this.handleResize);
+    },
+    beforeUnmount() {
+        window.removeEventListener('resize', this.handleResize);
     }
 }
 </script>
@@ -118,7 +154,7 @@ export default{
         <div class="topmenu">
             <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
             <div class="rightparttopmenu">
-                <div class="courses">Курсы</div>
+                <div class="courses"></div>
                 <div class="go_back" @click="logout">
                     <a href="#" @click.prevent="logout">Выйти</a>
                 </div>
@@ -140,7 +176,43 @@ export default{
         
         <!-- Доступ разрешен -->
         <div v-else-if="userAccess" class="centerpartpage">
-            <Left_student_menu @component-change="setCurrentComponent"/>
+            <!-- Кнопка бургер-меню для мобильных -->
+            <button 
+                v-if="isMobile && !isMobileMenuOpen"
+                class="burger-button"
+                @click="toggleMobileMenu"
+            >
+                <span class="burger-line"></span>
+                <span class="burger-line"></span>
+                <span class="burger-line"></span>
+            </button>
+
+            <!-- Оверлей для мобильного меню -->
+            <div 
+                v-if="isMobile && isMobileMenuOpen"
+                class="mobile-overlay"
+                @click="closeMobileMenu"
+            ></div>
+
+            <!-- Боковое меню -->
+            <div 
+                class="left-menu-wrapper"
+                :class="{ 
+                    'mobile-open': isMobile && isMobileMenuOpen,
+                    'mobile-closed': isMobile && !isMobileMenuOpen
+                }"
+            >
+                <!-- Кнопка закрытия внутри меню -->
+                <button 
+                    v-if="isMobile"
+                    class="menu-close-button"
+                    @click="closeMobileMenu"
+                >
+                    ✕
+                </button>
+                <Left_student_menu @component-change="setCurrentComponent"/>
+            </div>
+
             <div class="mainpart">
                 <component :is="currentComponent" />
             </div>
@@ -253,11 +325,294 @@ a{
     padding-left: 8%;
     padding-top: 2%;
     gap: 5%;
+    position: relative;
 }
-.mainpart{
-    display: grid;
-    grid-template-rows: 10% 85%;
-    gap: 1%;
+
+/* === БУРГЕР-МЕНЮ === */
+.burger-button {
+    display: none;
+    position: fixed;
+    top: 75px;
+    left: 15px;
+    z-index: 1001;
+    width: 44px;
+    height: 44px;
+    background: white;
+    border: 2px solid #b241d1;
+    border-radius: 8px;
+    cursor: pointer;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    padding: 10px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.burger-button:hover {
+    background: #f9f8ff;
+}
+
+.burger-line {
+    display: block;
+    width: 24px;
+    height: 2.5px;
+    background: #b241d1;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}
+
+/* Кнопка закрытия внутри меню */
+.menu-close-button {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    z-index: 10;
+    width: 36px;
+    height: 36px;
+    background: #f9f8ff;
+    border: 2px solid #b241d1;
+    border-radius: 50%;
+    font-size: 20px;
+    color: #b241d1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.menu-close-button:hover {
+    background: #b241d1;
+    color: white;
+}
+
+/* Оверлей */
+.mobile-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 998;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* === ОБЕРТКА ДЛЯ МЕНЮ === */
+.left-menu-wrapper {
+    transition: all 0.3s ease;
+}
+
+/* Десктопная версия */
+@media (min-width: 769px) {
+    .left-menu-wrapper {
+        display: block;
+    }
+    
+    .burger-button {
+        display: none !important;
+    }
+    
+    .mobile-overlay {
+        display: none !important;
+    }
+    
+    .menu-close-button {
+        display: none !important;
+    }
+}
+
+/* Мобильная версия */
+@media (max-width: 768px) {
+    .centerpartpage {
+        grid-template-columns: 1fr;
+        padding-left: 0;
+        padding-top: 0;
+        gap: 0;
+    }
+    
+    .topmenu {
+        grid-template-columns: 1fr 1fr;
+        column-gap: 0;
+        padding-left: 15px;
+        font-size: 2.5vw;
+    }
+    
+    .rightparttopmenu {
+        font-size: 2vw;
+        grid-template-columns: 1fr 1fr;
+        padding-right: 15px;
+    }
+    
+    .burger-button {
+        display: flex !important;
+    }
+    
+    .left-menu-wrapper {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: 85%;
+        max-width: 360px;
+        z-index: 999;
+        transform: translateX(-100%);
+        overflow-y: auto;
+        padding: 16px 12px 20px 12px;
+        background: white;
+        box-shadow: 2px 0 30px rgba(0, 0, 0, 0.2);
+        transition: transform 0.3s ease;
+    }
+    
+    .left-menu-wrapper.mobile-open {
+        transform: translateX(0);
+    }
+    
+    .left-menu-wrapper.mobile-closed {
+        transform: translateX(-100%);
+    }
+    
+    .left-menu-wrapper :deep(.leftpartpage) {
+        height: 100%;
+        padding: 0;
+        display: block;
+        position: static;
+    }
+    
+    .left-menu-wrapper :deep(.leftmenu) {
+        min-width: unset;
+        max-width: 100%;
+        border-radius: 12px;
+        gap: 14px;
+        padding: 20px 0;
+        box-shadow: none;
+        height: 100%;
+    }
+    
+    .left-menu-wrapper :deep(.about_student_big) {
+        padding: 0 20px;
+        gap: 14px;
+    }
+    
+    .left-menu-wrapper :deep(.photo_avatar) {
+        height: 56px;
+        width: 56px;
+    }
+    
+    .left-menu-wrapper :deep(.user-info) {
+        font-size: 16px;
+    }
+    
+    .left-menu-wrapper :deep(.number_of_points) {
+        font-size: 13px;
+    }
+    
+    .left-menu-wrapper :deep(.menu) {
+        padding: 0 16px;
+        gap: 4px;
+    }
+    
+    .left-menu-wrapper :deep(.menu_button) {
+        font-size: 15px;
+        padding: 10px 16px;
+        border-radius: 8px;
+        white-space: normal;
+        word-break: break-word;
+    }
+    
+    .left-menu-wrapper :deep(.line) {
+        width: calc(100% - 40px);
+        margin: 0 auto;
+    }
+    
+    .mainpart {
+        padding: 15px;
+        padding-top: 70px;
+    }
+}
+
+/* Маленькие телефоны */
+@media (max-width: 480px) {
+    .left-menu-wrapper {
+        width: 92%;
+        max-width: 320px;
+        padding: 12px 8px 16px 8px;
+    }
+    
+    .left-menu-wrapper :deep(.leftmenu) {
+        padding: 16px 0;
+        gap: 12px;
+    }
+    
+    .left-menu-wrapper :deep(.about_student_big) {
+        padding: 0 14px;
+        gap: 12px;
+    }
+    
+    .left-menu-wrapper :deep(.photo_avatar) {
+        height: 48px;
+        width: 48px;
+    }
+    
+    .left-menu-wrapper :deep(.user-info) {
+        font-size: 15px;
+    }
+    
+    .left-menu-wrapper :deep(.number_of_points) {
+        font-size: 12px;
+    }
+    
+    .left-menu-wrapper :deep(.menu) {
+        padding: 0 12px;
+        gap: 3px;
+    }
+    
+    .left-menu-wrapper :deep(.menu_button) {
+        font-size: 14px;
+        padding: 8px 14px;
+    }
+    
+    .left-menu-wrapper :deep(.line) {
+        width: calc(100% - 28px);
+    }
+    
+    .topmenu {
+        font-size: 3vw;
+        padding-left: 10px;
+    }
+    
+    .rightparttopmenu {
+        font-size: 2.5vw;
+        padding-right: 10px;
+    }
+    
+    .burger-button {
+        top: 65px;
+        left: 10px;
+        width: 38px;
+        height: 38px;
+        padding: 8px;
+    }
+    
+    .burger-line {
+        width: 20px;
+        height: 2px;
+    }
+    
+    .menu-close-button {
+        top: 8px;
+        right: 12px;
+        width: 32px;
+        height: 32px;
+        font-size: 18px;
+    }
 }
 
 /* Стили для сообщения о запрете доступа */

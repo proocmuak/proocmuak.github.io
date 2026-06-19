@@ -44,13 +44,13 @@
           </thead>
           <tbody>
             <tr v-for="student in students" :key="student.user_id">
-              <td class="name-column">{{ student.first_name }}</td>
-              <td class="name-column">{{ student.last_name }}</td>
+              <td class="name-column">{{ student.first_name || '' }}</td>
+              <td class="name-column">{{ student.last_name || '' }}</td>
               
               <!-- Предмет 1 -->
               <td class="subject-column">
                 <CustomDropdown
-                  :modelValue="findOptionByValue(ChemistryOption, student.subject1)"
+                  :modelValue="student.subject1"
                   :options="ChemistryOption"
                   placeholder="Предмет"
                   @update:modelValue="(value) => handleSubjectChange(student, 'subject1', value)"
@@ -58,7 +58,7 @@
               </td>
               <td class="tariff-column">
                 <CustomDropdown
-                  :modelValue="findOptionByValue(tariffOptions, student.subject1_tariff)"
+                  :modelValue="student.subject1_tariff"
                   :options="tariffOptions"
                   placeholder="Тариф"
                   :disabled="!student.subject1"
@@ -87,7 +87,7 @@
               <!-- Предмет 2 -->
               <td class="subject-column">
                 <CustomDropdown
-                  :modelValue="findOptionByValue(BiologyOption, student.subject2)"
+                  :modelValue="student.subject2"
                   :options="BiologyOption"
                   placeholder="Предмет"
                   @update:modelValue="(value) => handleSubjectChange(student, 'subject2', value)"
@@ -95,7 +95,7 @@
               </td>
               <td class="tariff-column">
                 <CustomDropdown
-                  :modelValue="findOptionByValue(tariffOptions, student.subject2_tariff)"
+                  :modelValue="student.subject2_tariff"
                   :options="tariffOptions"
                   placeholder="Тариф"
                   :disabled="!student.subject2"
@@ -148,7 +148,7 @@
               <!-- Наставник -->
               <td class="tutor-column">
                 <CustomDropdown
-                  :modelValue="findOptionByValue(tutorOptionsWithNone, student.tutor)"
+                  :modelValue="student.tutor"
                   :options="tutorOptionsWithNone"
                   placeholder="Наставник"
                   searchable
@@ -156,10 +156,10 @@
                 />
               </td>
 
-              <!-- Доступ -->
+              <!-- Доступ - преобразуем boolean в строку для совместимости -->
               <td class="access-column">
                 <CustomDropdown
-                  :modelValue="findOptionByValue(accessOptions, student.access)"
+                  :modelValue="String(student.access)"
                   :options="accessOptions"
                   placeholder="Доступ"
                   @update:modelValue="(value) => handleAccessChange(student, value)"
@@ -201,10 +201,10 @@ const tariffOptions = [
   { value: 'основной', label: 'Основной' }
 ];
 
-// Опции для доступа
+// Опции для доступа - используем строки вместо boolean
 const accessOptions = [
-  { value: true, label: 'Разрешен' },
-  { value: false, label: 'Запрещен' }
+  { value: 'true', label: 'Разрешен' },
+  { value: 'false', label: 'Запрещен' }
 ];
 
 // Опции для предметов
@@ -219,14 +219,6 @@ const BiologyOption = [
   { value: 'Биология ЕГЭ', label: 'Биология ЕГЭ' },
   { value: 'Биология ОГЭ', label: 'Биология ОГЭ' }
 ];
-
-// Функция для поиска опции по значению
-const findOptionByValue = (options, value) => {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  return options.find(opt => opt.value === value) || null;
-};
 
 // Проверка, выбран ли курс для студента
 const isCourseSelected = (student, course) => {
@@ -257,7 +249,8 @@ const fetchTutors = async () => {
   const { data, error } = await supabase
     .from('personalities')
     .select('first_name, last_name')
-    .eq('role', 'tutor');
+    .eq('role', 'tutor')
+    .order('first_name');
 
   if (error) {
     console.error('Ошибка загрузки наставников:', error);
@@ -266,7 +259,7 @@ const fetchTutors = async () => {
 
   tutors.value = data.map(tutor => ({
     value: tutor.first_name,
-    label: `${tutor.first_name}`
+    label: `${tutor.first_name} ${tutor.last_name || ''}`.trim() || tutor.first_name
   }));
 };
 
@@ -357,7 +350,6 @@ const handleAdditionalCourseChange = async (student, course, isChecked) => {
     if (error) {
       console.error('Ошибка обновления дополнительных курсов:', error);
       alert('Не удалось сохранить изменения!');
-      // Откатываем локальное состояние
       await fetchStudents();
     }
   } catch (error) {
@@ -368,13 +360,9 @@ const handleAdditionalCourseChange = async (student, course, isChecked) => {
 
 // Обработчики изменений
 const handleSubjectChange = (student, subjectField, value) => {
-  // Извлекаем значение из объекта если нужно
-  const actualValue = value?.value !== undefined ? value.value : value;
+  student[subjectField] = value;
   
-  student[subjectField] = actualValue;
-  
-  // Если выбран "Нет" (null), очищаем связанные поля
-  if (actualValue === null) {
+  if (value === null) {
     if (subjectField === 'subject1') {
       student.subject1_tariff = null;
       student.subject1_payment_date = '';
@@ -390,7 +378,7 @@ const handleSubjectChange = (student, subjectField, value) => {
 };
 
 const handleTariffChange = (student, tariffField, value) => {
-  student[tariffField] = value?.value !== undefined ? value.value : value;
+  student[tariffField] = value;
   updateStudent(student);
 };
 
@@ -400,16 +388,16 @@ const handleDateChange = (student, dateField, value) => {
 };
 
 const handleTutorChange = (student, value) => {
-  student.tutor = value?.value !== undefined ? value.value : value;
+  student.tutor = value;
   updateStudent(student);
 };
 
 const handleAccessChange = (student, value) => {
-  student.access = value?.value !== undefined ? value.value : value;
+  // Преобразуем строку обратно в boolean для хранения
+  student.access = value === 'true';
   updateStudent(student);
 };
 
-// Обработчик изменения даты доступа для конкретного предмета
 const handleAccessFromChange = (student, accessField, value) => {
   student[accessField] = value;
   updateStudent(student);
@@ -417,7 +405,6 @@ const handleAccessFromChange = (student, accessField, value) => {
 
 // Обновление данных студента
 const updateStudent = async (student) => {
-  // Подготавливаем данные для сохранения
   const updateData = {
     subject1: student.subject1,
     subject2: student.subject2,
@@ -463,13 +450,11 @@ const prevPage = () => {
   }
 };
 
-// Сброс пагинации при поиске
 const resetPagination = () => {
   currentPage.value = 1;
   fetchStudents();
 };
 
-// Загружаем данные при загрузке страницы
 onMounted(async () => {
   await fetchAdditionalCourses();
   await fetchTutors();
@@ -500,7 +485,7 @@ onMounted(async () => {
   flex-direction: column;
   max-width: 95vw;
   max-height: 95vh;
-  width: 110rem; /* Увеличил ширину для дополнительного столбца */
+  width: 110rem;
   overflow: hidden;
 }
 
@@ -508,14 +493,15 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.25rem 1.5rem;
+  padding: 1rem 1.5rem;
   background: linear-gradient(135deg, #b241d1 0%, #8a2be2 100%);
   color: white;
+  flex-shrink: 0;
 }
 
 .modal-header h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 
@@ -523,7 +509,7 @@ onMounted(async () => {
   background: none;
   border: none;
   color: white;
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
   width: 2.5rem;
@@ -533,7 +519,6 @@ onMounted(async () => {
   justify-content: center;
   border-radius: 50%;
   transition: background-color 0.2s;
-  z-index: 1001;
 }
 
 .close-button:hover {
@@ -544,10 +529,12 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.9375rem 1.5rem;
+  padding: 0.75rem 1.5rem;
   background: #f8f9fa;
   border-bottom: 1px solid #e0e0e0;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .search-input {
@@ -556,6 +543,13 @@ onMounted(async () => {
   border-radius: 0.375rem;
   font-size: 0.875rem;
   width: 17.5rem;
+  min-width: 200px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.1);
 }
 
 .pagination-controls {
@@ -596,16 +590,15 @@ onMounted(async () => {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
+  font-size: 0.8125rem;
 }
 
 .students-table th, 
 .students-table td {
   border: 1px solid #e0e0e0;
-  padding: 0.5rem;
+  padding: 0.5rem 0.4rem;
   text-align: left;
-  font-size: 0.8125rem;
-  vertical-align: top;
-  height: 3.125rem;
+  vertical-align: middle;
   box-sizing: border-box;
 }
 
@@ -616,6 +609,8 @@ onMounted(async () => {
   position: sticky;
   top: 0;
   z-index: 10;
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 .students-table tr:nth-child(even) {
@@ -628,48 +623,65 @@ onMounted(async () => {
 
 /* Ширины колонок */
 .name-column {
-  width: 5.5rem;
-  min-width: 5.5rem;
+  width: 5rem;
+  min-width: 5rem;
+  max-width: 5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .subject-column {
   width: 6.5rem;
   min-width: 6.5rem;
+  max-width: 6.5rem;
 }
 
 .tariff-column {
   width: 6rem;
   min-width: 6rem;
+  max-width: 6rem;
 }
 
 .date-column {
   width: 6.5rem;
   min-width: 6.5rem;
+  max-width: 6.5rem;
 }
 
 .additional-courses-column {
-  width: 12rem;
-  min-width: 12rem;
+  width: 10rem;
+  min-width: 10rem;
+  max-width: 10rem;
 }
 
 .tutor-column {
   width: 7.5rem;
   min-width: 7.5rem;
+  max-width: 7.5rem;
 }
 
 .access-column {
-  width: 6.5rem;
-  min-width: 6.5rem;
+  width: 6rem;
+  min-width: 6rem;
+  max-width: 6rem;
 }
 
 .date-input {
-  padding: 0.375rem;
+  padding: 0.25rem 0.375rem;
   border: 1px solid #ddd;
   border-radius: 0.25rem;
   width: 100%;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   box-sizing: border-box;
-  height: 2rem;
+  height: 1.75rem;
+  background: white;
+}
+
+.date-input:focus {
+  outline: none;
+  border-color: #b241d1;
+  box-shadow: 0 0 0 2px rgba(178, 65, 209, 0.1);
 }
 
 .date-input:disabled {
@@ -678,16 +690,10 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
-.date-input:focus {
-  outline: none;
-  border-color: #b241d1;
-  box-shadow: 0 0 0 0.125rem rgba(178, 65, 209, 0.2);
-}
-
 .additional-courses-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .course-checkbox {
@@ -697,20 +703,28 @@ onMounted(async () => {
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   cursor: pointer;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: #333;
+}
+
+.checkbox-label:hover {
+  color: #b241d1;
 }
 
 .course-checkbox-input {
   cursor: pointer;
-  width: 1rem;
-  height: 1rem;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
 }
 
 .checkbox-text {
   user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .no-courses {
@@ -731,7 +745,7 @@ onMounted(async () => {
   margin: 1.25rem;
 }
 
-/* Стили для скроллбара */
+/* Кастомный скроллбар */
 .table-container::-webkit-scrollbar {
   width: 0.375rem;
   height: 0.375rem;
@@ -752,37 +766,54 @@ onMounted(async () => {
 }
 
 /* Адаптивность */
-@media (max-width: 90rem) {
+@media (max-width: 1200px) {
   .admin-students-modal {
-    width: 95vw;
+    width: 98vw;
   }
   
-  .name-column { width: 5rem; min-width: 5rem; }
-  .subject-column { width: 6rem; min-width: 6rem; }
-  .tariff-column { width: 5.5rem; min-width: 5.5rem; }
-  .date-column { width: 6rem; min-width: 6rem; }
-  .additional-courses-column { width: 10rem; min-width: 10rem; }
-  .tutor-column { width: 7rem; min-width: 7rem; }
-  .access-column { width: 6rem; min-width: 6rem; }
+  .name-column { width: 4.5rem; min-width: 4.5rem; max-width: 4.5rem; }
+  .subject-column { width: 6rem; min-width: 6rem; max-width: 6rem; }
+  .tariff-column { width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem; }
+  .date-column { width: 6rem; min-width: 6rem; max-width: 6rem; }
+  .additional-courses-column { width: 8rem; min-width: 8rem; max-width: 8rem; }
+  .tutor-column { width: 7rem; min-width: 7rem; max-width: 7rem; }
+  .access-column { width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem; }
 }
 
-@media (max-width: 48rem) {
+@media (max-width: 768px) {
+  .admin-students-modal-overlay {
+    padding: 0.5rem;
+  }
+  
+  .admin-students-modal {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  
   .modal-header {
-    padding: 1rem;
+    padding: 0.75rem 1rem;
   }
   
   .modal-header h1 {
-    font-size: 1.25rem;
+    font-size: 1rem;
   }
   
   .controls {
     flex-direction: column;
-    gap: 0.75rem;
-    padding: 1rem;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
   }
   
   .search-input {
     width: 100%;
+    min-width: unset;
+  }
+  
+  .pagination-controls {
+    width: 100%;
+    justify-content: center;
   }
   
   .table-container {
@@ -791,16 +822,27 @@ onMounted(async () => {
   
   .students-table th, 
   .students-table td {
-    padding: 0.375rem;
-    font-size: 0.75rem;
-  }
-  
-  .additional-courses-list {
-    gap: 0.25rem;
-  }
-  
-  .checkbox-text {
+    padding: 0.3rem 0.25rem;
     font-size: 0.7rem;
+  }
+  
+  .students-table th {
+    font-size: 0.65rem;
+  }
+  
+  .date-input {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.25rem;
+    height: 1.5rem;
+  }
+  
+  .checkbox-label {
+    font-size: 0.65rem;
+  }
+  
+  .course-checkbox-input {
+    width: 0.75rem;
+    height: 0.75rem;
   }
 }
 </style>
