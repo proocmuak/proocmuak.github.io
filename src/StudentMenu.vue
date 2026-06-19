@@ -6,6 +6,7 @@ import main_student_page from './components/main_student_page.vue';
 import SubjectRating from './components/SubjectRating.vue';
 import StudentStatic from './components/StudentStatic.vue';
 import HomeworkList from './components/HomeworkList.vue';
+import UsefulMaterials from './components/useful_materials.vue';
 import { supabase } from './supabase';
 
 export default{
@@ -15,11 +16,12 @@ export default{
         main_student_page,
         SubjectRating, 
         HomeworkList,
-        StudentStatic 
+        StudentStatic,
+        UsefulMaterials
     },
     data() {
         return {
-            currentComponent: markRaw(main_student_page), // <-- Используем markRaw
+            currentComponent: markRaw(main_student_page),
             userAccess: true,
             userData: null,
             isLoading: true,
@@ -30,7 +32,6 @@ export default{
     },
     methods: {
         setCurrentComponent(componentName) {
-            // Используем switch для выбора компонента
             switch(componentName) {
                 case 'main_student_page':
                     this.currentComponent = markRaw(main_student_page);
@@ -46,6 +47,9 @@ export default{
                     break;
                 case 'StudentStatic':
                     this.currentComponent = markRaw(StudentStatic);
+                    break;
+                case 'useful_materials':
+                    this.currentComponent = markRaw(UsefulMaterials);
                     break;
                 default:
                     this.currentComponent = markRaw(main_student_page);
@@ -154,7 +158,7 @@ export default{
         <div class="topmenu">
             <div class="logo">НЕОНЛАЙН ШКОЛА PURTO</div>
             <div class="rightparttopmenu">
-                <div class="courses"></div>
+                <div class="courses">Курсы</div>
                 <div class="go_back" @click="logout">
                     <a href="#" @click.prevent="logout">Выйти</a>
                 </div>
@@ -234,6 +238,7 @@ export default{
     padding: 0;
     box-sizing: border-box;
 }
+
 @font-face {
 	font-family: Evolventa;
 	src: local("Evolventa"), url("/src/assets/evolventa/Evolventa-Regular.woff");
@@ -268,16 +273,19 @@ body {
     width: 100%;
     height: 100%;
 }
+
 a{
     color: white;
     text-decoration: none;
 }
+
 .allpage{
     display: grid;
     height: 100vh;
     grid-template-rows: 7% 81% 12%;
     gap: 0px;
 }
+
 .topmenu{
     width: 100%;
     height: 100%;
@@ -292,16 +300,19 @@ a{
     background-position:center;
     background-repeat: no-repeat;
 }
+
 .logo{
     display: grid;
     place-content: center;
 }
+
 .rightparttopmenu{
     display: grid; 
     grid-template-columns: 25% 30%;
     column-gap: 7%;
     font-size: 1vw;
 }
+
 .courses{
     width: 100%;
     height: 100%;
@@ -309,14 +320,17 @@ a{
     place-items: center;
     cursor: pointer;
 }
+
 .go_back{
     display: grid;
     place-items: center;
     cursor: pointer;
 }
+
 .go_back:hover {
     opacity: 0.8;
 }
+
 .centerpartpage{
     height: 100%;
     width: 100%;
@@ -326,6 +340,12 @@ a{
     padding-top: 2%;
     gap: 5%;
     position: relative;
+}
+
+.mainpart{
+    display: grid;
+    grid-template-rows: 10% 85%;
+    gap: 1%;
 }
 
 /* === БУРГЕР-МЕНЮ === */
@@ -363,7 +383,6 @@ a{
     transition: all 0.3s ease;
 }
 
-/* Кнопка закрытия внутри меню */
 .menu-close-button {
     position: absolute;
     top: 12px;
@@ -388,7 +407,6 @@ a{
     color: white;
 }
 
-/* Оверлей */
 .mobile-overlay {
     position: fixed;
     top: 0;
@@ -405,7 +423,6 @@ a{
     to { opacity: 1; }
 }
 
-/* === ОБЕРТКА ДЛЯ МЕНЮ === */
 .left-menu-wrapper {
     transition: all 0.3s ease;
 }
@@ -510,10 +527,6 @@ a{
         font-size: 16px;
     }
     
-    .left-menu-wrapper :deep(.number_of_points) {
-        font-size: 13px;
-    }
-    
     .left-menu-wrapper :deep(.menu) {
         padding: 0 16px;
         gap: 4px;
@@ -538,7 +551,6 @@ a{
     }
 }
 
-/* Маленькие телефоны */
 @media (max-width: 480px) {
     .left-menu-wrapper {
         width: 92%;
@@ -563,10 +575,6 @@ a{
     
     .left-menu-wrapper :deep(.user-info) {
         font-size: 15px;
-    }
-    
-    .left-menu-wrapper :deep(.number_of_points) {
-        font-size: 12px;
     }
     
     .left-menu-wrapper :deep(.menu) {

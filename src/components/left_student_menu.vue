@@ -47,6 +47,13 @@
         </button>
         <button 
           class="menu_button" 
+          :class="{ active: activeMenu === 'useful_materials' }"
+          @click="switchComponent('useful_materials')"
+        >
+          Полезные материалы
+        </button>
+        <button 
+          class="menu_button" 
           :class="{ active: activeMenu === 'settings' }"
           @click="switchComponent('settings')"
         >
@@ -647,7 +654,6 @@ onUnmounted(() => {
   color: #b241d1;
 }
 
-/* Блок с курсами - увеличенный отступ сверху */
 .aboutcourses {
   background-color: #f9f8ff;
   border-radius: 16px;
@@ -895,7 +901,6 @@ onUnmounted(() => {
 /* АДАПТАЦИЯ ДЛЯ БУРГЕР-МЕНЮ */
 /* ============================================ */
 
-/* Планшеты */
 @media (max-width: 1024px) {
   .leftpartpage {
     max-width: 260px;
@@ -916,7 +921,6 @@ onUnmounted(() => {
   }
 }
 
-/* Мобильные устройства - когда меню в бургере */
 @media (max-width: 768px) {
   .leftpartpage {
     max-width: 100%;
@@ -999,7 +1003,6 @@ onUnmounted(() => {
   }
 }
 
-/* Маленькие телефоны */
 @media (max-width: 480px) {
   .leftmenu {
     padding: 14px 0;
@@ -1084,7 +1087,6 @@ onUnmounted(() => {
   }
 }
 
-/* Очень маленькие телефоны */
 @media (max-width: 360px) {
   .leftmenu {
     padding: 12px 0;
@@ -1115,7 +1117,6 @@ onUnmounted(() => {
   }
 }
 
-/* Альбомная ориентация */
 @media (max-width: 768px) and (orientation: landscape) {
   .leftpartpage {
     max-width: 100%;

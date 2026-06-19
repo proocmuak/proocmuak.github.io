@@ -191,6 +191,14 @@ onUnmounted(() => {
         </button>
         <a href="/TutorTaskBank.html" class="menu_button black_text_a">Редактор существующих заданий</a>
         <div class="menu_button">Уведомления</div>
+        <!-- НОВАЯ КНОПКА -->
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'upload_useful_materials' }"
+          @click="switchComponent('upload_useful_materials')"
+        >
+          Загрузить материалы
+        </button>
         <button 
           class="menu_button" 
           :class="{ active: activeMenu === 'settings' }"
