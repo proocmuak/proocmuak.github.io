@@ -67,7 +67,7 @@
                   <span class="file-name">Тетрадь {{ index + 1 }}</span>
                   <span class="file-size" v-if="fileSizes.workbooks[index]">{{ fileSizes.workbooks[index] }}</span>
                 </div>
-                <a :href="getProxyUrl(file)" target="_blank" class="download-button">Скачать</a>
+                <a :href="getFileUrl(file)" target="_blank" class="download-button">Скачать</a>
               </div>
             </div>
           </div>
@@ -336,7 +336,29 @@ const getProxyUrl = (url) => {
   }
   return url;
 }
-
+/**
+ * Получение URL файла через прокси
+ */
+const getFileUrl = (filePath) => {
+  if (!filePath) return ''
+  
+  // Если уже полный URL, возвращаем как есть
+  if (filePath.startsWith('http')) {
+    return filePath
+  }
+  
+  // Убираем возможный префикс material/
+  let cleanPath = filePath
+  if (cleanPath.startsWith('material/')) {
+    cleanPath = cleanPath.replace('material/', '')
+  }
+  if (cleanPath.startsWith('/material/')) {
+    cleanPath = cleanPath.replace('/material/', '')
+  }
+  
+  // Возвращаем через прокси
+  return `/storage/material/${cleanPath}`
+}
 const showProtectionMessage = () => {
   showMessage.value = true
   if (messageTimer) clearTimeout(messageTimer)
