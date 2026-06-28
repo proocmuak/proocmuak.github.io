@@ -293,6 +293,24 @@
         </button>
       </div>
     </div>
+
+    <!-- Банк заданий для выбора существующих -->
+    <div v-if="selectedSubject" class="task-bank-section">
+      <div class="task-bank-header">
+        <h3>Выбор существующих заданий</h3>
+        <p class="task-bank-hint">Выберите задания из банка, чтобы добавить их в домашнюю работу</p>
+      </div>
+      <TeacherTaskBank
+        :homework-id="homeworkId"
+        :homework-name="homeworkName"
+        :subject="subject"
+        :exam-type="examType"
+        @task-added="handleTaskAdded"
+        @task-removed="handleTaskRemoved"
+        @task-updated="handleTaskUpdated"
+        @task-deleted="handleTaskDeleted"
+      />
+    </div>
   </div>
 </template>
 
@@ -300,6 +318,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { markRaw } from 'vue';
 import CustomDropdown from './CustomDropdown.vue';
+import TeacherTaskBank from '../TeacherTaskBank.vue';
 import { chem_ege_sections } from '../assets/arrays/list_of_sections.js';
 import { supabase } from '../supabase';
 
@@ -338,7 +357,8 @@ export default {
     }
   },
   components: {
-    CustomDropdown: markRaw(CustomDropdown)
+    CustomDropdown: markRaw(CustomDropdown),
+    TeacherTaskBank
   },
   data() {
     return {
@@ -486,7 +506,6 @@ export default {
   },
   created() {
     this.initializeTopics();
-    // Устанавливаем выбранный предмет из пропсов
     const fullSubjectName = `${this.subject === 'chemistry' ? 'Химия' : 'Биология'} ${this.examType === 'ege' ? 'ЕГЭ' : 'ОГЭ'}`;
     this.selectedSubject = fullSubjectName;
     this.handleSubjectChange(this.selectedSubject);
@@ -874,7 +893,7 @@ export default {
           const content = this.tableContent[i][j] || '&nbsp;';
           html += `<td style="padding: 8px; border: 1px solid #ddd; min-height: 40px;">${content}</td>`;
         }
-        html += '<tr>';
+        html += '</tr>';
       }
       return html;
     },
@@ -1007,7 +1026,6 @@ export default {
       const uploadedPaths = [];
       
       try {
-        // Определяем папку предмета
         let subjectFolder;
         if (this.selectedSubject === 'Химия ЕГЭ' || this.selectedSubject === 'Химия ОГЭ') {
           subjectFolder = 'chemistry';
@@ -1017,14 +1035,12 @@ export default {
           subjectFolder = 'other';
         }
         
-        // Определяем тип экзамена
         const examType = this.selectedSubject.includes('ЕГЭ') ? 'ege' : 'oge';
         
         for (const img of images) {
           const fileExt = img.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExt}`;
           
-          // Сохраняем ТОЛЬКО путь, а не полный URL!
           const filePath = `task-images/tasks/${subjectFolder}/${examType}/${folder}/${fileName}`;
           
           const { error } = await supabase
@@ -1040,7 +1056,6 @@ export default {
             throw error;
           }
           
-          // Сохраняем только путь к файлу
           uploadedPaths.push(filePath);
         }
         
@@ -1066,7 +1081,6 @@ export default {
       try {
         this.isUploading = true;
         
-        // Загрузка изображений - получаем пути, а не URL
         const textImagePaths = await this.uploadImagesToStorage(this.uploadedImages, 'text');
         const explanationImagePaths = await this.uploadImagesToStorage(this.explanationImages, 'explanation');
         
@@ -1075,7 +1089,6 @@ export default {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
         
-        // Сохраняем задание с путями к изображениям
         const { data, error } = await supabase
           .from(taskBank)
           .insert([{
@@ -1147,6 +1160,26 @@ export default {
       } finally {
         this.isUploading = false;
       }
+    },
+
+    handleTaskAdded(taskId) {
+      console.log('Задание добавлено в домашнюю работу:', taskId);
+      this.$emit('task-added', taskId);
+    },
+
+    handleTaskRemoved(taskId) {
+      console.log('Задание удалено из домашней работы:', taskId);
+      this.$emit('task-removed', taskId);
+    },
+
+    handleTaskUpdated(updatedTask) {
+      console.log('Задание обновлено:', updatedTask);
+      this.$emit('task-updated', updatedTask);
+    },
+
+    handleTaskDeleted(taskId) {
+      console.log('Задание удалено из банка:', taskId);
+      this.$emit('task-deleted', taskId);
     }
   }
 };
@@ -1186,6 +1219,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  margin-bottom: 30px;
 }
 
 .form-grid {
@@ -1609,6 +1643,31 @@ sup {
 .superscript {
   vertical-align: super;
   font-size: 0.7em;
+}
+
+.task-bank-section {
+  width: 100%;
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.task-bank-header {
+  margin-bottom: 20px;
+}
+
+.task-bank-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+}
+
+.task-bank-hint {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
 }
 
 @media (max-width: 768px) {

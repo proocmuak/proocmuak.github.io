@@ -186,10 +186,12 @@ export default {
       
       try {
         // ИСПРАВЛЕННЫЙ ЗАПРОС - используем ilike для поиска без учета регистра
-        const { data: students, error: studentsError } = await supabase
-          .from('students')
-          .select('*')
-          .ilike('tutor', `%${this.tutorFirstName}%`);
+       // В методе loadAllStudents:
+const { data: students, error: studentsError } = await supabase
+  .from('students')
+  .select('*')
+  .eq('is_active', true)  // ← Добавить
+  .ilike('tutor', `%${this.tutorFirstName}%`)
 
         if (studentsError) throw studentsError;
 

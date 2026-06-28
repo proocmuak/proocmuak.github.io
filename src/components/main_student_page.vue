@@ -23,16 +23,21 @@
     </div>
     
     <div class="content-wrapper">
+      <StudentDigest v-if="!showPaymentNotification" />
+
       <div class="block_of_content">
         <subject_chemistry 
+          v-if="hasChemistry"
           @has-data="handleChemistryData(true)"
           @no-data="handleChemistryData(false)"
         />
         <subject_biology 
+          v-if="hasBiology"
           @has-data="handleBiologyData(true)"
           @no-data="handleBiologyData(false)"
         />
         <subject_additional
+          v-if="hasAdditional"
           @has-data="handleAdditionalData(true)"
           @no-data="handleAdditionalData(false)"
         />
@@ -50,6 +55,7 @@ import DailyMotivation from './DailyMotivation.vue';
 import subject_chemistry from './subject_chemistry.vue'
 import subject_biology from './subject_biology.vue'
 import subject_additional from './subject_additional.vue'
+import StudentDigest from './StudentDigest.vue'
 import { supabase } from '../supabase';
 
 export default {
@@ -57,7 +63,8 @@ export default {
     DailyMotivation,
     subject_chemistry,
     subject_biology,
-    subject_additional
+    subject_additional,
+    StudentDigest
   },
   data() {
     return {
@@ -75,7 +82,10 @@ export default {
       paymentNotificationText: '',
       showOverdueModal: false,
       overdueModalText: '',
-      loading: true
+      loading: true,
+      hasChemistry: false,
+      hasBiology: false,
+      hasAdditional: false
     }
   },
   async mounted() {
@@ -88,14 +98,17 @@ export default {
   methods: {
     handleChemistryData(hasData) {
       this.chemistryHasData = hasData;
+      this.hasChemistry = hasData;
       this.checkCoursesAvailability();
     },
     handleBiologyData(hasData) {
       this.biologyHasData = hasData;
+      this.hasBiology = hasData;
       this.checkCoursesAvailability();
     },
     handleAdditionalData(hasData) {
       this.additionalHasData = hasData;
+      this.hasAdditional = hasData;
       this.checkCoursesAvailability();
     },
     checkCoursesAvailability() {
@@ -130,6 +143,20 @@ export default {
             subject1_payment_date: data.subject1_payment_date,
             subject2_payment_date: data.subject2_payment_date
           };
+          
+          this.hasChemistry = !!data.subject1;
+          this.hasBiology = !!data.subject2;
+          
+          if (data.additional_courses) {
+            try {
+              const courses = typeof data.additional_courses === 'string' 
+                ? JSON.parse(data.additional_courses) 
+                : data.additional_courses;
+              this.hasAdditional = courses && courses.length > 0;
+            } catch (e) {
+              this.hasAdditional = false;
+            }
+          }
           
           this.checkPaymentDates();
         }
@@ -235,65 +262,81 @@ export default {
   min-height: 80vh;
   background-color: #f9f8ff;
   border-radius: 2.5%;
+  display: flex;
+  flex-direction: column;
 }
 
 .title {
-  font-size: 2vw;
+  font-size: 1.6vw;
   font-weight: bold;
   display: flex;
   align-items: center;
-  padding: 20px;
+  padding: 12px 20px 8px 20px;
+  flex-shrink: 0;
 }
 
 .content-wrapper {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 0 20px 12px 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .block_of_content {
   background-color: #f9f8ff;
-  margin-bottom: 5%;
   border-radius: 2%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5%;
-  padding: 5%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: stretch;
+  gap: 16px;
+  padding: 8px;
+  flex: 1;
+  min-height: 0;
 }
 
 .block_of_content > * {
-  height: auto;
+  flex: 0 1 calc(33.33% - 16px);
+  min-width: 160px;
+  max-width: 320px;
 }
 
-/* Если дополнительных курсов нет, сетка все равно остается 3 колонки,
-   но компонент subject_additional просто не рендерится,
-   поэтому grid создаст 2 колонки автоматически */
+.block_of_content:has(> :nth-child(2):last-child) > * {
+  flex: 0 1 calc(50% - 16px);
+  max-width: 380px;
+}
+
+.block_of_content:has(> :nth-child(1):last-child) > * {
+  flex: 0 1 100%;
+  max-width: 400px;
+}
 
 .no-courses-message {
   text-align: center;
-  padding: 60px;
-  font-size: 1.5rem;
+  padding: 30px;
+  font-size: 1.2rem;
   color: #666;
   background-color: #f8f9fa;
   border-radius: 10px;
-  margin: 40px auto;
-  max-width: 600px;
+  margin: 20px auto;
+  max-width: 500px;
 }
 
 .payment-notification {
   text-align: center;
-  padding: 20px;
-  font-size: 1.2rem;
+  padding: 12px 20px;
+  font-size: 1rem;
   color: #d9534f;
   background-color: #f8d7da;
   border: 1px solid #f5c6cb;
-  border-radius: 10px;
-  margin: 10px 0;
+  border-radius: 8px;
+  margin: 4px 0;
   width: 100%;
 }
 
-/* Стили для модального окна оплаты (отдельно от основного) */
 .modal-overlay-payment {
   position: fixed;
   top: 0;
@@ -309,31 +352,31 @@ export default {
 
 .modal-content-payment {
   background-color: white;
-  padding: 25px;
+  padding: 20px 25px;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  max-width: 400px;
+  max-width: 380px;
   width: 90%;
   text-align: center;
   animation: modal-appear 0.3s ease-out;
 }
 
 .modal-header-payment h3 {
-  margin: 0 0 15px 0;
+  margin: 0 0 10px 0;
   color: #d9534f;
-  font-size: 1.5rem;
+  font-size: 1.3rem;
 }
 
 .modal-body-payment p {
-  margin: 0 0 20px 0;
-  font-size: 1.1rem;
-  line-height: 1.5;
+  margin: 0 0 15px 0;
+  font-size: 1rem;
+  line-height: 1.4;
   color: #333;
 }
 
 .modal-footer-payment p {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #666;
   font-style: italic;
 }
@@ -341,7 +384,7 @@ export default {
 @keyframes modal-appear {
   from {
     opacity: 0;
-    transform: translateY(-20px) scale(0.95);
+    transform: translateY(-15px) scale(0.95);
   }
   to {
     opacity: 1;
@@ -349,62 +392,111 @@ export default {
   }
 }
 
-/* Адаптивность */
 @media (max-width: 1024px) {
   .block_of_content {
-    gap: 4%;
-    padding: 4%;
+    gap: 12px;
+    padding: 6px;
   }
-}
-
-@media (max-width: 900px) {
-  .block_of_content {
-    grid-template-columns: repeat(2, 1fr);
+  
+  .block_of_content > * {
+    flex: 0 1 calc(50% - 12px);
+    min-width: 140px;
+  }
+  
+  .block_of_content:has(> :nth-child(3)) > * {
+    flex: 0 1 calc(50% - 12px);
+  }
+  
+  .block_of_content:has(> :nth-child(3)) > *:last-child {
+    flex: 0 1 100%;
+    max-width: 380px;
   }
 }
 
 @media (max-width: 768px) {
   .title {
-    font-size: 4vw;
-    padding: 15px;
+    font-size: 3.5vw;
+    padding: 8px 15px 6px 15px;
   }
   
   .content-wrapper {
-    padding: 15px;
+    padding: 0 12px 10px 12px;
   }
   
   .block_of_content {
-    grid-template-columns: 1fr;
-    gap: 30px;
-    padding: 20px;
+    gap: 10px;
+    padding: 6px;
+  }
+  
+  .block_of_content > * {
+    flex: 0 1 100%;
+    min-width: unset;
+    max-width: 100%;
+  }
+  
+  .block_of_content:has(> :nth-child(2):last-child) > * {
+    flex: 0 1 calc(50% - 10px);
+    max-width: 100%;
+  }
+  
+  .block_of_content:has(> :nth-child(3)) > * {
+    flex: 0 1 100%;
+    max-width: 100%;
+  }
+  
+  .block_of_content:has(> :nth-child(3)) > *:last-child {
+    flex: 0 1 100%;
+    max-width: 100%;
+    margin-top: 4px;
   }
   
   .no-courses-message {
-    padding: 40px;
-    font-size: 1.2rem;
-    margin: 20px;
+    padding: 25px;
+    font-size: 1rem;
+    margin: 15px;
   }
 }
 
 @media (max-width: 480px) {
   .title {
-    font-size: 5vw;
-    padding: 10px;
+    font-size: 4vw;
+    padding: 6px 10px 4px 10px;
   }
   
   .content-wrapper {
-    padding: 10px;
+    padding: 0 8px 8px 8px;
   }
   
   .block_of_content {
-    gap: 20px;
-    padding: 15px;
+    gap: 8px;
+    padding: 4px;
+  }
+  
+  .block_of_content > * {
+    flex: 0 1 100%;
+    max-width: 100%;
+  }
+  
+  .block_of_content:has(> :nth-child(2):last-child) > * {
+    flex: 0 1 100%;
+    max-width: 100%;
+  }
+  
+  .block_of_content:has(> :nth-child(3)) > * {
+    flex: 0 1 100%;
+    max-width: 100%;
+  }
+  
+  .block_of_content:has(> :nth-child(3)) > *:last-child {
+    flex: 0 1 100%;
+    max-width: 100%;
+    margin-top: 2px;
   }
   
   .no-courses-message {
-    padding: 30px;
-    font-size: 1rem;
-    margin: 15px;
+    padding: 20px;
+    font-size: 0.9rem;
+    margin: 10px;
   }
 }
 </style>

@@ -28,7 +28,8 @@ export default defineConfig({
         tutor_menu: resolve(__dirname, 'tutor_menu.html'),
         homework: resolve(__dirname, 'homework.html'),
         TutorTaskBank: resolve(__dirname, 'TutorTaskBank.html'),
-        additional_course: resolve(__dirname, 'additional_course.html')
+        additional_course: resolve(__dirname, 'additional_course.html'),
+        variant: resolve(__dirname, 'variant.html')
       },
       output: {
         // Генерируем предсказуемые имена файлов

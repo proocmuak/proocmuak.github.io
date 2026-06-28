@@ -52,6 +52,14 @@
         >
           Полезные материалы
         </button>
+        <!-- НОВАЯ КНОПКА -->
+        <button 
+          class="menu_button" 
+          :class="{ active: activeMenu === 'generator_variants' }"
+          @click="switchComponent('generator_variants')"
+        >
+          Генератор вариантов
+        </button>
         <button 
           class="menu_button" 
           :class="{ active: activeMenu === 'settings' }"

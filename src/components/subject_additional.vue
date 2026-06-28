@@ -1,12 +1,16 @@
 <template>
-  <!-- Показываем блок только если есть курсы -->
   <div v-if="hasAdditionalCourses" class="block additional-courses-block" @click="openModal">
     <div class="subject_name">Дополнительные курсы</div>
-    <div class="courses-count">Доступно курсов: {{ additionalCoursesCount }}</div>
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-value">{{ additionalCoursesCount }}</span>
+        <span class="stat-label">Курсов</span>
+      </div>
+    </div>
     <div class="button">Посмотреть</div>
   </div>
 
-  <!-- Модальное окно со списком курсов -->
+  <!-- Модальное окно -->
   <Transition name="modal-fade" @after-leave="onModalClosed">
     <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
       <Transition name="modal-slide" appear>
@@ -15,25 +19,21 @@
             <h3>Дополнительные курсы</h3>
             <button class="close-button" @click="closeModal">×</button>
           </div>
-          
           <div class="modal-body">
             <div v-if="additionalCoursesInfo.length === 0" class="no-courses">
               Нет доступных курсов
             </div>
             <div v-else class="courses-list">
-              <TransitionGroup name="course-list" tag="div" class="courses-list">
-                <div 
-                  v-for="(course, index) in additionalCoursesInfo" 
-                  :key="course.english_name"
-                  class="course-item"
-                  :style="{ animationDelay: `${index * 0.05}s` }"
-                  @click="openCourse(course)"
-                >
-                  <div class="course-name">{{ course.name }}</div>
-                  <div class="course-subject">{{ course.subject }}</div>
-                  <div class="course-button">Перейти →</div>
-                </div>
-              </TransitionGroup>
+              <div 
+                v-for="(course, index) in additionalCoursesInfo" 
+                :key="course.english_name"
+                class="course-item"
+                @click="openCourse(course)"
+              >
+                <div class="course-name">{{ course.name }}</div>
+                <div class="course-subject">{{ course.subject }}</div>
+                <div class="course-button">Перейти →</div>
+              </div>
             </div>
           </div>
         </div>
@@ -160,39 +160,64 @@ export default {
 <style scoped>
 .block {
   background-color: #b241d1;
-  border-radius: 5%;
-  padding: 8% 5%;
+  border-radius: 12px;
+  padding: 14px 18px 12px 18px;
   color: white;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  min-height: 280px;
-  cursor: pointer;
+  transition: opacity 0.3s ease;
   height: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+  max-height: 240px;
+  min-height: 180px;
 }
 
 .block:hover {
-  opacity: 0.9;
-  transform: translateY(-5px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  opacity: 0.85;
 }
 
 .subject_name { 
-  font-size: 1.5vw;
-  font-weight: bold;
-  border-bottom: #fff solid 2px;
-  padding-bottom: 15px;
-  margin-bottom: 20px;
+  font-size: clamp(15px, 1.2vw, 19px);
+  font-weight: 600;
   text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  word-break: break-word;
+  line-height: 1.2;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.courses-count {
-  font-size: 1.2vw;
-  text-align: center;
-  opacity: 0.95;
-  margin: 20px 0;
-  line-height: 1.4;
+.stats {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 14px;
+}
+
+.stat-value {
+  font-size: clamp(22px, 2vw, 32px);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: clamp(9px, 0.65vw, 11px);
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .button {
@@ -201,71 +226,22 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  border-radius: 50px;
+  border-radius: 20px;
   text-decoration: none;
-  padding: 12px 20px;
+  padding: 5px 14px;
   font-weight: 600;
+  font-size: clamp(12px, 0.85vw, 14px);
   transition: all 0.3s ease;
-  text-align: center;
-  cursor: pointer;
-  font-size: 1rem;
-  margin-top: auto;
+  margin-top: 6px;
+  min-height: 30px;
+  width: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .button:hover {
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  background-color: #f0f0f0;
-}
-
-/* Анимации для модального окна */
-.modal-fade-enter-active,
-.modal-fade-leave-active {
-  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.modal-fade-enter-from,
-.modal-fade-leave-to {
-  opacity: 0;
-}
-
-.modal-slide-enter-active,
-.modal-slide-leave-active {
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.modal-slide-enter-from {
-  transform: translateY(-30px) scale(0.95);
-  opacity: 0;
-}
-
-.modal-slide-leave-to {
-  transform: translateY(30px) scale(0.95);
-  opacity: 0;
-}
-
-/* Анимация для списка курсов */
-.course-list-enter-active {
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.course-list-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: absolute;
-}
-
-.course-list-enter-from {
-  opacity: 0;
-  transform: translateX(-30px);
-}
-
-.course-list-leave-to {
-  opacity: 0;
-  transform: translateX(30px);
-}
-
-.course-list-move {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Модальное окно */
@@ -285,9 +261,9 @@ export default {
 
 .modal-content {
   background: white;
-  border-radius: 20px;
+  border-radius: 16px;
   width: 90%;
-  max-width: 600px;
+  max-width: 500px;
   max-height: 80vh;
   overflow: hidden;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
@@ -297,14 +273,14 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 25px;
+  padding: 16px 20px;
   background: linear-gradient(135deg, #b241d1 0%, #8a2be2 100%);
   color: white;
 }
 
 .modal-header h3 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   font-weight: 600;
 }
 
@@ -312,191 +288,174 @@ export default {
   background: none;
   border: none;
   color: white;
-  font-size: 2rem;
+  font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
-  width: 35px;
-  height: 35px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s;
 }
 
 .close-button:hover {
   background-color: rgba(255, 255, 255, 0.2);
-  transform: rotate(90deg);
 }
 
 .modal-body {
-  padding: 20px;
+  padding: 16px 20px;
   max-height: calc(80vh - 80px);
   overflow-y: auto;
-}
-
-.modal-body::-webkit-scrollbar {
-  width: 8px;
-}
-
-.modal-body::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 10px;
-}
-
-.modal-body::-webkit-scrollbar-thumb {
-  background: #b241d1;
-  border-radius: 10px;
-}
-
-.modal-body::-webkit-scrollbar-thumb:hover {
-  background: #8a2be2;
 }
 
 .courses-list {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
 }
 
 .course-item {
   background: linear-gradient(135deg, #b241d1 0%, #8a2be2 100%);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 10px;
+  padding: 16px 18px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  animation: slideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  opacity: 0;
-  transform: translateX(-20px);
-}
-
-@keyframes slideIn {
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  transition: transform 0.2s ease;
 }
 
 .course-item:hover {
-  transform: translateX(8px) scale(1.02);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  transform: translateX(4px);
 }
 
 .course-name {
-  font-size: 1.2rem;
-  font-weight: bold;
+  font-size: 1rem;
+  font-weight: 600;
   color: white;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .course-subject {
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.9);
-  margin-bottom: 12px;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 8px;
 }
 
 .course-button {
   display: inline-block;
   background-color: white;
-  color: white;
-  padding: 8px 20px;
-  border-radius: 25px;
-  font-size: 0.9rem;
+  color: #b241d1;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 0.8rem;
   font-weight: 600;
-  text-align: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  width: fit-content;
-}
-
-.course-item:hover .course-button {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  background-color: #f8f8f8;
 }
 
 .no-courses {
   text-align: center;
-  padding: 40px;
+  padding: 30px;
   color: #666;
-  font-size: 1.1rem;
 }
 
-/* Адаптивность */
-@media (max-width: 1024px) {
-  .subject_name {
-    font-size: 2.2vw;
-  }
-  
-  .courses-count {
-    font-size: 1.5vw;
-  }
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+.modal-slide-enter-active,
+.modal-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.modal-slide-enter-from {
+  transform: scale(0.95) translateY(-10px);
+  opacity: 0;
+}
+
+.modal-slide-leave-to {
+  transform: scale(0.95) translateY(10px);
+  opacity: 0;
 }
 
 @media (max-width: 768px) {
-  .subject_name {
-    font-size: 3.5vw;
+  .block {
+    max-height: 210px;
+    min-height: 160px;
+    padding: 12px 14px 10px 14px;
+    border-radius: 10px;
   }
   
-  .courses-count {
-    font-size: 2.5vw;
+  .subject_name {
+    font-size: clamp(14px, 2.5vw, 17px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+  }
+  
+  .stat-value {
+    font-size: clamp(19px, 3.5vw, 26px);
+  }
+  
+  .stat-label {
+    font-size: clamp(8px, 1.4vw, 10px);
+  }
+  
+  .stat-item {
+    padding: 3px 10px;
   }
   
   .button {
-    padding: 10px 20px;
-    font-size: 0.9rem;
-  }
-  
-  .block {
-    min-height: 240px;
+    font-size: clamp(11px, 1.8vw, 13px);
+    padding: 4px 10px;
+    min-height: 26px;
+    border-radius: 16px;
+    margin-top: 4px;
   }
   
   .modal-content {
-    width: 95%;
-    margin: 10px;
-  }
-  
-  .modal-header h3 {
-    font-size: 1.2rem;
-  }
-  
-  .course-name {
-    font-size: 1rem;
-  }
-  
-  .course-subject {
-    font-size: 0.8rem;
-  }
-  
-  .course-button {
-    padding: 6px 16px;
-    font-size: 0.85rem;
+    max-width: 95%;
   }
 }
 
 @media (max-width: 480px) {
-  .subject_name {
-    font-size: 4.5vw;
-  }
-  
-  .courses-count {
-    font-size: 3.5vw;
-  }
-  
   .block {
-    min-height: 220px;
+    max-height: 180px;
+    min-height: 140px;
+    padding: 10px 10px 8px 10px;
+    border-radius: 8px;
+  }
+  
+  .subject_name {
+    font-size: clamp(12px, 3vw, 15px);
+    padding-bottom: 3px;
+    margin-bottom: 4px;
+  }
+  
+  .stat-item {
+    padding: 2px 8px;
+  }
+  
+  .stat-value {
+    font-size: clamp(17px, 4.5vw, 22px);
+  }
+  
+  .stat-label {
+    font-size: clamp(7px, 1.6vw, 9px);
   }
   
   .button {
-    padding: 8px 16px;
-    font-size: 0.85rem;
-  }
-  
-  .course-item {
-    padding: 15px;
-  }
-  
-  .course-name {
-    font-size: 0.95rem;
+    font-size: clamp(10px, 2.8vw, 12px);
+    padding: 3px 8px;
+    min-height: 22px;
+    border-radius: 14px;
+    margin-top: 3px;
   }
 }
 </style>

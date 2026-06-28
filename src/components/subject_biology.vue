@@ -3,9 +3,17 @@
   <div v-else-if="error" class="error">{{ error }}</div>
   <div v-else-if="subject2" class="block">
     <div class="subject_name">{{ subject2 }}</div>
-    <div class="score">Количество баллов: {{ total_score }}</div>
-    <div class="rating">Место в рейтинге: {{ global_rating }}</div>
-    
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-value">{{ total_score }}</span>
+        <span class="stat-label">Баллы</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-value">{{ global_rating }}</span>
+        <span class="stat-label">Место</span>
+      </div>
+    </div>
     <a v-if="subject2 === 'Биология ЕГЭ'" href="/biology_ege.html" class="button">
       Перейти
     </a>
@@ -125,15 +133,16 @@ export default {
 <style scoped>
 .block {
   background-color: #b241d1;
-  border-radius: 5%;
-  padding: 8% 5%;
+  border-radius: 12px;
+  padding: 14px 18px 12px 18px;
   color: white;
-  display: grid;
-  grid-template-rows: auto auto auto auto;
-  gap: 10%;
+  display: flex;
+  flex-direction: column;
   transition: opacity 0.3s ease;
-  min-height: 280px;
   height: 100%;
+  box-sizing: border-box;
+  max-height: 240px;
+  min-height: 180px;
 }
 
 .block:hover {
@@ -141,41 +150,92 @@ export default {
 }
 
 .subject_name { 
-  font-size: 1.5vw;
-  font-weight: bold;
-  border-bottom: #fff solid 2px;
-  padding-bottom: 10px;
+  font-size: clamp(15px, 1.2vw, 19px);
+  font-weight: 600;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  word-break: break-word;
+  line-height: 1.2;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.score, .rating {
-  font-size: 1vw;
+.stats {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+  gap: 0;
+  padding: 4px 0;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 14px;
+}
+
+.stat-value {
+  font-size: clamp(22px, 2vw, 32px);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: clamp(9px, 0.65vw, 11px);
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .button {
   background-color: #fff;
   color: #b241d1;
-  display: grid;
+  display: flex;
   justify-content: center;
   align-items: center;
-  border-radius: 30px;
+  border-radius: 20px;
   text-decoration: none;
-  padding: 10px 20px;
+  padding: 5px 14px;
   font-weight: 600;
+  font-size: clamp(12px, 0.85vw, 14px);
   transition: all 0.3s ease;
+  margin-top: 6px;
+  min-height: 30px;
+  width: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .button:hover {
-  transform: scale(1.05);
+  transform: scale(1.03);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .loading, .error, .no-data {
-  padding: 20px;
+  padding: 14px;
   text-align: center;
-  font-size: 1.2rem;
+  font-size: clamp(0.85rem, 1.2vw, 1rem);
   background-color: #f8f9fa;
   border-radius: 10px;
   color: #666;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-height: 240px;
+  min-height: 180px;
 }
 
 .error {
@@ -187,103 +247,84 @@ export default {
   color: #b241d1;
 }
 
-/* Адаптивность */
-@media (max-width: 1200px) {
-  .subject_name {
-    font-size: 1.8vw;
-  }
-  
-  .score, .rating {
-    font-size: 1.2vw;
-  }
-}
-
-@media (max-width: 992px) {
-  .block {
-    min-height: 240px;
-    padding: 6% 4%;
-  }
-  
-  .subject_name {
-    font-size: 2vw;
-  }
-  
-  .score, .rating {
-    font-size: 1.3vw;
-  }
-  
-  .button {
-    font-size: 1vw;
-    padding: 8px 16px;
-  }
-}
-
 @media (max-width: 768px) {
   .block {
-    min-height: 200px;
-    padding: 5% 4%;
-    gap: 8%;
-    border-radius: 12px;
+    max-height: 210px;
+    min-height: 160px;
+    padding: 12px 14px 10px 14px;
+    border-radius: 10px;
   }
   
   .subject_name {
-    font-size: 3.5vw;
-    padding-bottom: 8px;
+    font-size: clamp(14px, 2.5vw, 17px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
   }
   
-  .score, .rating {
-    font-size: 2.5vw;
+  .stat-value {
+    font-size: clamp(19px, 3.5vw, 26px);
+  }
+  
+  .stat-label {
+    font-size: clamp(8px, 1.4vw, 10px);
+  }
+  
+  .stat-divider {
+    height: 28px;
+  }
+  
+  .stat-item {
+    padding: 3px 10px;
   }
   
   .button {
-    font-size: 2.5vw;
-    padding: 8px 16px;
-    border-radius: 25px;
+    font-size: clamp(11px, 1.8vw, 13px);
+    padding: 4px 10px;
+    min-height: 26px;
+    border-radius: 16px;
+    margin-top: 4px;
   }
 }
 
 @media (max-width: 480px) {
   .block {
-    min-height: 180px;
-    padding: 4% 3%;
-    gap: 6%;
-    border-radius: 10px;
+    max-height: 180px;
+    min-height: 140px;
+    padding: 10px 10px 8px 10px;
+    border-radius: 8px;
   }
   
   .subject_name {
-    font-size: 4.5vw;
-    padding-bottom: 6px;
+    font-size: clamp(12px, 3vw, 15px);
+    padding-bottom: 3px;
+    margin-bottom: 4px;
   }
   
-  .score, .rating {
-    font-size: 3.2vw;
+  .stat-item {
+    padding: 2px 8px;
   }
   
-  .button {
-    font-size: 3.2vw;
-    padding: 6px 12px;
-    border-radius: 20px;
-  }
-}
-
-@media (max-width: 360px) {
-  .block {
-    min-height: 160px;
-    padding: 3% 3%;
-    gap: 5%;
+  .stat-value {
+    font-size: clamp(17px, 4.5vw, 22px);
   }
   
-  .subject_name {
-    font-size: 5vw;
+  .stat-label {
+    font-size: clamp(7px, 1.6vw, 9px);
   }
   
-  .score, .rating {
-    font-size: 3.5vw;
+  .stat-divider {
+    height: 24px;
   }
   
   .button {
-    font-size: 3.5vw;
-    padding: 5px 10px;
+    font-size: clamp(10px, 2.8vw, 12px);
+    padding: 3px 8px;
+    min-height: 22px;
+    border-radius: 14px;
+    margin-top: 3px;
   }
 }
 </style>

@@ -247,10 +247,13 @@ export default {
         if (studentIds.length === 0) return
 
         // Загружаем данные всех студентов за один запрос
-        const { data: studentsData, error } = await supabase
-          .from('students')
-          .select('user_id, subject1_payment_date, subject2_payment_date')
-          .in('user_id', studentIds)
+        const { data: activeStudents } = await supabase
+  .from('students')
+  .select('user_id')
+  .in('user_id', studentIds)
+  .eq('is_active', true)  // ← Добавить
+  const activeUserIds = new Set(activeStudents.map(s => s.user_id))
+notifications.value = notifications.value.filter(n => activeUserIds.has(n.student_id))
 
         if (error) {
           console.error('Ошибка загрузки данных студентов:', error)

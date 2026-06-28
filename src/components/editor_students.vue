@@ -276,9 +276,10 @@ const totalPages = computed(() => {
 
 // Загрузка студентов с пагинацией
 const fetchStudents = async () => {
-  let query = supabase
-    .from('students')
-    .select('*', { count: 'exact' });
+ let query = supabase
+  .from('students')
+  .select('*', { count: 'exact' })
+  .eq('is_active', true)  // ← Добавить
 
   // Применяем поиск, если есть запрос
   if (searchQuery.value) {

@@ -201,10 +201,12 @@ export default {
         let allStudents = []
         
         for (const pattern of searchPatterns) {
-          const { data: studentsData, error: studentsError } = await supabase
-            .from('students')
-            .select('*')
-            .ilike('tutor', `%${pattern}%`)
+          // В запросе на получение студентов:
+const { data: students, error: studentsError } = await supabase
+  .from('students')
+  .select('*')
+  .eq('is_active', true)  // ← Добавить
+  .ilike('tutor', `%${pattern}%`)
           
           if (studentsError) throw studentsError
           

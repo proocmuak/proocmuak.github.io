@@ -7,6 +7,7 @@ import SubjectRating from './components/SubjectRating.vue';
 import StudentStatic from './components/StudentStatic.vue';
 import HomeworkList from './components/HomeworkList.vue';
 import UsefulMaterials from './components/useful_materials.vue';
+import GeneratorVariants from './components/generator_variants.vue';
 import { supabase } from './supabase';
 
 export default{
@@ -17,7 +18,8 @@ export default{
         SubjectRating, 
         HomeworkList,
         StudentStatic,
-        UsefulMaterials
+        UsefulMaterials,
+        GeneratorVariants
     },
     data() {
         return {
@@ -50,6 +52,9 @@ export default{
                     break;
                 case 'useful_materials':
                     this.currentComponent = markRaw(UsefulMaterials);
+                    break;
+                case 'generator_variants':
+                    this.currentComponent = markRaw(GeneratorVariants);
                     break;
                 default:
                     this.currentComponent = markRaw(main_student_page);

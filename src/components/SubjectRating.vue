@@ -107,51 +107,77 @@ export default {
       }
     },
 
-    async fetchAllStudents() {
-      if (!this.selectedSubject) {
-        this.allStudents = [];
-        return;
-      }
+ async fetchAllStudents() {
+  if (!this.selectedSubject) {
+    this.allStudents = [];
+    return;
+  }
 
-      this.loading = true;
-      this.error = null;
-      this.allStudents = [];
-      
-      try {
-        const { data: ratingData, error: ratingError } = await supabase
-          .from(this.ratingTable)
-          .select('user_id, total_score')
-          .order('total_score', { ascending: false });
-        
-        if (ratingError) throw ratingError;
-        if (!ratingData || ratingData.length === 0) return;
-        
-        const { data: allPersonalities, error: personalitiesError } = await supabase
-          .from('personalities')
-          .select('user_id, email, first_name, last_name');
-        
-        if (personalitiesError) throw personalitiesError;
-        
-        this.allStudents = ratingData
-          .map(ratingItem => {
-            const personalityData = allPersonalities?.find(p => p.user_id === ratingItem.user_id);
-            return {
-              user_id: ratingItem.user_id,
-              email: personalityData?.email || 'Не указан',
-              first_name: personalityData?.first_name || '',
-              last_name: personalityData?.last_name || '',
-              total_score: ratingItem.total_score || 0
-            };
-          })
-          .filter(s => s.first_name || s.last_name || s.email !== 'Не указан');
-        
-      } catch (err) {
-        console.error('Ошибка загрузки:', err);
-        this.error = err.message;
-      } finally {
-        this.loading = false;
-      }
-    },
+  this.loading = true;
+  this.error = null;
+  this.allStudents = [];
+  
+  try {
+    // 1. Получаем рейтинг всех учеников
+    const { data: ratingData, error: ratingError } = await supabase
+      .from(this.ratingTable)
+      .select('user_id, total_score')
+      .order('total_score', { ascending: false });
+    
+    if (ratingError) throw ratingError;
+    if (!ratingData || ratingData.length === 0) return;
+    
+    // 2. Получаем ID всех студентов из рейтинга
+    const userIds = ratingData.map(r => r.user_id);
+    
+    // 3. Получаем ТОЛЬКО активных студентов
+    const { data: activeStudents, error: activeError } = await supabase
+      .from('students')
+      .select('user_id')
+      .in('user_id', userIds)
+      .eq('is_active', true);  // ← КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
+    
+    if (activeError) {
+      console.error('Ошибка проверки активности студентов:', activeError);
+      // Если ошибка, пропускаем фильтрацию
+      return;
+    }
+    
+    // 4. Создаем Set с ID активных студентов для быстрой проверки
+    const activeUserIds = new Set(activeStudents.map(s => s.user_id));
+    
+    // 5. Фильтруем рейтинг - оставляем только активных студентов
+    const filteredRating = ratingData.filter(r => activeUserIds.has(r.user_id));
+    
+    // 6. Получаем данные личностей только для активных студентов
+    const { data: allPersonalities, error: personalitiesError } = await supabase
+      .from('personalities')
+      .select('user_id, email, first_name, last_name')
+      .in('user_id', filteredRating.map(r => r.user_id));
+    
+    if (personalitiesError) throw personalitiesError;
+    
+    // 7. Формируем итоговый массив
+    this.allStudents = filteredRating
+      .map(ratingItem => {
+        const personalityData = allPersonalities?.find(p => p.user_id === ratingItem.user_id);
+        return {
+          user_id: ratingItem.user_id,
+          email: personalityData?.email || 'Не указан',
+          first_name: personalityData?.first_name || '',
+          last_name: personalityData?.last_name || '',
+          total_score: ratingItem.total_score || 0
+        };
+      })
+      .filter(s => s.first_name || s.last_name || s.email !== 'Не указан');
+    
+  } catch (err) {
+    console.error('Ошибка загрузки:', err);
+    this.error = err.message;
+  } finally {
+    this.loading = false;
+  }
+},
     
     formatFullName(student) {
       if (student.first_name && student.last_name) {

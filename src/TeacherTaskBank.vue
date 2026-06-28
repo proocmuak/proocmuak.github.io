@@ -7,6 +7,10 @@
       :homework-name="homeworkName"
       :subject="subject"
       :exam-type="examType"
+      @task-added="handleTaskAdded"
+      @task-removed="handleTaskRemoved"
+      @task-updated="handleTaskUpdated"
+      @task-deleted="handleTaskDeleted"
     />
   </div>
 </template>
@@ -53,7 +57,6 @@ export default {
         };
     }, 
     created() {
-      // Формируем полное название предмета для фильтров
       const subjectNames = {
         'biology': 'Биология',
         'chemistry': 'Химия'
@@ -68,6 +71,18 @@ export default {
     methods: {
         handleFiltersChanged(newFilters) {
           this.filters = { ...this.filters, ...newFilters };
+        },
+        handleTaskAdded(taskId) {
+          this.$emit('task-added', taskId);
+        },
+        handleTaskRemoved(taskId) {
+          this.$emit('task-removed', taskId);
+        },
+        handleTaskUpdated(updatedTask) {
+          this.$emit('task-updated', updatedTask);
+        },
+        handleTaskDeleted(taskId) {
+          this.$emit('task-deleted', taskId);
         }
     }
 }

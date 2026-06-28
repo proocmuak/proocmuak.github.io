@@ -1,6 +1,7 @@
 <script>
 import { supabase } from '../supabase';
 import DOMPurify from 'dompurify';
+import TaskEditorModal from './TaskEditorModal.vue';
 
 // === Конфигурация прокси сервера ===
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -14,6 +15,9 @@ const PROXY_CONFIG = {
 
 export default {
   name: 'TeacherTaskCard',
+  components: {
+    TaskEditorModal
+  },
   props: {
     task: {
       type: Object,
@@ -29,18 +33,25 @@ export default {
     },
     subject: {
       type: String,
-      required: true,
+      required: true
     },
     examType: {
       type: String,
       required: true
+    },
+    isInHomework: {
+      type: Boolean,
+      default: false
     }
   },
   data() {
     return {
       showImageModal: false,
       selectedImage: '',
-      isAdded: false
+      isAdded: false,
+      showEditorModal: false,
+      deleting: false,
+      homeworkTaskNumber: null
     };
   },
   computed: {
@@ -55,6 +66,17 @@ export default {
     },
     homeworkTableName() {
       return `${this.subject}_${this.examType}_homework_tasks`;
+    },
+    subjectFullName() {
+      const subjectNames = {
+        'chemistry': 'Химия',
+        'biology': 'Биология'
+      };
+      const examTypeNames = {
+        'ege': 'ЕГЭ',
+        'oge': 'ОГЭ'
+      };
+      return `${subjectNames[this.subject] || this.subject} ${examTypeNames[this.examType] || this.examType}`;
     }
   },
   methods: {
@@ -65,15 +87,12 @@ export default {
       });
     },
 
-    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: получение URL изображения через прокси ===
     getImageUrl(imagePath) {
       if (!imagePath) return '';
       
       let path = String(imagePath);
       
-      // Если это абсолютный URL
       if (path.startsWith('http')) {
-        // Если это старый URL Supabase, конвертируем в проксированный
         if (path.includes('supabase.co')) {
           const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/);
           if (match) {
@@ -83,18 +102,15 @@ export default {
         return path;
       }
       
-      // Очищаем путь от возможных префиксов
       let cleanPath = path;
       if (cleanPath.startsWith('task-images/')) {
         cleanPath = cleanPath.replace('task-images/', '');
       }
       
-      // Всегда используем прокси, если он включён
       if (PROXY_CONFIG.enabled) {
         return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`;
       }
       
-      // Fallback только если прокси выключен
       try {
         const { data: { publicUrl } } = supabase
           .storage
@@ -111,78 +127,159 @@ export default {
       try {
         const { data, error } = await supabase
           .from(this.homeworkTableName)
-          .select('task_id')
+          .select('task_id, number')
           .eq('homework_id', this.homeworkId)
           .eq('task_id', this.task.id)
           .maybeSingle();
         
         if (data) {
           this.isAdded = true;
+          this.homeworkTaskNumber = data.number;
         }
       } catch (error) {
         console.error('Ошибка проверки:', error);
       }
     },
 
-    async addToHomework() {
-      try {
-        // Проверяем, не добавлено ли уже задание
-        const { data: existingTask, error: checkError } = await supabase
-          .from(this.homeworkTableName)
-          .select('task_id')
-          .eq('homework_id', this.homeworkId)
-          .eq('task_id', this.task.id)
-          .maybeSingle();
-        
-        if (existingTask) {
-          this.isAdded = true;
-          alert('Это задание уже добавлено в домашнюю работу');
-          return;
-        }
-        
-        // ВЫЧИСЛЯЕМ НОМЕР ЗАДАНИЯ
-        const { data: tasksData, error: tasksError } = await supabase
-          .from(this.homeworkTableName)
-          .select('number')
-          .eq('homework_id', this.homeworkId)
-          .order('number', { ascending: false });
-        
-        if (tasksError) {
-          console.error('Ошибка получения максимального номера:', tasksError);
-          var nextNumber = 1;
-        } else {
-          var nextNumber = tasksData && tasksData.length > 0 
-            ? Math.max(...tasksData.map(task => task.number || 0)) + 1 
-            : 1;
-        }
-        
-        // Добавляем задание с вычисленным номером
-        const { error } = await supabase
-          .from(this.homeworkTableName)
-          .insert({
-            task_id: this.task.id,
-            homework_id: this.homeworkId,
-            homework_name: this.homeworkName,
-            number: nextNumber,
-          });
-        
-        if (error) {
-          if (error.code === '23505') {
-            this.isAdded = true;
-            alert('Это задание уже есть в домашней работе');
-          } else {
-            throw error;
-          }
-        } else {
-          this.isAdded = true;
-          this.$emit('task-added', this.task.id);
-          alert(`Задание добавлено под номером ${nextNumber}!`);
-        }
-        
-      } catch (error) {
-        console.error('Ошибка добавления:', error);
-        alert('Ошибка при добавлении задания: ' + error.message);
+async addToHomework() {
+  try {
+    // Проверяем, есть ли уже задание
+    const { data: existingTask, error: checkError } = await supabase
+      .from(this.homeworkTableName)
+      .select('task_id')
+      .eq('homework_id', this.homeworkId)
+      .eq('task_id', this.task.id)
+      .maybeSingle();
+    
+    if (existingTask) {
+      this.isAdded = true;
+      alert('Это задание уже добавлено в домашнюю работу');
+      return;
+    }
+    
+    // Получаем максимальный номер
+    const { data: tasksData, error: tasksError } = await supabase
+      .from(this.homeworkTableName)
+      .select('number')
+      .eq('homework_id', this.homeworkId)
+      .order('number', { ascending: false })
+      .limit(1);
+    
+    let nextNumber = 1;
+    if (!tasksError && tasksData && tasksData.length > 0) {
+      nextNumber = (tasksData[0].number || 0) + 1;
+    }
+    
+    // Вставляем запись - ПРОПУСКАЕМ task_id, пусть генерируется автоматически
+    const { data, error } = await supabase
+      .from(this.homeworkTableName)
+      .insert({
+        homework_id: this.homeworkId,
+        homework_name: this.homeworkName,
+        number: nextNumber,
+        task_id: this.task.id  // ← передаем task_id
+      })
+      .select();
+    
+    if (error) {
+      if (error.code === '23505') {
+        this.isAdded = true;
+        alert('Это задание уже есть в домашней работе');
+      } else {
+        throw error;
       }
+    } else {
+      this.isAdded = true;
+      this.homeworkTaskNumber = nextNumber;
+      this.$emit('task-added', this.task.id);
+      alert(`Задание добавлено под номером ${nextNumber}!`);
+    }
+    
+  } catch (error) {
+    console.error('Ошибка добавления:', error);
+    alert('Ошибка при добавлении задания: ' + error.message);
+  }
+},
+
+async removeFromHomework() {
+  if (!confirm(`Удалить задание #${this.task.number} из домашней работы?`)) return;
+  
+  this.deleting = true;
+  
+  try {
+    // Удаляем задание
+    const { error } = await supabase
+      .from(this.homeworkTableName)
+      .delete()
+      .eq('homework_id', this.homeworkId)
+      .eq('task_id', this.task.id);
+    
+    if (error) throw error;
+    
+    // Пересортировываем номера оставшихся заданий
+    await this.renumberHomeworkTasks();
+    
+    this.isAdded = false;
+    this.homeworkTaskNumber = null;
+    this.$emit('task-removed', this.task.id);
+    alert('Задание удалено из домашней работы');
+    
+  } catch (error) {
+    console.error('Ошибка удаления:', error);
+    alert('Ошибка при удалении задания: ' + error.message);
+  } finally {
+    this.deleting = false;
+  }
+},
+
+async renumberHomeworkTasks() {
+  try {
+    // Получаем все задания этой домашней работы, отсортированные по номеру
+    const { data: tasks, error } = await supabase
+      .from(this.homeworkTableName)
+      .select('task_id, number')
+      .eq('homework_id', this.homeworkId)
+      .order('number', { ascending: true });
+    
+    if (error) throw error;
+    if (!tasks || tasks.length === 0) return;
+    
+    // Обновляем номера последовательно
+    for (let i = 0; i < tasks.length; i++) {
+      const newNumber = i + 1;
+      if (tasks[i].number !== newNumber) {
+        const { error: updateError } = await supabase
+          .from(this.homeworkTableName)
+          .update({ number: newNumber })
+          .eq('homework_id', this.homeworkId)
+          .eq('task_id', tasks[i].task_id);
+        
+        if (updateError) throw updateError;
+      }
+    }
+    
+  } catch (error) {
+    console.error('Ошибка пересортировки номеров:', error);
+  }
+},
+    openEditor() {
+      this.showEditorModal = true;
+      document.body.style.overflow = 'hidden';
+    },
+
+    closeEditor() {
+      this.showEditorModal = false;
+      document.body.style.overflow = '';
+    },
+
+    handleTaskUpdated(updatedTask) {
+      this.$emit('task-updated', updatedTask);
+      this.closeEditor();
+    },
+
+    handleTaskDeleted() {
+      this.$emit('task-deleted', this.task.id);
+      this.closeEditor();
     },
 
     openImageModal(imageUrl) {
@@ -196,8 +293,20 @@ export default {
       document.body.style.overflow = '';
     }
   },
+  watch: {
+    isInHomework: {
+      immediate: true,
+      handler(newVal) {
+        this.isAdded = newVal;
+      }
+    }
+  },
   async created() {
-    await this.checkIfAlreadyAdded();
+    if (!this.isInHomework) {
+      await this.checkIfAlreadyAdded();
+    } else {
+      this.isAdded = true;
+    }
   }
 }
 </script>
@@ -210,14 +319,31 @@ export default {
         <span class="task-id">#{{ task.id }}</span>
         <span class="task-number">Задание №{{ task.number }}</span>
         <span class="task-points">Баллов: {{ task.points }}</span>
+        <span v-if="isAdded && homeworkTaskNumber" class="homework-number-badge">
+          В домашке №{{ homeworkTaskNumber }}
+        </span>
       </div>
-      <button 
-        @click="addToHomework" 
-        class="add-button"
-        :disabled="isAdded"
-      >
-        {{ isAdded ? '✓ Уже в домашке' : '➕ Добавить' }}
-      </button>
+      <div class="task-actions">
+        <button 
+          v-if="isAdded"
+          @click="removeFromHomework" 
+          class="remove-button"
+          :disabled="deleting"
+        >
+          {{ deleting ? 'Удаление...' : '🗑 Удалить из домашки' }}
+        </button>
+        <button 
+          v-else
+          @click="addToHomework" 
+          class="add-button"
+          :disabled="isAdded"
+        >
+          {{ isAdded ? '✓ Уже в домашке' : '➕ Добавить' }}
+        </button>
+        <button @click="openEditor" class="edit-button">
+          ✏️ Редактировать
+        </button>
+      </div>
     </div>
     
     <div class="task-content">
@@ -256,7 +382,6 @@ export default {
           <strong>Правильный ответ:</strong> 
           <span v-html="sanitizeHtml(task.answer)"></span>
           
-          <!-- Изображения ответа -->
           <div v-if="task.image_answer && task.image_answer.length" class="answer-images">
             <div class="image-grid">
               <div 
@@ -282,7 +407,6 @@ export default {
       <div class="explanation-title">Пояснение:</div>
       <div class="explanation-content" v-html="sanitizeHtml(task.explanation)"></div>
       
-      <!-- Изображения пояснения -->
       <div v-if="task.image_explanation && task.image_explanation.length" class="explanation-images">
         <div class="image-grid">
           <div 
@@ -308,6 +432,18 @@ export default {
         <button class="close-modal" @click="closeImageModal">×</button>
       </div>
     </div>
+
+    <!-- Модальное окно редактора -->
+    <Teleport to="body">
+      <TaskEditorModal
+        v-if="showEditorModal"
+        :task="task"
+        :subject="subjectFullName"
+        @close="closeEditor"
+        @task-updated="handleTaskUpdated"
+        @task-deleted="handleTaskDeleted"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -361,17 +497,35 @@ export default {
   font-size: 0.9em;
 }
 
+.homework-number-badge {
+  display: inline-block;
+  background: #b241d1;
+  color: white;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.task-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .add-button {
-  padding: 8px 16px;
+  padding: 6px 14px;
   background-color: #42b983;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   white-space: nowrap;
-  height: fit-content;
 }
 
 .add-button:hover:not(:disabled) {
@@ -381,6 +535,43 @@ export default {
 .add-button:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+.remove-button {
+  padding: 6px 14px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.remove-button:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.remove-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.edit-button {
+  padding: 6px 14px;
+  background-color: #ffc107;
+  color: #333;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.edit-button:hover {
+  background-color: #e0a800;
 }
 
 .task-content {
@@ -556,7 +747,6 @@ td {
   background: #9a36b8;
 }
 
-/* Адаптивность */
 @media (max-width: 768px) {
   .task-card {
     padding: 12px;
@@ -566,8 +756,13 @@ td {
     flex-direction: column;
   }
   
-  .add-button {
-    align-self: flex-start;
+  .task-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+  
+  .task-actions button {
+    width: 100%;
   }
   
   .image-grid {
