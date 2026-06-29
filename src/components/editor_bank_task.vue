@@ -978,56 +978,62 @@ export default {
       this.explanationImages.splice(index, 1);
       this.updateUploadStatus();
     },
+async uploadImagesToStorage(images, folder) {
+  if (!images.length) return []
+  
+  const uploadedUrls = []
+  
+  try {
+    // Определяем имя папки предмета
+    let subjectFolder;
+    if (this.selectedSubject === 'Химия ЕГЭ' || this.selectedSubject === 'Химия ОГЭ') {
+      subjectFolder = 'chemistry';
+    } else if (this.selectedSubject === 'Биология ЕГЭ' || this.selectedSubject === 'Биология ОГЭ') {
+      subjectFolder = 'biology';
+    } else {
+      subjectFolder = 'other';
+    }
     
-    async uploadImagesToStorage(images, folder) {
-      if (!images.length) return [];
+    // Определяем тип экзамена
+    const examType = this.selectedSubject.includes('ЕГЭ') ? 'ege' : 'oge';
+    
+    for (const img of images) {
+      const fileExt = img.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
       
-      const uploadedPaths = [];
+      // ⚠️ ВАЖНО: путь внутри бакета — БЕЗ task-images/
+      // И используем biology_oge (с подчеркиванием), а не biology/oge
+      const filePath = `tasks/${subjectFolder}_${examType}/${folder}/${fileName}`;
       
-      try {
-        // Определяем папку предмета
-        let subjectFolder;
-        if (this.selectedSubject === 'Химия ЕГЭ' || this.selectedSubject === 'Химия ОГЭ') {
-          subjectFolder = 'chemistry';
-        } else if (this.selectedSubject === 'Биология ЕГЭ' || this.selectedSubject === 'Биология ОГЭ') {
-          subjectFolder = 'biology';
-        } else {
-          subjectFolder = 'other';
-        }
-        
-        // Определяем тип экзамена
-        const examType = this.selectedSubject.includes('ЕГЭ') ? 'ege' : 'oge';
-        
-        for (const img of images) {
-          const fileExt = img.name.split('.').pop();
-          const fileName = `${uuidv4()}.${fileExt}`;
-          
-          // Сохраняем ТОЛЬКО путь, а не полный URL!
-          const filePath = `task-images/tasks/${subjectFolder}/${examType}/${folder}/${fileName}`;
-          
-          const { error } = await supabase
-            .storage
-            .from('task-images')
-            .upload(filePath, img.file, {
-              upsert: false,
-              contentType: img.file.type
-            });
-          
-          if (error) {
-            console.error('Upload error:', error);
-            throw error;
-          }
-          
-          // Сохраняем только путь к файлу
-          uploadedPaths.push(filePath);
-        }
-        
-        return uploadedPaths;
-      } catch (error) {
-        console.error('Ошибка загрузки:', error);
+      // Загружаем файл
+      const { error } = await supabase
+        .storage
+        .from('task-images')
+        .upload(filePath, img.file, {
+          upsert: false,
+          contentType: img.file.type
+        });
+      
+      if (error) {
+        console.error('Upload error:', error);
         throw error;
       }
-    },
+      
+      // Получаем полный публичный URL
+      const { data } = supabase
+        .storage
+        .from('task-images')
+        .getPublicUrl(filePath);
+      
+      uploadedUrls.push(data.publicUrl);
+    }
+    
+    return uploadedUrls;
+  } catch (error) {
+    console.error('Ошибка загрузки:', error);
+    throw error;
+  }
+},
 
     async saveTask() {
       try {

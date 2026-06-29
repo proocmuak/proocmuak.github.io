@@ -863,41 +863,46 @@ export default {
       return formatTextWithParagraphs(task.text)
     }
 
-    const getImageUrl = (imagePath) => {
-      if (!imagePath) return ''
-      
-      let path = String(imagePath)
-      
-      if (path.startsWith('http')) {
-        if (path.includes('supabase.co')) {
-          const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/)
-          if (match) {
-            return `${PROXY_CONFIG.baseUrl}/task-images/${match[1]}`
-          }
-        }
-        return path
-      }
-      
-      let cleanPath = path
-      if (cleanPath.startsWith('task-images/')) {
-        cleanPath = cleanPath.replace('task-images/', '')
-      }
-      
-      if (PROXY_CONFIG.enabled) {
-        return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`
-      }
-      
-      try {
-        const { data: { publicUrl } } = supabase
-          .storage
-          .from('task-images')
-          .getPublicUrl(cleanPath)
-        return publicUrl
-      } catch (err) {
-        console.error('Ошибка получения URL изображения:', err)
-        return ''
+const getImageUrl = (imagePath) => {
+  if (!imagePath) return ''
+  
+  let path = String(imagePath)
+  
+  // Если это уже полный URL (старый формат)
+  if (path.startsWith('http')) {
+    // Если это старый URL Supabase, конвертируем в новый формат через прокси
+    if (path.includes('supabase.co')) {
+      const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/)
+      if (match) {
+        return `${PROXY_CONFIG.baseUrl}/task-images/${match[1]}`
       }
     }
+    return path
+  }
+  
+  // Очищаем путь от возможных префиксов
+  let cleanPath = path
+  if (cleanPath.startsWith('task-images/')) {
+    cleanPath = cleanPath.replace('task-images/', '')
+  }
+  
+  // Если прокси включен, используем его
+  if (PROXY_CONFIG.enabled) {
+    return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`
+  }
+  
+  // Fallback: прямой URL из Supabase
+  try {
+    const { data: { publicUrl } } = supabase
+      .storage
+      .from('task-images')
+      .getPublicUrl(cleanPath)
+    return publicUrl
+  } catch (err) {
+    console.error('Ошибка получения URL изображения:', err)
+    return ''
+  }
+}
 
     const getAnswerImageUrl = (imagePath) => {
       if (!imagePath) return ''

@@ -623,36 +623,41 @@ export default {
     },
 
     // === НОВАЯ ФУНКЦИЯ: загрузка изображения в Storage (возвращает путь) ===
-    async uploadImageToStorage(file, folder) {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${uuidv4()}.${fileExt}`;
-      
-      let subjectFolder;
-      if (this.subject === 'Химия ЕГЭ' || this.subject === 'Химия ОГЭ') {
-        subjectFolder = 'chemistry';
-      } else if (this.subject === 'Биология ЕГЭ' || this.subject === 'Биология ОГЭ') {
-        subjectFolder = 'biology';
-      } else {
-        subjectFolder = 'other';
-      }
-      
-      const examType = this.subject.includes('ЕГЭ') ? 'ege' : 'oge';
-      
-      // Сохраняем ТОЛЬКО путь, а не полный URL!
-      const filePath = `task-images/tasks/${subjectFolder}/${examType}/${folder}/${fileName}`;
-      
-      const { error } = await supabase
-        .storage
-        .from('task-images')
-        .upload(filePath, file, {
-          upsert: false,
-          contentType: file.type
-        });
-      
-      if (error) throw error;
-      
-      return filePath; // Возвращаем путь
-    },
+async uploadImageToStorage(file, folder) {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${uuidv4()}.${fileExt}`;
+  
+  let subjectFolder;
+  if (this.subject === 'Химия ЕГЭ' || this.subject === 'Химия ОГЭ') {
+    subjectFolder = 'chemistry';
+  } else if (this.subject === 'Биология ЕГЭ' || this.subject === 'Биология ОГЭ') {
+    subjectFolder = 'biology';
+  } else {
+    subjectFolder = 'other';
+  }
+  
+  const examType = this.subject.includes('ЕГЭ') ? 'ege' : 'oge';
+  
+  // ⚠️ ВАЖНО: biology_oge (с подчеркиванием)
+  const filePath = `tasks/${subjectFolder}_${examType}/${folder}/${fileName}`;
+  
+  const { error } = await supabase
+    .storage
+    .from('task-images')
+    .upload(filePath, file, {
+      upsert: false,
+      contentType: file.type
+    });
+  
+  if (error) throw error;
+  
+  const { data } = supabase
+    .storage
+    .from('task-images')
+    .getPublicUrl(filePath);
+  
+  return data.publicUrl;
+},
 
     // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: загрузка изображений ===
     async uploadImages(images, folder) {
