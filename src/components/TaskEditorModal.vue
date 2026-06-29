@@ -337,7 +337,6 @@ import { supabase } from '../supabase';
 import CustomDropdown from './CustomDropdown.vue';
 import { chem_ege_sections } from '../assets/arrays/list_of_sections.js';
 
-// === Конфигурация прокси сервера ===
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 const PROXY_CONFIG = {
@@ -546,9 +545,15 @@ export default {
           };
           
           this.$nextTick(() => {
-            if (this.$refs.textEditor) this.$refs.textEditor.innerHTML = this.editedTask.text;
-            if (this.$refs.answerEditor) this.$refs.answerEditor.innerHTML = this.editedTask.answer;
-            if (this.$refs.explanationEditor) this.$refs.explanationEditor.innerHTML = this.editedTask.explanation;
+            if (this.$refs.textEditor) {
+              this.$refs.textEditor.innerHTML = this.editedTask.text;
+            }
+            if (this.$refs.answerEditor) {
+              this.$refs.answerEditor.innerHTML = this.editedTask.answer;
+            }
+            if (this.$refs.explanationEditor) {
+              this.$refs.explanationEditor.innerHTML = this.editedTask.explanation;
+            }
             
             if (this.editedTask.has_table && this.editedTask.table_data) {
               this.syncTableFromData();
@@ -585,19 +590,12 @@ export default {
     });
   },
   methods: {
-    // === Функция для получения пути к изображению (для отображения в редакторе) ===
     getImageUrl(imagePath) {
       if (!imagePath) return '';
       
       let path = String(imagePath);
       
       if (path.startsWith('http')) {
-        if (path.includes('supabase.co')) {
-          const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/);
-          if (match) {
-            return `${PROXY_CONFIG.baseUrl}/task-images/${match[1]}`;
-          }
-        }
         return path;
       }
       
@@ -622,44 +620,42 @@ export default {
       }
     },
 
-    // === НОВАЯ ФУНКЦИЯ: загрузка изображения в Storage (возвращает путь) ===
-async uploadImageToStorage(file, folder) {
-  const fileExt = file.name.split('.').pop();
-  const fileName = `${uuidv4()}.${fileExt}`;
-  
-  let subjectFolder;
-  if (this.subject === 'Химия ЕГЭ' || this.subject === 'Химия ОГЭ') {
-    subjectFolder = 'chemistry';
-  } else if (this.subject === 'Биология ЕГЭ' || this.subject === 'Биология ОГЭ') {
-    subjectFolder = 'biology';
-  } else {
-    subjectFolder = 'other';
-  }
-  
-  const examType = this.subject.includes('ЕГЭ') ? 'ege' : 'oge';
-  
-  // ⚠️ ВАЖНО: biology_oge (с подчеркиванием)
-  const filePath = `tasks/${subjectFolder}_${examType}/${folder}/${fileName}`;
-  
-  const { error } = await supabase
-    .storage
-    .from('task-images')
-    .upload(filePath, file, {
-      upsert: false,
-      contentType: file.type
-    });
-  
-  if (error) throw error;
-  
-  const { data } = supabase
-    .storage
-    .from('task-images')
-    .getPublicUrl(filePath);
-  
-  return data.publicUrl;
-},
+    async uploadImageToStorage(file, folder) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
+      
+      let subjectFolder;
+      if (this.subject === 'Химия ЕГЭ' || this.subject === 'Химия ОГЭ') {
+        subjectFolder = 'chemistry';
+      } else if (this.subject === 'Биология ЕГЭ' || this.subject === 'Биология ОГЭ') {
+        subjectFolder = 'biology';
+      } else {
+        subjectFolder = 'other';
+      }
+      
+      const examType = this.subject.includes('ЕГЭ') ? 'ege' : 'oge';
+      
+      // ⚠️ ВАЖНО: biology_oge (с подчеркиванием)
+      const filePath = `tasks/${subjectFolder}_${examType}/${folder}/${fileName}`;
+      
+      const { error } = await supabase
+        .storage
+        .from('task-images')
+        .upload(filePath, file, {
+          upsert: false,
+          contentType: file.type
+        });
+      
+      if (error) throw error;
+      
+      const { data } = supabase
+        .storage
+        .from('task-images')
+        .getPublicUrl(filePath);
+      
+      return data.publicUrl;
+    },
 
-    // === ИСПРАВЛЕННАЯ ФУНКЦИЯ: загрузка изображений ===
     async uploadImages(images, folder) {
       if (!images.length) return [];
       
@@ -1023,13 +1019,55 @@ async uploadImageToStorage(file, folder) {
     },
     
     updateTableData() {
-      this.editedTask.has_table = true;
-      this.editedTask.table_data = {
-        rows: this.tableRows,
-        cols: this.tableCols,
-        borders: this.tableBorders,
-        content: JSON.parse(JSON.stringify(this.tableContent))
-      };
+      // Проверяем, есть ли таблица в тексте
+      const editor = this.$refs.textEditor;
+      if (!editor) return;
+      
+      const html = editor.innerHTML;
+      const hasTable = html.includes('<table');
+      
+      if (hasTable) {
+        const tableData = this.parseTableFromHtml(html);
+        if (tableData) {
+          this.editedTask.has_table = true;
+          this.editedTask.table_data = tableData;
+        }
+      } else {
+        this.editedTask.has_table = false;
+        this.editedTask.table_data = null;
+      }
+    },
+
+    parseTableFromHtml(html) {
+      try {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        
+        const table = div.querySelector('table');
+        if (!table) return null;
+        
+        const rows = [];
+        const trs = table.querySelectorAll('tr');
+        
+        trs.forEach(tr => {
+          const cells = [];
+          const tds = tr.querySelectorAll('td');
+          tds.forEach(td => {
+            cells.push(td.innerHTML);
+          });
+          rows.push(cells);
+        });
+        
+        return {
+          rows: rows.length,
+          cols: rows.length > 0 ? rows[0].length : 0,
+          borders: table.hasAttribute('border') || table.style.border !== 'none',
+          content: rows
+        };
+      } catch (err) {
+        console.error('Ошибка парсинга таблицы:', err);
+        return null;
+      }
     },
     
     generateTablePreviewHtml() {
@@ -1048,10 +1086,10 @@ async uploadImageToStorage(file, folder) {
     syncTableFromData() {
       if (this.editedTask.table_data) {
         const tableData = this.editedTask.table_data;
-        this.tableRows = tableData.rows;
-        this.tableCols = tableData.cols;
-        this.tableBorders = tableData.borders;
-        this.tableContent = JSON.parse(JSON.stringify(tableData.content));
+        this.tableRows = tableData.rows || 2;
+        this.tableCols = tableData.cols || 2;
+        this.tableBorders = tableData.borders !== undefined ? tableData.borders : true;
+        this.tableContent = JSON.parse(JSON.stringify(tableData.content || this.initializeTableContent(this.tableRows, this.tableCols)));
         
         this.$nextTick(() => {
           this.updateTableCellContents();
@@ -1210,12 +1248,10 @@ async uploadImageToStorage(file, folder) {
         
         const imagesToRemove = taskData[field] || [];
         
-        // Удаляем файлы из Storage
         const deletePromises = imagesToRemove.map(async (imagePath) => {
-          // Извлекаем путь из полного URL если нужно
           let cleanPath = imagePath;
           if (cleanPath.startsWith('http')) {
-            const match = cleanPath.match(/\/storage\/v1\/object\/public\/(.+)$/);
+            const match = cleanPath.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/);
             if (match) {
               cleanPath = match[1];
             }
@@ -1232,7 +1268,6 @@ async uploadImageToStorage(file, folder) {
         
         await Promise.all(deletePromises);
         
-        // Обновляем запись в БД
         const { data, error: updateError } = await supabase
           .from(tableName)
           .update({ [field]: [] })
@@ -1265,13 +1300,19 @@ async uploadImageToStorage(file, folder) {
       try {
         const tableName = this.getTaskTableName();
         
-        // Загружаем новые изображения и получаем пути
         const textImagePaths = await this.uploadImages(this.uploadedImages, 'text');
         const explanationImagePaths = await this.uploadImages(this.explanationImages, 'explanation');
         
-        // Объединяем существующие изображения с новыми
         const allTextImages = [...(this.task.images || []), ...textImagePaths];
         const allExplanationImages = [...(this.task.image_explanation || []), ...explanationImagePaths];
+        
+        // Проверяем, есть ли таблица в тексте
+        const hasTable = this.editedTask.text.includes('<table');
+        let tableData = null;
+        
+        if (hasTable) {
+          tableData = this.parseTableFromHtml(this.editedTask.text);
+        }
         
         const updatedTask = {
           section: this.editedTask.section,
@@ -1283,8 +1324,8 @@ async uploadImageToStorage(file, folder) {
           text: this.editedTask.text,
           answer: this.editedTask.answer,
           explanation: this.editedTask.explanation,
-          has_table: this.editedTask.has_table,
-          table_data: this.editedTask.table_data,
+          has_table: hasTable,
+          table_data: tableData,
           images: allTextImages.length ? allTextImages : null,
           image_explanation: allExplanationImages.length ? allExplanationImages : null,
         };
