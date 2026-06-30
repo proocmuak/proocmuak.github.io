@@ -422,7 +422,6 @@ async loadTasks() {
     const tasks = []
     const today = this.getCurrentDate()
     
-    
     // Получаем предметы пользователя
     const subjects = this.subjects
     
@@ -431,8 +430,6 @@ async loadTasks() {
       this.todayTasks = []
       return
     }
-    
-    console.log(`📚 Предметы: ${subjects.join(', ')}`)
     
     for (const subject of subjects) {
       const subjectKey = subject.includes('Химия') ? 'chemistry' : 'biology'
@@ -448,8 +445,6 @@ async loadTasks() {
       const weekAgoStr = weekAgo.toISOString().split('T')[0]
       const todayStr = today.toISOString().split('T')[0]
 
-     
-
       const { data: lessons, error: lessonsError } = await supabase
         .from(subjectTable)
         .select('number, title, date')
@@ -457,10 +452,7 @@ async loadTasks() {
         .lte('date', todayStr)
         .order('date', { ascending: false })
 
-      if (lessonsError) {
-        console.error(`   ❌ Ошибка загрузки уроков:`, lessonsError)
-      } else if (lessons) {
-        
+      if (!lessonsError && lessons) {
         lessons.forEach(lesson => {
           tasks.push({
             text: `Посмотреть урок "${lesson.title}"`,
@@ -472,72 +464,87 @@ async loadTasks() {
         })
       }
 
-      // === 2. ДОМАШНИЕ ЗАДАНИЯ НА ТЕКУЩЕЙ НЕДЕЛЕ ===
-      // Находим начало недели (понедельник)
-      const startOfWeek = new Date(today)
-      const dayOfWeek = startOfWeek.getDay() // 0 - воскресенье, 1 - понедельник, ...
-      const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // сколько дней отнять до понедельника
-      startOfWeek.setDate(today.getDate() - diffToMonday)
-      startOfWeek.setHours(0, 0, 0, 0)
+      // === 2. ДОМАШНИЕ ЗАДАНИЯ ===
+      // Получаем все домашки, у которых дедлайн >= сегодня И урок уже прошел
+      const todayStrForQuery = today.toISOString().split('T')[0]
       
-      // Находим конец недели (воскресенье)
-      const endOfWeek = new Date(startOfWeek)
-      endOfWeek.setDate(startOfWeek.getDate() + 6)
-      endOfWeek.setHours(23, 59, 59, 999)
-      
-      const startOfWeekStr = startOfWeek.toISOString().split('T')[0]
-      const endOfWeekStr = endOfWeek.toISOString().split('T')[0]
-
-      
-
-      const { data: homeworks, error: homeworksError } = await supabase
+      // Сначала получаем все домашки
+      const { data: allHomeworks, error: homeworksError } = await supabase
         .from(homeworkListTable)
-        .select('homework_id, homework_name, lesson_name, deadline')
-        .gte('deadline', startOfWeekStr)
-        .lte('deadline', endOfWeekStr)
+        .select('homework_id, homework_name, lesson_name, lesson_number, deadline')
+        .gte('deadline', todayStrForQuery) // дедлайн не раньше сегодня
         .order('deadline', { ascending: true })
 
-      if (homeworksError) {
-        console.error(`   ❌ Ошибка загрузки домашек:`, homeworksError)
-      } else if (homeworks) {
+      if (!homeworksError && allHomeworks && allHomeworks.length > 0) {
+        // Получаем даты уроков для этих домашек
+        const lessonNumbers = allHomeworks.map(h => h.lesson_number).filter(Boolean)
+        let lessonDates = {}
         
-        homeworks.forEach(h => {
+        if (lessonNumbers.length > 0) {
+          const { data: lessonsData } = await supabase
+            .from(subjectTable)
+            .select('number, date')
+            .in('number', lessonNumbers)
           
-        })
+          if (lessonsData) {
+            lessonsData.forEach(lesson => {
+              lessonDates[lesson.number] = lesson.date
+            })
+          }
+        }
         
         // Получаем выполненные домашки
-        const homeworkIds = homeworks.map(h => h.homework_id)
-        const { data: completedHomeworks, error: completedError } = await supabase
+        const homeworkIds = allHomeworks.map(h => h.homework_id)
+        const { data: completedHomeworks } = await supabase
           .from(homeworkCompletedTable)
           .select('homework_id')
           .eq('user_id', this.userId)
           .in('homework_id', homeworkIds)
 
         const completedIds = new Set()
-        if (!completedError && completedHomeworks) {
+        if (completedHomeworks) {
           completedHomeworks.forEach(h => completedIds.add(h.homework_id))
-         
         }
 
-        let addedCount = 0
-        homeworks.forEach(homework => {
-          if (!completedIds.has(homework.homework_id)) {
+        // Фильтруем домашки: 
+        // 1. Не выполнены
+        // 2. Дата урока есть и урок уже прошел (дата урока <= сегодня)
+        // 3. Дедлайн >= сегодня
+        allHomeworks.forEach(homework => {
+          if (completedIds.has(homework.homework_id)) return
+          
+          const lessonDate = lessonDates[homework.lesson_number]
+          if (!lessonDate) return
+          
+          // Проверяем, что урок уже прошел (дата урока <= сегодня)
+          const lessonDateObj = new Date(lessonDate)
+          lessonDateObj.setHours(0, 0, 0, 0)
+          
+          const todayObj = new Date(today)
+          todayObj.setHours(0, 0, 0, 0)
+          
+          if (lessonDateObj <= todayObj) {
             tasks.push({
               text: `Сделать домашку "${homework.homework_name}"`,
               type: 'homework',
               subject: subject,
               homeworkId: homework.homework_id,
               deadline: homework.deadline,
+              lessonNumber: homework.lesson_number,
               completed: false
             })
-            addedCount++
           }
         })
-        console.log(`   ✅ Добавлено в список: ${addedCount}`)
       }
     }
 
-    console.log(`\n📋 Итого задач: ${tasks.length}`)
+    // Сортируем задачи: сначала домашку (срочные), потом уроки
+    tasks.sort((a, b) => {
+      if (a.type === 'homework' && b.type === 'lesson') return -1
+      if (a.type === 'lesson' && b.type === 'homework') return 1
+      return 0
+    })
+
     this.todayTasks = tasks
 
   } catch (err) {

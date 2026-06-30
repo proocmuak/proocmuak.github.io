@@ -127,9 +127,9 @@ export default {
       try {
         const { data, error } = await supabase
           .from(this.homeworkTableName)
-          .select('task_id, number')
+          .select('task_id, number') // Здесь task_id - это автоинкрементное поле, но мы используем его для проверки
           .eq('homework_id', this.homeworkId)
-          .eq('task_id', this.task.id)
+          .eq('task_id', this.task.id) // Сравниваем с ID задания из банка
           .maybeSingle();
         
         if (data) {
@@ -141,127 +141,138 @@ export default {
       }
     },
 
-async addToHomework() {
-  try {
-    // Проверяем, есть ли уже задание
-    const { data: existingTask, error: checkError } = await supabase
-      .from(this.homeworkTableName)
-      .select('task_id')
-      .eq('homework_id', this.homeworkId)
-      .eq('task_id', this.task.id)
-      .maybeSingle();
-    
-    if (existingTask) {
-      this.isAdded = true;
-      alert('Это задание уже добавлено в домашнюю работу');
-      return;
-    }
-    
-    // Получаем максимальный номер
-    const { data: tasksData, error: tasksError } = await supabase
-      .from(this.homeworkTableName)
-      .select('number')
-      .eq('homework_id', this.homeworkId)
-      .order('number', { ascending: false })
-      .limit(1);
-    
-    let nextNumber = 1;
-    if (!tasksError && tasksData && tasksData.length > 0) {
-      nextNumber = (tasksData[0].number || 0) + 1;
-    }
-    
-    // Вставляем запись - ПРОПУСКАЕМ task_id, пусть генерируется автоматически
-    const { data, error } = await supabase
-      .from(this.homeworkTableName)
-      .insert({
-        homework_id: this.homeworkId,
-        homework_name: this.homeworkName,
-        number: nextNumber,
-        task_id: this.task.id  // ← передаем task_id
-      })
-      .select();
-    
-    if (error) {
-      if (error.code === '23505') {
-        this.isAdded = true;
-        alert('Это задание уже есть в домашней работе');
-      } else {
-        throw error;
-      }
-    } else {
-      this.isAdded = true;
-      this.homeworkTaskNumber = nextNumber;
-      this.$emit('task-added', this.task.id);
-      alert(`Задание добавлено под номером ${nextNumber}!`);
-    }
-    
-  } catch (error) {
-    console.error('Ошибка добавления:', error);
-    alert('Ошибка при добавлении задания: ' + error.message);
-  }
-},
-
-async removeFromHomework() {
-  if (!confirm(`Удалить задание #${this.task.number} из домашней работы?`)) return;
-  
-  this.deleting = true;
-  
-  try {
-    // Удаляем задание
-    const { error } = await supabase
-      .from(this.homeworkTableName)
-      .delete()
-      .eq('homework_id', this.homeworkId)
-      .eq('task_id', this.task.id);
-    
-    if (error) throw error;
-    
-    // Пересортировываем номера оставшихся заданий
-    await this.renumberHomeworkTasks();
-    
-    this.isAdded = false;
-    this.homeworkTaskNumber = null;
-    this.$emit('task-removed', this.task.id);
-    alert('Задание удалено из домашней работы');
-    
-  } catch (error) {
-    console.error('Ошибка удаления:', error);
-    alert('Ошибка при удалении задания: ' + error.message);
-  } finally {
-    this.deleting = false;
-  }
-},
-
-async renumberHomeworkTasks() {
-  try {
-    // Получаем все задания этой домашней работы, отсортированные по номеру
-    const { data: tasks, error } = await supabase
-      .from(this.homeworkTableName)
-      .select('task_id, number')
-      .eq('homework_id', this.homeworkId)
-      .order('number', { ascending: true });
-    
-    if (error) throw error;
-    if (!tasks || tasks.length === 0) return;
-    
-    // Обновляем номера последовательно
-    for (let i = 0; i < tasks.length; i++) {
-      const newNumber = i + 1;
-      if (tasks[i].number !== newNumber) {
-        const { error: updateError } = await supabase
+    async addToHomework() {
+      try {
+        // Проверяем, есть ли уже задание
+        const { data: existingTask, error: checkError } = await supabase
           .from(this.homeworkTableName)
-          .update({ number: newNumber })
+          .select('task_id')
           .eq('homework_id', this.homeworkId)
-          .eq('task_id', tasks[i].task_id);
+          .eq('task_id', this.task.id)
+          .maybeSingle();
         
-        if (updateError) throw updateError;
+        if (existingTask) {
+          this.isAdded = true;
+          alert('Это задание уже добавлено в домашнюю работу');
+          return;
+        }
+        
+        // Получаем максимальный номер
+        const { data: tasksData, error: tasksError } = await supabase
+          .from(this.homeworkTableName)
+          .select('number')
+          .eq('homework_id', this.homeworkId)
+          .order('number', { ascending: false })
+          .limit(1);
+        
+        let nextNumber = 1;
+        if (!tasksError && tasksData && tasksData.length > 0) {
+          nextNumber = (tasksData[0].number || 0) + 1;
+        }
+        
+        console.log('📝 Добавление задания:', {
+          homework_id: this.homeworkId,
+          homework_name: this.homeworkName,
+          number: nextNumber,
+          task_id: this.task.id // Это ID задания из банка
+        });
+        
+        // Вставляем запись - task_id здесь - это ID задания из банка (не автоинкрементное поле)
+        // ВАЖНО: В таблице поле task_id является и первичным ключом, и хранит ID задания из банка
+        // Поэтому мы передаем this.task.id как task_id
+        const { data, error } = await supabase
+          .from(this.homeworkTableName)
+          .insert({
+            homework_id: this.homeworkId,
+            homework_name: this.homeworkName,
+            number: nextNumber,
+            task_id: this.task.id // Используем ID задания из банка как task_id
+          })
+          .select();
+        
+        if (error) {
+          console.error('❌ Ошибка вставки:', error);
+          
+          if (error.code === '23505') {
+            this.isAdded = true;
+            alert('Это задание уже есть в домашней работе');
+          } else {
+            throw error;
+          }
+        } else {
+          this.isAdded = true;
+          this.homeworkTaskNumber = nextNumber;
+          this.$emit('task-added', this.task.id);
+          alert(`Задание добавлено под номером ${nextNumber}!`);
+        }
+        
+      } catch (error) {
+        console.error('Ошибка добавления:', error);
+        alert('Ошибка при добавлении задания: ' + error.message);
       }
-    }
-    
-  } catch (error) {
-    console.error('Ошибка пересортировки номеров:', error);
-  }
-},
+    },
+
+    async removeFromHomework() {
+      if (!confirm(`Удалить задание #${this.task.number} из домашней работы?`)) return;
+      
+      this.deleting = true;
+      
+      try {
+        // Удаляем задание
+        const { error } = await supabase
+          .from(this.homeworkTableName)
+          .delete()
+          .eq('homework_id', this.homeworkId)
+          .eq('task_id', this.task.id);
+        
+        if (error) throw error;
+        
+        // Пересортировываем номера оставшихся заданий
+        await this.renumberHomeworkTasks();
+        
+        this.isAdded = false;
+        this.homeworkTaskNumber = null;
+        this.$emit('task-removed', this.task.id);
+        alert('Задание удалено из домашней работы');
+        
+      } catch (error) {
+        console.error('Ошибка удаления:', error);
+        alert('Ошибка при удалении задания: ' + error.message);
+      } finally {
+        this.deleting = false;
+      }
+    },
+
+    async renumberHomeworkTasks() {
+      try {
+        // Получаем все задания этой домашней работы, отсортированные по номеру
+        const { data: tasks, error } = await supabase
+          .from(this.homeworkTableName)
+          .select('task_id, number')
+          .eq('homework_id', this.homeworkId)
+          .order('number', { ascending: true });
+        
+        if (error) throw error;
+        if (!tasks || tasks.length === 0) return;
+        
+        // Обновляем номера последовательно
+        for (let i = 0; i < tasks.length; i++) {
+          const newNumber = i + 1;
+          if (tasks[i].number !== newNumber) {
+            const { error: updateError } = await supabase
+              .from(this.homeworkTableName)
+              .update({ number: newNumber })
+              .eq('homework_id', this.homeworkId)
+              .eq('task_id', tasks[i].task_id);
+            
+            if (updateError) throw updateError;
+          }
+        }
+        
+      } catch (error) {
+        console.error('Ошибка пересортировки номеров:', error);
+      }
+    },
     openEditor() {
       this.showEditorModal = true;
       document.body.style.overflow = 'hidden';
