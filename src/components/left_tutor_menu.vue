@@ -176,6 +176,13 @@ onUnmounted(() => {
         >
           Уведомления
         </button>
+        <a 
+  href="games.html" 
+  class="menu_button" 
+  :class="{ active: activeMenu === 'games' }"
+>
+  Игры
+</a>
         <button 
           class="menu_button" 
           :class="{ active: activeMenu === 'settings' }"

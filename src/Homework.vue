@@ -868,7 +868,7 @@ const getImageUrl = (imagePath) => {
   
   let path = String(imagePath)
   
-  // Если это уже полный URL (старый формат)
+  // Если это уже полный URL
   if (path.startsWith('http')) {
     // Если это старый URL Supabase, конвертируем в новый формат через прокси
     if (path.includes('supabase.co')) {
@@ -882,8 +882,16 @@ const getImageUrl = (imagePath) => {
   
   // Очищаем путь от возможных префиксов
   let cleanPath = path
+  
+  // Убираем task-images/ если есть
   if (cleanPath.startsWith('task-images/')) {
     cleanPath = cleanPath.replace('task-images/', '')
+  }
+  
+  // Если путь начинается с tasks/, оставляем как есть
+  // Иначе добавляем tasks/ (для обратной совместимости)
+  if (!cleanPath.startsWith('tasks/')) {
+    cleanPath = `tasks/${cleanPath}`
   }
   
   // Если прокси включен, используем его
@@ -904,41 +912,46 @@ const getImageUrl = (imagePath) => {
   }
 }
 
-    const getAnswerImageUrl = (imagePath) => {
-      if (!imagePath) return ''
-      
-      let path = String(imagePath)
-      
-      if (path.startsWith('http')) {
-        if (path.includes('supabase.co')) {
-          const match = path.match(/\/storage\/v1\/object\/public\/answers\/(.+)$/)
-          if (match) {
-            return `${PROXY_CONFIG.baseUrl}/answers/${match[1]}`
-          }
-        }
-        return path
-      }
-      
-      let cleanPath = path
-      if (cleanPath.startsWith('answers/')) {
-        cleanPath = cleanPath.replace('answers/', '')
-      }
-      
-      if (PROXY_CONFIG.enabled) {
-        return `${PROXY_CONFIG.baseUrl}/answers/${cleanPath}`
-      }
-      
-      try {
-        const { data: { publicUrl } } = supabase
-          .storage
-          .from('answers')
-          .getPublicUrl(cleanPath)
-        return publicUrl
-      } catch (err) {
-        console.error('Ошибка получения URL изображения ответа:', err)
-        return ''
+const getAnswerImageUrl = (imagePath) => {
+  if (!imagePath) return ''
+  
+  let path = String(imagePath)
+  
+  if (path.startsWith('http')) {
+    if (path.includes('supabase.co')) {
+      const match = path.match(/\/storage\/v1\/object\/public\/answers\/(.+)$/)
+      if (match) {
+        return `${PROXY_CONFIG.baseUrl}/answers/${match[1]}`
       }
     }
+    return path
+  }
+  
+  let cleanPath = path
+  if (cleanPath.startsWith('answers/')) {
+    cleanPath = cleanPath.replace('answers/', '')
+  }
+  
+  // Если путь не начинается с tasks/, добавляем (для обратной совместимости)
+  if (!cleanPath.startsWith('tasks/')) {
+    cleanPath = `tasks/${cleanPath}`
+  }
+  
+  if (PROXY_CONFIG.enabled) {
+    return `${PROXY_CONFIG.baseUrl}/answers/${cleanPath}`
+  }
+  
+  try {
+    const { data: { publicUrl } } = supabase
+      .storage
+      .from('answers')
+      .getPublicUrl(cleanPath)
+    return publicUrl
+  } catch (err) {
+    console.error('Ошибка получения URL изображения ответа:', err)
+    return ''
+  }
+}
 
     const getExplanationContent = (task) => {
       let content = ''

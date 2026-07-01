@@ -29,7 +29,8 @@ export default defineConfig({
         homework: resolve(__dirname, 'homework.html'),
         TutorTaskBank: resolve(__dirname, 'TutorTaskBank.html'),
         additional_course: resolve(__dirname, 'additional_course.html'),
-        variant: resolve(__dirname, 'variant.html')
+        variant: resolve(__dirname, 'variant.html'),
+        games: resolve(__dirname, 'games.html')
       },
       output: {
         // Генерируем предсказуемые имена файлов
