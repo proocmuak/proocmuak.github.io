@@ -198,22 +198,22 @@ export default {
         ]
 
         // Ищем студентов по всем шаблонам
-        let allStudents = []
-        
-        for (const pattern of searchPatterns) {
-          // В запросе на получение студентов:
-const { data: students, error: studentsError } = await supabase
-  .from('students')
-  .select('*')
-  .eq('is_active', true)  // ← Добавить
-  .ilike('tutor', `%${pattern}%`)
-          
-          if (studentsError) throw studentsError
-          
-          if (studentsData && studentsData.length > 0) {
-            allStudents = [...allStudents, ...studentsData]
-          }
-        }
+       // Ищем студентов по всем шаблонам
+let allStudents = []
+
+for (const pattern of searchPatterns) {
+  const { data: studentsData, error: studentsError } = await supabase
+    .from('students')
+    .select('*')
+    .eq('is_active', true)
+    .ilike('tutor', `%${pattern}%`)
+  
+  if (studentsError) throw studentsError
+  
+  if (studentsData && studentsData.length > 0) {
+    allStudents = [...allStudents, ...studentsData]
+  }
+}
 
         // Удаляем дубликаты
         const uniqueStudents = allStudents.filter((student, index, self) =>
