@@ -191,7 +191,7 @@ const { data: students, error: studentsError } = await supabase
   .from('students')
   .select('*')
   .eq('is_active', true)  // ← Добавить
-  .ilike('tutor', `%${this.tutorFirstName}%`)
+  .ilike('tutor', this.tutorFirstName)
 
         if (studentsError) throw studentsError;
 
