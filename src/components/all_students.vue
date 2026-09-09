@@ -206,7 +206,7 @@ for (const pattern of searchPatterns) {
     .from('students')
     .select('*')
     .eq('is_active', true)
-    .ilike('tutor', `%${pattern}%`)
+    .ilike('tutor', pattern)
   
   if (studentsError) throw studentsError
   

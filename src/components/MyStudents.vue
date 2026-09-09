@@ -197,7 +197,7 @@ const { data: students, error: studentsError } = await supabase
 
         if (!students || students.length === 0) {
           this.allStudents = [];
-          return;
+          return; 
         }
 
         const studentsWithDetails = await Promise.all(
