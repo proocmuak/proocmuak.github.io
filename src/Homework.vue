@@ -911,13 +911,14 @@ const getImageUrl = (imagePath) => {
     return ''
   }
 }
-
 const getAnswerImageUrl = (imagePath) => {
   if (!imagePath) return ''
   
   let path = String(imagePath)
   
+  // Если это уже полный URL
   if (path.startsWith('http')) {
+    // Если это старый URL Supabase, конвертируем в новый формат через прокси
     if (path.includes('supabase.co')) {
       const match = path.match(/\/storage\/v1\/object\/public\/answers\/(.+)$/)
       if (match) {
@@ -927,20 +928,23 @@ const getAnswerImageUrl = (imagePath) => {
     return path
   }
   
+  // Очищаем путь от возможных префиксов
   let cleanPath = path
+  
+  // Убираем answers/ если есть (на случай старых записей)
   if (cleanPath.startsWith('answers/')) {
     cleanPath = cleanPath.replace('answers/', '')
   }
   
-  // Если путь не начинается с tasks/, добавляем (для обратной совместимости)
-  if (!cleanPath.startsWith('tasks/')) {
-    cleanPath = `tasks/${cleanPath}`
-  }
+  // ВАЖНО: НЕ добавляем tasks/ для ответов, так как путь уже полный от корня бакета answers
+  // (файлы загружаются как user_id/task_id/timestamp.ext)
   
+  // Если прокси включен, используем его
   if (PROXY_CONFIG.enabled) {
     return `${PROXY_CONFIG.baseUrl}/answers/${cleanPath}`
   }
   
+  // Fallback: прямой URL из Supabase
   try {
     const { data: { publicUrl } } = supabase
       .storage
