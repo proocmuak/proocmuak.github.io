@@ -438,7 +438,6 @@
 </template>
 
 <script>
-// Весь script остается без изменений
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { supabase } from './supabase.js'
 import DOMPurify from 'dompurify'
@@ -612,6 +611,31 @@ function extractPathFromUrl(url) {
   return url
 }
 
+// === Утилиты для батч-операций ===
+function chunkArray(arr, size) {
+  const out = []
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size))
+  }
+  return out
+}
+
+async function withRetry(fn, maxAttempts = 3, baseDelay = 400) {
+  let lastErr = null
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (attempt < maxAttempts) {
+        const delay = baseDelay * Math.pow(2, attempt - 1)
+        await new Promise(r => setTimeout(r, delay))
+      }
+    }
+  }
+  throw lastErr
+}
+
 export default {
   name: 'Homework',
   setup() {
@@ -635,6 +659,7 @@ export default {
     const homeworkId = ref('')
     const editInput = ref(null)
     const studentInfo = ref(null)
+    const isCompleting = ref(false)
 
     const getUrlParams = () => {
       const params = new URLSearchParams(window.location.search)
@@ -781,7 +806,8 @@ export default {
         homeworkTasks: `${baseTable}_homework_tasks`,
         taskBank: `${baseTable}_task_bank`,
         progress: `${baseTable}_progress`,
-        homeworkCompleted: `${baseTable}_homework_completed`
+        homeworkCompleted: `${baseTable}_homework_completed`,
+        ml: `ml_${subject.value}_${examType.value}`
       }
     }
 
@@ -868,9 +894,7 @@ const getImageUrl = (imagePath) => {
   
   let path = String(imagePath)
   
-  // Если это уже полный URL
   if (path.startsWith('http')) {
-    // Если это старый URL Supabase, конвертируем в новый формат через прокси
     if (path.includes('supabase.co')) {
       const match = path.match(/\/storage\/v1\/object\/public\/task-images\/(.+)$/)
       if (match) {
@@ -880,26 +904,20 @@ const getImageUrl = (imagePath) => {
     return path
   }
   
-  // Очищаем путь от возможных префиксов
   let cleanPath = path
   
-  // Убираем task-images/ если есть
   if (cleanPath.startsWith('task-images/')) {
     cleanPath = cleanPath.replace('task-images/', '')
   }
   
-  // Если путь начинается с tasks/, оставляем как есть
-  // Иначе добавляем tasks/ (для обратной совместимости)
   if (!cleanPath.startsWith('tasks/')) {
     cleanPath = `tasks/${cleanPath}`
   }
   
-  // Если прокси включен, используем его
   if (PROXY_CONFIG.enabled) {
     return `${PROXY_CONFIG.baseUrl}/task-images/${cleanPath}`
   }
   
-  // Fallback: прямой URL из Supabase
   try {
     const { data: { publicUrl } } = supabase
       .storage
@@ -916,9 +934,7 @@ const getAnswerImageUrl = (imagePath) => {
   
   let path = String(imagePath)
   
-  // Если это уже полный URL
   if (path.startsWith('http')) {
-    // Если это старый URL Supabase, конвертируем в новый формат через прокси
     if (path.includes('supabase.co')) {
       const match = path.match(/\/storage\/v1\/object\/public\/answers\/(.+)$/)
       if (match) {
@@ -928,23 +944,16 @@ const getAnswerImageUrl = (imagePath) => {
     return path
   }
   
-  // Очищаем путь от возможных префиксов
   let cleanPath = path
   
-  // Убираем answers/ если есть (на случай старых записей)
   if (cleanPath.startsWith('answers/')) {
     cleanPath = cleanPath.replace('answers/', '')
   }
   
-  // ВАЖНО: НЕ добавляем tasks/ для ответов, так как путь уже полный от корня бакета answers
-  // (файлы загружаются как user_id/task_id/timestamp.ext)
-  
-  // Если прокси включен, используем его
   if (PROXY_CONFIG.enabled) {
     return `${PROXY_CONFIG.baseUrl}/answers/${cleanPath}`
   }
   
-  // Fallback: прямой URL из Supabase
   try {
     const { data: { publicUrl } } = supabase
       .storage
@@ -1074,6 +1083,17 @@ const getAnswerImageUrl = (imagePath) => {
       }
     }
 
+    /**
+     * Сохраняет прогресс одного задания.
+     * 
+     * @param {Object} task - объект задания (со всеми метаданными из task_bank)
+     * @param {boolean} checkCorrectness - если true, выполняется проверка ответа
+     *                                     (используется только в старых сценариях; в completeHomework
+     *                                     проверка делается заранее батчем)
+     * 
+     * Метаданные number/section/topic/difficulty/points уже лежат в task (пришли из fetchHomeworkTasks),
+     * поэтому select из task_bank больше НЕ выполняется — это и был главный источник лишних запросов.
+     */
     const saveTaskProgress = async (task, checkCorrectness = false) => {
       if (!user_id.value) return
 
@@ -1120,38 +1140,138 @@ const getAnswerImageUrl = (imagePath) => {
 
         if (progressError) throw progressError
 
-        const mlTableName = `ml_${subject.value}_${examType.value}`
-        const { data: taskData, error: taskError } = await supabase
-          .from(tableNames.taskBank)
-          .select('number, section, topic, difficulty, points')
-          .eq('id', task.task_id)
-          .single()
-
-        if (!taskError && taskData) {
+        // ML-таблица: метаданные берём из task (уже загружены в fetchHomeworkTasks)
+        // Больше не делаем select из task_bank — это был лишний запрос на каждое задание.
+        if (task.number != null && task.section != null) {
           const mlData = {
             user_id: user_id.value,
             task_id: task.task_id,
-            number: taskData.number,
-            section: taskData.section,
-            topic: taskData.topic,
-            difficulty: taskData.difficulty,
-            max_score: taskData.points,
+            number: task.number,
+            section: task.section,
+            topic: task.topic,
+            difficulty: task.difficulty,
+            max_score: task.points,
             is_correct: counted_in_rating,
             score: score,
             created_at: now
           }
 
           const { error: mlError } = await supabase
-            .from(mlTableName)
+            .from(tableNames.ml)
             .insert([mlData])
-            
+
           if (mlError) {
             console.error('Ошибка сохранения в ML таблицу:', mlError)
           }
         }
+
+        // Помечаем как сохранённое (для пункта 3 — не пересохранять неизменённые)
+        task.dirty = false
+        task.savedAt = now
       } catch (err) {
         console.error('Ошибка сохранения прогресса:', err)
         throw err
+      }
+    }
+
+    /**
+     * Батч-сохранение прогресса множества заданий.
+     * Делает 1 upsert в progress + 1 insert в ml (по чанкам 25, с retry).
+     */
+    const saveTasksProgressBatch = async (tasksToSave, checkCorrectness = true) => {
+      if (!user_id.value || tasksToSave.length === 0) return
+
+      const tableNames = getTableNames()
+      const now = new Date().toISOString()
+
+      const progressRows = []
+      const mlRows = []
+
+      for (const task of tasksToSave) {
+        let score = 0
+        let isCompleted = false
+        let countedInRating = false
+
+        if (checkCorrectness) {
+          const result = checkAnswerComponent(
+            task.userAnswer,
+            task.answer,
+            task.points,
+            subject.value,
+            task.exam_task_number
+          )
+          score = result.score
+          isCompleted = result.isCorrect || result.isPartiallyCorrect
+          countedInRating = result.isCorrect
+          task.isCorrect = result.isCorrect
+          task.isPartiallyCorrect = result.isPartiallyCorrect
+          task.awardedPoints = score
+        } else {
+          score = task.awardedPoints || 0
+          isCompleted = score > 0
+          countedInRating = score === task.points
+        }
+
+        progressRows.push({
+          user_id: user_id.value,
+          task_id: task.task_id,
+          is_completed: isCompleted,
+          score: score,
+          user_answer: task.userAnswer || '',
+          answer_images: task.answerImages || [],
+          last_updated: now,
+          counted_in_rating: countedInRating
+        })
+
+        if (task.number != null && task.section != null) {
+          mlRows.push({
+            user_id: user_id.value,
+            task_id: task.task_id,
+            number: task.number,
+            section: task.section,
+            topic: task.topic,
+            difficulty: task.difficulty,
+            max_score: task.points,
+            is_correct: countedInRating,
+            score: score,
+            created_at: now
+          })
+        }
+      }
+
+      // 1. Batch upsert в progress — по чанкам 25 с retry
+      const progressChunks = chunkArray(progressRows, 25)
+      for (let i = 0; i < progressChunks.length; i++) {
+        const chunk = progressChunks[i]
+        await withRetry(async () => {
+          const { error: pErr } = await supabase
+            .from(tableNames.progress)
+            .upsert(chunk, { onConflict: 'user_id,task_id' })
+          if (pErr) throw pErr
+        })
+      }
+
+      // 2. Batch insert в ml — по чанкам 25 с retry
+      const mlChunks = chunkArray(mlRows, 25)
+      for (let i = 0; i < mlChunks.length; i++) {
+        const chunk = mlChunks[i]
+        try {
+          await withRetry(async () => {
+            const { error: mErr } = await supabase
+              .from(tableNames.ml)
+              .insert(chunk)
+            if (mErr) throw mErr
+          })
+        } catch (mlErr) {
+          // ML не критичен: если упало — прогресс уже сохранён
+          console.error('Ошибка batch-insert в ML таблицу:', mlErr)
+        }
+      }
+
+      // Помечаем всё сохранённым
+      for (const task of tasksToSave) {
+        task.dirty = false
+        task.savedAt = now
       }
     }
 
@@ -1185,30 +1305,24 @@ const getAnswerImageUrl = (imagePath) => {
 
         if (progressError) throw progressError
         
-        const mlTableName = `ml_${subject.value}_${examType.value}`
-        const { data: taskData, error: taskError } = await supabase
-          .from(tableNames.taskBank)
-          .select('number, section, topic, difficulty, points')
-          .eq('id', task.task_id)
-          .single()
-
-        if (!taskError && taskData) {
+        if (task.number != null && task.section != null) {
           const mlData = {
             user_id: user_id.value,
             task_id: task.task_id,
-            number: taskData.number,
-            section: taskData.section,
-            topic: taskData.topic,
-            difficulty: taskData.difficulty,
-            max_score: taskData.points,
+            number: task.number,
+            section: task.section,
+            topic: task.topic,
+            difficulty: task.difficulty,
+            max_score: task.points,
             is_correct: counted_in_rating,
             score: manualScore,
             created_at: now
           }
-
-          const { error: mlError } = await supabase.from(mlTableName).insert([mlData])
+          const { error: mlError } = await supabase.from(tableNames.ml).insert([mlData])
           if (mlError) console.error('Ошибка сохранения в ML таблицу (куратор):', mlError)
         }
+
+        task.dirty = false
         
         await updateHomeworkCompletedOnly()
       } catch (err) {
@@ -1269,50 +1383,91 @@ const getAnswerImageUrl = (imagePath) => {
       }
     }
 
-    const completeHomework = async () => {
-      try {
-        error.value = null
-        updateTotalScore()
+const completeHomework = async () => {
+  if (isCompleting.value) return
+  isCompleting.value = true
+  error.value = null
 
-        for (const task of tasks.value) {
-          if (task.userAnswer || (task.answerImages && task.answerImages.length > 0)) {
-            await saveTaskProgress(task, true)
-          }
-        }
+  try {
+    const tableNames = getTableNames()
+    const now = new Date().toISOString()
 
-        updateTotalScore()
-        const tableNames = getTableNames()
-        
-        const completionData = {
-          homework_id: parseInt(homeworkId.value),
-          user_id: user_id.value,
-          is_completed: true,
-          score: totalScore.value,
-          completed_at: new Date().toISOString()
-        }
+    // 1. Проверяем ВСЕ задания с ответом локально (без запросов) и
+    //    проставляем awardedPoints/isCorrect/isPartiallyCorrect + dirty,
+    //    если ответ изменился со времени последней проверки.
+    const tasksWithAnswer = tasks.value.filter(task =>
+      task.userAnswer || (task.answerImages && task.answerImages.length > 0)
+    )
 
-        const { error: completionError } = await supabase
-          .from(tableNames.homeworkCompleted)
-          .upsert(completionData, {
-            onConflict: 'user_id,homework_id'
-          })
+    for (const task of tasksWithAnswer) {
+      const result = checkAnswerComponent(
+        task.userAnswer,
+        task.answer,
+        task.points,
+        subject.value,
+        task.exam_task_number
+      )
 
-        if (completionError) throw new Error(completionError.message)
+      const prevScore = task.awardedPoints || 0
+      task.isCorrect = result.isCorrect
+      task.isPartiallyCorrect = result.isPartiallyCorrect
+      task.awardedPoints = result.score
 
-        if (!isTutorMode.value) {
-          await createHomeworkNotification(totalScore.value)
-        }
-
-        isCompleted.value = true
-        showAnswers.value = true
-        alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value)
-
-      } catch (err) {
-        error.value = err.message
-        console.error('Полная ошибка завершения домашнего задания:', err)
-        alert('Ошибка: ' + err.message)
+      // Если проверка изменила балл — задание надо пересохранить,
+      // чтобы в БД отразился новый score.
+      if (prevScore !== result.score) {
+        task.dirty = true
       }
     }
+
+    // 2. Сохраняем в БД только то, что реально изменилось:
+    //    либо пользователь сохранил ответ и мы ещё не проверяли,
+    //    либо проверка изменила балл.
+    const dirtyTasks = tasksWithAnswer.filter(task => task.dirty !== false)
+
+    if (dirtyTasks.length > 0) {
+      // Важно: checkCorrectness = false, потому что проверку мы уже сделали выше,
+      // а saveTasksProgressBatch с checkCorrectness = true перезапишет awardedPoints
+      // из повторной проверки — результат будет тем же, но лишняя работа.
+      await saveTasksProgressBatch(dirtyTasks, false)
+    }
+
+    // 3. Пересчитываем итог
+    updateTotalScore()
+
+    // 4. Один upsert в homework_completed
+    const completionData = {
+      homework_id: parseInt(homeworkId.value),
+      user_id: user_id.value,
+      is_completed: true,
+      score: totalScore.value,
+      completed_at: now
+    }
+
+    await withRetry(async () => {
+      const { error: completionError } = await supabase
+        .from(tableNames.homeworkCompleted)
+        .upsert(completionData, { onConflict: 'user_id,homework_id' })
+      if (completionError) throw completionError
+    })
+
+    // 5. Уведомление куратору (только для студента)
+    if (!isTutorMode.value) {
+      await createHomeworkNotification(totalScore.value)
+    }
+
+    isCompleted.value = true
+    showAnswers.value = true
+    alert('Домашнее задание завершено! Набрано баллов: ' + totalScore.value + '/' + maxScore.value)
+
+  } catch (err) {
+    error.value = err.message
+    console.error('Ошибка завершения домашнего задания:', err)
+    alert('Ошибка при завершении: ' + err.message)
+  } finally {
+    isCompleting.value = false
+  }
+}
 
     const migrateOldImagePaths = () => {
       tasks.value = tasks.value.map(task => {
@@ -1401,7 +1556,11 @@ const getAnswerImageUrl = (imagePath) => {
             editAnswerInput: '',
             manualScore: 0,
             uploadingImages: false,
-            showExplanation: false
+            showExplanation: false,
+            // dirty = false: всё, что пришло из БД, считается сохранённым.
+            // Меняется на true только когда пользователь что-то сохраняет/меняет.
+            dirty: false,
+            savedAt: null
           }
         })
 
@@ -1460,7 +1619,10 @@ const getAnswerImageUrl = (imagePath) => {
               isCorrect: showAnswers.value ? progress.score === task.points : false,
               isPartiallyCorrect: showAnswers.value ? (progress.score > 0 && progress.score < task.points) : false,
               awardedPoints: showAnswers.value ? progress.score : 0,
-              manualScore: progress.score || 0
+              manualScore: progress.score || 0,
+              // Данные из БД — уже сохранены, dirty=false
+              dirty: false,
+              savedAt: progress.last_updated || null
             }
           }
           return task
@@ -1522,6 +1684,7 @@ const getAnswerImageUrl = (imagePath) => {
           task.answerImages = [...(task.answerImages || []), ...newImages]
           task.userAnswerInput = ''
           task.userAnswer = ''
+          task.dirty = true
           task.answerSaved = true
           await saveTaskProgress(task, false)
           setTimeout(() => task.answerSaved = false, 3000)
@@ -1555,6 +1718,7 @@ const getAnswerImageUrl = (imagePath) => {
         const imageToRemove = task.answerImages[imageIndex]
         await deleteAnswerImage(imageToRemove)
         task.answerImages.splice(imageIndex, 1)
+        task.dirty = true
         await saveTaskProgress(task, false)
       } catch (err) {
         console.error('Ошибка удаления изображения:', err)
