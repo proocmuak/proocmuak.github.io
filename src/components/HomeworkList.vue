@@ -1,784 +1,577 @@
 <template>
   <div class="homework-container">
-    <!-- Выбор предмета -->
-    <div class="subject-selector">
-      <CustomDropdown
-        :options="subjectOptions"
-        v-model="selectedSubject"
-        placeholder="Выберите предмет"
-        class="subject-dropdown"
-      />
+    <div class="student-info">
+      <h2>Домашние работы ученика</h2>
+      <div class="student-details">
+        <p><strong>Имя:</strong> {{ student.first_name }} {{ student.last_name }}</p>
+        <p><strong>Email:</strong> {{ student.email }}</p>
+        <p><strong>Телефон:</strong> {{ student.phone }}</p>
+        <p><strong>Общий балл:</strong> <span class="total-score">{{ student.score }}</span></p>
+        <p><strong>Рейтинг:</strong> <span class="rating">{{ student.rating || 0 }}</span></p>
+
+        <div v-if="subjectTariffInfo" class="tariff-info">
+          <p><strong>Тариф:</strong> {{ subjectTariffInfo.tariff || 'Не указан' }}</p>
+          <p><strong>Оплачено до:</strong>
+            <span :class="{ 'expired': subjectTariffInfo.isExpired, 'expiring-soon': subjectTariffInfo.isExpiringSoon }">
+              {{ subjectTariffInfo.paymentDateFormatted }}
+            </span>
+          </p>
+        </div>
+      </div>
     </div>
 
-    <!-- Список домашних заданий -->
-    <div v-if="selectedSubject">
-      <div v-if="loading" class="loading-message">Загрузка домашних заданий...</div>
-      <div v-else-if="error" class="error-message">{{ error }}</div>
-      <div v-else-if="!hasAccess" class="no-access-message">
-        Домашние задания будут доступны с {{ formatAccessDate(studentAccessFrom) }}
-      </div>
-      <div v-else-if="filteredHomeworks.length === 0" class="no-homeworks">
-        Нет доступных домашних заданий для выбранного предмета
-      </div>
-      
-      <div v-else class="homeworks-grid">
-        <div 
-          v-for="homework in filteredHomeworks" 
-          :key="homework.homework_id"
+    <div v-if="loading" class="loading">Загрузка домашних работ...</div>
+
+    <div v-if="error" class="error">
+      Ошибка: {{ error }}
+      <button @click="loadHomework" class="retry-btn">Повторить</button>
+    </div>
+
+    <div v-if="!loading && filteredHomework.length > 0" class="homework-list">
+      <h3>Домашние работы</h3>
+
+      <div class="homework-grid">
+        <div
+          v-for="hw in filteredHomework"
+          :key="hw.homework_id"
           class="homework-card"
-          :class="{ 'completed': homework.is_completed }"
-          @click="openHomework(homework)"
+          :class="{
+            'completed': hw.is_completed,
+            'low-score': hw.is_completed && hw.completionPercentage < 50
+          }"
         >
           <div class="homework-header">
-            <h3>{{ homework.homework_name }}</h3>
-            <div class="completion-status" :class="getStatusClass(homework)">
-              {{ getStatusText(homework) }}
-            </div>
+            <h4>{{ hw.homework_name || `Домашняя работа #${hw.homework_id}` }}</h4>
+            <span class="status-badge" :class="hw.is_completed ? 'completed' : 'not-completed'">
+              {{ hw.is_completed ? 'Выполнено' : 'Не выполнено' }}
+            </span>
           </div>
-          
-          <p class="lesson-info">Урок {{ homework.lesson_number }}: {{ homework.lesson_name }}</p>
-          <p class="lesson-date" v-if="homework.lesson_date">
-            Дата урока: {{ formatDate(homework.lesson_date) }}
-          </p>
-          
+
           <div class="homework-details">
-            <div class="deadline" :class="deadlineStatus(homework.deadline)">
-              Дедлайн: {{ formatDate(homework.deadline) }}
-            </div>
-            
-            <div v-if="homework.score !== null" class="score">
-              Оценка: {{ homework.score }}
-            </div>
+            <p><strong>Урок:</strong> {{ hw.lesson_number }}. {{ hw.lesson_name }}</p>
+            <p v-if="hw.lesson_date">
+              <strong>Дата урока:</strong> {{ formatDate(hw.lesson_date) }}
+            </p>
+            <template v-if="hw.is_completed">
+              <p><strong>Макс. баллов:</strong> {{ hw.max_score }}</p>
+              <p>
+                <strong>Набрано баллов:</strong>
+                <span class="score">{{ hw.total_score || 0 }}</span>
+                <span class="completion-percentage">({{ hw.completionPercentage }}%)</span>
+              </p>
+              <p v-if="hw.last_completed_at">
+                <strong>Время сдачи:</strong> {{ formatDate(hw.last_completed_at) }}
+              </p>
+            </template>
+          </div>
+
+          <div class="homework-actions">
+            <button @click="openHomeworkSimple(hw)" class="view-btn">
+              Посмотреть детали
+            </button>
+            <button
+              v-if="hw.is_completed && hw.completionPercentage < 60"
+              @click="sendForRevision(hw)"
+              class="revision-btn"
+              :disabled="hw.sendingRevision"
+            >
+              <span v-if="hw.sendingRevision">Отправка...</span>
+              <span v-else>Отправить на переделывание</span>
+            </button>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-else class="select-subject-prompt">
-      <p>Пожалуйста, выберите предмет для просмотра домашних заданий</p>
+    <div v-if="!loading && filteredHomework.length === 0" class="no-data">
+      Нет доступных домашних работ для отображения
     </div>
   </div>
 </template>
 
 <script>
-import { ref, watch, onMounted, computed } from 'vue'
-import { supabase } from '../supabase.js'
-import CustomDropdown from './CustomDropdown.vue'
+import { supabase } from '../supabase'
 
 export default {
-  name: 'HomeworkList',
-  components: {
-    CustomDropdown
+  name: 'StudentHomework',
+  props: {
+    student: {
+      type: Object,
+      required: true
+    },
+    subject: {
+      type: String,
+      required: true
+    },
+    examType: {
+      type: String,
+      default: 'ЕГЭ'
+    }
   },
-  setup() {
-    const homeworks = ref([])
-    const lessons = ref([])
-    const selectedSubject = ref(null)
-    const subjectOptions = ref([])
-    const loading = ref(false)
-    const error = ref(null)
-    const user_id = ref(null)
-    const studentAccessFrom = ref(null)
-    const studentData = ref(null)
-
-    // Преобразование названия предмета в имя таблицы
-    const getSubjectTableName = (subjectName) => {
-      const subjectMap = {
-        'Химия ЕГЭ': 'chemistry_ege',
-        'Химия ОГЭ': 'chemistry_oge',
-        'Биология ЕГЭ': 'biology_ege',
-        'Биология ОГЭ': 'biology_oge'
-      }
-      return subjectMap[subjectName] || subjectName.toLowerCase().replace(/\s+/g, '_')
+  data() {
+    return {
+      homework: [],
+      lessons: [],
+      loading: false,
+      error: null,
+      studentDetails: null
     }
+  },
+  async mounted() {
+    await this.loadStudentDetails()
+    await this.loadHomework()
+  },
+  computed: {
+    // Показываем только ДЗ, у которых урок уже прошёл (или сегодня)
+    filteredHomework() {
+      const today = this.todayMidnight()
+      return this.homework.filter(hw => {
+        const lessonNumber = Number(hw.lesson_number)
+        const lesson = this.lessons.find(l => l.number === lessonNumber)
+        if (!lesson || !lesson.date) return false
 
-    // Получение поля доступа для предмета
-    const getAccessField = (subjectName) => {
-      if (subjectName.includes('Химия')) return 'subject1_access_from'
-      if (subjectName.includes('Биология')) return 'subject2_access_from'
-      return 'access_from'
-    }
-
-    // Проверяем, есть ли у студента доступ к домашним заданиям
-    const hasAccess = computed(() => {
-      if (!studentAccessFrom.value) return false
-      
-      const today = new Date()
-      const accessDate = new Date(studentAccessFrom.value)
-      
-      today.setHours(0, 0, 0, 0)
-      accessDate.setHours(0, 0, 0, 0)
-      
-      return today >= accessDate
-    })
-
-    // Загрузка уроков для выбранного предмета
-    const fetchLessons = async () => {
-      if (!selectedSubject.value) {
-        lessons.value = []
-        return
-      }
-
-      try {
-        const { data, error: lessonsError } = await supabase
-          .from(selectedSubject.value)
-          .select('number, date, title')
-          .order('number', { ascending: true })
-
-        if (lessonsError) throw lessonsError
-        
-        lessons.value = data || []
-        console.log('Уроки загружены:', lessons.value)
-      } catch (err) {
-        console.error('Ошибка загрузки уроков:', err)
-        lessons.value = []
-      }
-    }
-
-    // Проверка, прошел ли урок
-    const isLessonPassed = (lessonDate) => {
-      if (!lessonDate) return false
-      
-      const today = new Date()
-      const lesson = new Date(lessonDate)
-      
-      today.setHours(0, 0, 0, 0)
-      lesson.setHours(0, 0, 0, 0)
-      
-      return lesson <= today
-    }
-
-    // Фильтруем домашние задания по дате доступа и прошедшим урокам
-    const filteredHomeworks = computed(() => {
-      if (!hasAccess.value || !studentAccessFrom.value) {
-        console.log('Нет доступа или даты доступа')
-        return []
-      }
-      
-      const accessDate = new Date(studentAccessFrom.value)
-      accessDate.setHours(0, 0, 0, 0)
-      
-      const filtered = homeworks.value.filter(homework => {
-        // Приводим lesson_number к number для сравнения
-        const lessonNumber = Number(homework.lesson_number)
-        const lesson = lessons.value.find(l => l.number === lessonNumber)
-        
-        if (!lesson || !lesson.date) {
-          console.log(`Урок ${lessonNumber} не найден или нет даты`, {
-            homeworkLesson: homework.lesson_number,
-            lessonNumber: lessonNumber,
-            lessons: lessons.value.map(l => l.number)
-          })
-          return false
-        }
-        
         const lessonDate = new Date(lesson.date)
         lessonDate.setHours(0, 0, 0, 0)
-        
-        // Проверяем доступность по дате доступа
-        const isAvailable = lessonDate >= accessDate
-        // Проверяем, прошел ли урок
-        const isPassed = isLessonPassed(lesson.date)
-        
-        console.log(`Урок ${lessonNumber}: дата урока ${lesson.date}, доступ с ${studentAccessFrom.value}, доступен: ${isAvailable}, прошел: ${isPassed}`)
-        
-        return isAvailable && isPassed
+        return lessonDate <= today
       })
-      
-      console.log('Отфильтрованные задания:', filtered)
-      return filtered
-    })
+    },
 
-    // Функция для открытия домашнего задания
-    const openHomework = (homework) => {
-      const subjectKey = getSubjectKeyFromTable(selectedSubject.value)
-      const examType = getExamTypeFromTable(selectedSubject.value)
-      
-      const params = new URLSearchParams({
-        subject: subjectKey,
-        exam_type: examType,
-        homework_id: homework.homework_id,
-        homework_name: homework.homework_name,
-        lesson_number: homework.lesson_number,
-        lesson_name: homework.lesson_name
-      }).toString()
-      
-      window.location.href = `/homework.html?${params}`
-    }
+    subjectTariffInfo() {
+      if (!this.studentDetails) return null
 
-    // Получение ID текущего пользователя
-    const getCurrentUserId = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        return user?.id || null
-      } catch (err) {
-        console.error('Ошибка получения ID пользователя:', err)
-        return null
+      const isSubject1 = this.subject.toLowerCase().includes('химия') ||
+                        this.subject.toLowerCase().includes('chemistry')
+
+      if (isSubject1) {
+        return {
+          tariff: this.studentDetails.subject1_tariff,
+          paymentDate: this.studentDetails.subject1_payment_date,
+          paymentDateFormatted: this.formatPaymentDate(this.studentDetails.subject1_payment_date),
+          isExpired: this.isPaymentExpired(this.studentDetails.subject1_payment_date),
+          isExpiringSoon: this.isPaymentExpiringSoon(this.studentDetails.subject1_payment_date)
+        }
+      } else {
+        return {
+          tariff: this.studentDetails.subject2_tariff,
+          paymentDate: this.studentDetails.subject2_payment_date,
+          paymentDateFormatted: this.formatPaymentDate(this.studentDetails.subject2_payment_date),
+          isExpired: this.isPaymentExpired(this.studentDetails.subject2_payment_date),
+          isExpiringSoon: this.isPaymentExpiringSoon(this.studentDetails.subject2_payment_date)
+        }
       }
     }
+  },
+  methods: {
+    todayMidnight() {
+      const d = new Date()
+      d.setHours(0, 0, 0, 0)
+      return d
+    },
 
-    // Получение данных студента и даты доступа
-    const fetchStudentData = async () => {
+    async loadStudentDetails() {
       try {
-        user_id.value = await getCurrentUserId()
-        if (!user_id.value) {
-          throw new Error('Пользователь не авторизован')
-        }
-
-        const { data, error: studentError } = await supabase
+        const { data, error } = await supabase
           .from('students')
-          .select('subject1, subject2, subject1_access_from, subject2_access_from')
-          .eq('user_id', user_id.value)
+          .select('*')
+          .eq('user_id', this.student.user_id)
           .single()
 
-        if (studentError) throw studentError
-
-        studentData.value = data
-        return data
-
-      } catch (err) {
-        console.error('Ошибка загрузки данных студента:', err)
-        return null
+        if (error) throw error
+        this.studentDetails = data
+      } catch (error) {
+        console.error('Ошибка загрузки деталей студента:', error)
       }
-    }
+    },
 
-    // Получение предметов пользователя
-    const fetchUserSubjects = async () => {
-      try {
-        const studentData = await fetchStudentData()
-        if (!studentData) {
-          throw new Error('Не удалось загрузить данные студента')
-        }
+    async fetchLessons() {
+      const subjectTable = `${this.subject}_${this.examType.toLowerCase()}`
+      const { data, error } = await supabase
+        .from(subjectTable)
+        .select('number, date, title')
+        .order('number', { ascending: true })
 
-        const options = []
-        if (studentData.subject1) {
-          options.push({
-            value: getSubjectTableName(studentData.subject1),
-            label: studentData.subject1,
-            accessField: getAccessField(studentData.subject1)
-          })
-        }
-        if (studentData.subject2) {
-          options.push({
-            value: getSubjectTableName(studentData.subject2),
-            label: studentData.subject2,
-            accessField: getAccessField(studentData.subject2)
-          })
-        }
+      if (error) throw error
+      this.lessons = data || []
+    },
 
-        subjectOptions.value = options
-
-      } catch (err) {
-        console.error('Ошибка загрузки предметов:', err)
-        error.value = 'Не удалось загрузить список предметов'
-      }
-    }
-
-    // Обновление даты доступа при смене предмета
-    const updateAccessDate = (subjectValue) => {
-      if (!subjectValue || !studentData.value) {
-        studentAccessFrom.value = null
-        return
-      }
-
-      const subjectOption = subjectOptions.value.find(opt => opt.value === subjectValue)
-      if (!subjectOption) {
-        studentAccessFrom.value = null
-        return
-      }
-
-      const accessField = subjectOption.accessField
-      studentAccessFrom.value = studentData.value[accessField]
-      console.log(`Дата доступа для ${subjectOption.label}:`, studentAccessFrom.value)
-    }
-
-    // Получение ключа предмета из имени таблицы
-    const getSubjectKeyFromTable = (tableName) => {
-      if (tableName.includes('chemistry')) return 'chemistry'
-      if (tableName.includes('biology')) return 'biology'
-      return 'biology'
-    }
-
-    // Получение типа экзамена из имени таблицы
-    const getExamTypeFromTable = (tableName) => {
-      if (tableName.includes('_ege')) return 'ege'
-      if (tableName.includes('_oge')) return 'oge'
-      return 'ege'
-    }
-
-    async function fetchHomeworks() {
-      if (!selectedSubject.value) {
-        homeworks.value = []
-        lessons.value = []
-        return
-      }
+    async loadHomework() {
+      this.loading = true
+      this.error = null
 
       try {
-        loading.value = true
-        error.value = null
-        
-        user_id.value = await getCurrentUserId()
-        if (!user_id.value) {
-          throw new Error('Пользователь не авторизован')
-        }
+        const subjectKey = `${this.subject}_${this.examType.toLowerCase()}`
+        const homeworkTable = `${subjectKey}_homework_completed`
+        const homeworkListTable = `${subjectKey}_homework_list`
+        const homeworkTasksTable = `${subjectKey}_homework_tasks`
+        const taskBankTable = `${subjectKey}_task_bank`
 
-        // Обновляем дату доступа
-        updateAccessDate(selectedSubject.value)
+        // Загружаем уроки (нужны для фильтра «урок прошёл»)
+        await this.fetchLessons()
 
-        // Загружаем уроки и домашние задания параллельно
-        await Promise.all([fetchLessons()])
-
-        const { data: homeworkData, error: homeworkError } = await supabase
-          .from(`${selectedSubject.value}_homework_list`)
+        // Все ДЗ
+        const { data: homeworkList, error: listError } = await supabase
+          .from(homeworkListTable)
           .select('*')
-          .order('created_at', { ascending: false })
+          .order('homework_id', { ascending: true })
 
-        if (homeworkError) throw homeworkError
-        
-        const { data: completionData, error: completionError } = await supabase
-          .from(`${selectedSubject.value}_homework_completed`)
-          .select('*')
-          .eq('user_id', user_id.value)
+        if (listError) throw listError
 
-        if (completionError) throw completionError
+        // Записи о выполнении (не фильтруем по is_completed — берём всё,
+        // чтобы знать статус каждой работы)
+        const { data: completedHomework, error: completedError } = await supabase
+          .from(homeworkTable)
+          .select('homework_id, is_completed, score, completed_at')
+          .eq('user_id', this.student.user_id)
 
-        // Обогащаем домашние задания данными об уроках
-        homeworks.value = homeworkData.map(homework => {
-          const completion = completionData?.find(c => c.homework_id === homework.homework_id)
-          const lessonNumber = Number(homework.lesson_number)
-          const lesson = lessons.value.find(l => l.number === lessonNumber)
-          
-          return {
-            ...homework,
-            is_completed: completion?.is_completed || false,
-            score: completion?.score || null,
-            lesson_date: lesson?.date || null,
-            lesson_title: lesson?.title || null,
-            lesson_name: homework.lesson_name || lesson?.title || `Урок ${lessonNumber}`
-          }
+        if (completedError) throw completedError
+
+        const completedMap = new Map(
+          (completedHomework || []).map(c => [c.homework_id, c])
+        )
+
+        // Обогащаем каждую работу
+        this.homework = await Promise.all(
+          (homeworkList || []).map(async (homeworkItem) => {
+            const completion = completedMap.get(homeworkItem.homework_id)
+            const isCompleted = !!completion?.is_completed
+
+            const lessonNumber = Number(homeworkItem.lesson_number)
+            const lesson = this.lessons.find(l => l.number === lessonNumber)
+
+            let maxScore = 0
+            let totalScore = 0
+            let completionPercentage = 0
+
+            // max_score и процент считаем только для выполненных,
+            // чтобы не дёргать task_bank для каждой невыполненной работы
+            if (isCompleted) {
+              const { data: hwTasks, error: tasksErr } = await supabase
+                .from(homeworkTasksTable)
+                .select('task_id')
+                .eq('homework_id', homeworkItem.homework_id)
+
+              if (tasksErr) throw tasksErr
+
+              if (hwTasks && hwTasks.length > 0) {
+                const taskIds = hwTasks.map(t => t.task_id)
+                const { data: tasksData, error: bankErr } = await supabase
+                  .from(taskBankTable)
+                  .select('id, points')
+                  .in('id', taskIds)
+
+                if (bankErr) throw bankErr
+                maxScore = (tasksData || []).reduce((s, t) => s + (t.points || 0), 0)
+              }
+
+              totalScore = completion.score || 0
+              completionPercentage = maxScore > 0
+                ? Math.round((totalScore / maxScore) * 100)
+                : 0
+            }
+
+            return {
+              homework_id: homeworkItem.homework_id,
+              homework_name: homeworkItem.homework_name,
+              lesson_number: homeworkItem.lesson_number,
+              lesson_name: homeworkItem.lesson_name || lesson?.title || `Урок ${lessonNumber}`,
+              lesson_date: lesson?.date || null,
+              max_score: maxScore,
+              is_completed: isCompleted,
+              total_score: totalScore,
+              last_completed_at: completion?.completed_at || null,
+              completionPercentage,
+              sendingRevision: false
+            }
+          })
+        )
+      } catch (error) {
+        console.error('Ошибка загрузки домашних работ:', error)
+        this.error = 'Не удалось загрузить домашние работы'
+      } finally {
+        this.loading = false
+      }
+    },
+
+    openHomeworkSimple(homework) {
+      try {
+        const subjectKey = this.subject
+        const examTypeKey = this.examType.toLowerCase()
+
+        const params = new URLSearchParams({
+          subject: `${subjectKey}_${examTypeKey}`,
+          homework_id: homework.homework_id,
+          homework_name: homework.homework_name || 'Домашнее задание',
+          lesson_number: homework.lesson_number || '',
+          lesson_name: homework.lesson_name || '',
+          view_mode: 'tutor',
+          student_id: this.student.user_id
         })
 
-        console.log('Все домашние задания:', homeworks.value)
-        console.log('Все уроки:', lessons.value)
+        window.open(`/homework.html?${params.toString()}`, '_blank')
+      } catch (error) {
+        console.error('Ошибка открытия домашнего задания:', error)
+        alert('Не удалось открыть домашнее задание.')
+      }
+    },
 
-      } catch (err) {
-        error.value = err.message
-        console.error('Ошибка загрузки домашних заданий:', err)
+    async sendForRevision(homework) {
+      if (!confirm(`Отправить "${homework.homework_name}" на переделывание?`)) return
+
+      homework.sendingRevision = true
+
+      try {
+        const homeworkTable = `${this.subject}_${this.examType.toLowerCase()}_homework_completed`
+        const { error: deleteError } = await supabase
+          .from(homeworkTable)
+          .delete()
+          .eq('user_id', this.student.user_id)
+          .eq('homework_id', homework.homework_id)
+
+        if (deleteError) throw deleteError
+
+        await this.loadHomework()
+        alert('Работа успешно отправлена на переделывание')
+      } catch (error) {
+        console.error('Ошибка отправки на переделывание:', error)
+        alert('Не удалось отправить работу: ' + error.message)
       } finally {
-        loading.value = false
+        homework.sendingRevision = false
       }
-    }
+    },
 
-    const formatDate = (dateString) => {
-      if (!dateString) return 'Не указан'
+    formatDate(dateString) {
+      if (!dateString) return 'Не указано'
       return new Date(dateString).toLocaleDateString('ru-RU', {
-        day: 'numeric',
+        year: 'numeric',
         month: 'long',
-        year: 'numeric'
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       })
-    }
+    },
 
-    const formatAccessDate = (dateString) => {
-      if (!dateString) return 'даты не указана'
+    formatPaymentDate(dateString) {
+      if (!dateString) return 'Не оплачено'
       return new Date(dateString).toLocaleDateString('ru-RU', {
-        day: 'numeric',
+        year: 'numeric',
         month: 'long',
-        year: 'numeric'
+        day: 'numeric'
       })
+    },
+
+    isPaymentExpired(paymentDate) {
+      if (!paymentDate) return true
+      return new Date(paymentDate) < new Date()
+    },
+
+    isPaymentExpiringSoon(paymentDate) {
+      if (!paymentDate) return false
+      const days = Math.ceil((new Date(paymentDate) - new Date()) / (1000 * 60 * 60 * 24))
+      return days <= 7 && days > 0
     }
-
-    const deadlineStatus = (dateString) => {
-      if (!dateString) return 'no-deadline'
-      const deadline = new Date(dateString)
-      const today = new Date()
-      
-      today.setHours(0, 0, 0, 0)
-      deadline.setHours(0, 0, 0, 0)
-      
-      if (deadline < today) return 'overdue'
-      if (deadline.getTime() === today.getTime()) return 'today'
-      return 'future'
-    }
-
-    const getStatusClass = (homework) => {
-      if (homework.is_completed) {
-        return homework.score !== null ? 'scored' : 'completed'
-      }
-      return 'not-completed'
-    }
-
-    const getStatusText = (homework) => {
-      if (homework.is_completed) {
-        return homework.score !== null ? `Выполнено (${homework.score} баллов)` : 'Выполнено'
-      }
-      return 'Не выполнено'
-    }
-
-    watch(selectedSubject, (newSubject) => {
-      if (newSubject) {
-        fetchHomeworks()
-      }
-    })
-
-    onMounted(async () => {
-      await fetchUserSubjects()
-    })
-
-    return {
-      homeworks,
-      filteredHomeworks,
-      selectedSubject,
-      subjectOptions,
-      loading,
-      error,
-      hasAccess,
-      studentAccessFrom,
-      formatDate,
-      formatAccessDate,
-      deadlineStatus,
-      getStatusClass,
-      getStatusText,
-      openHomework
+  },
+  watch: {
+    student: {
+      handler() {
+        this.loadStudentDetails()
+        this.loadHomework()
+      },
+      deep: true
+    },
+    subject() {
+      this.loadHomework()
     }
   }
 }
 </script>
 
 <style scoped>
-/* Стили остаются без изменений */
-.homework-container {
-  max-width: 75rem;
-  margin: 0 auto;
-  padding: 1.25rem;
-  box-sizing: border-box;
+.homework-container { padding: 20px; }
+
+.student-info {
+  background-color: #b241d1;
+  padding: 25px;
+  border-radius: 12px;
+  margin-bottom: 30px;
+  border: 1px solid #e8d4f2;
+  color: white;
 }
 
-.subject-selector {
-  margin-bottom: 1.875rem;
-  max-width: 18.75rem;
-}
+.student-info h2 { margin: 0 0 20px 0; color: white; font-weight: 600; }
 
-.subject-dropdown {
-  width: 100%;
-}
-
-.homeworks-grid {
+.student-details {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21.875rem), 1fr));
-  gap: 1.25rem;
-  margin-top: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  color: white;
+}
+
+.student-details p { margin: 0; color: white; font-size: 15px; }
+.total-score { color: white; font-weight: 600; font-size: 16px; }
+.rating { color: #ffd700; font-weight: 600; font-size: 16px; }
+
+.tariff-info {
+  grid-column: 1 / -1;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+.expired { color: #ff6b6b; font-weight: 600; }
+.expiring-soon { color: #ffd93d; font-weight: 600; }
+
+.homework-list h3 { margin-bottom: 25px; color: #7e3f9d; font-weight: 600; }
+
+.homework-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
 }
 
 .homework-card {
-  background-color: #b241d1;
-  border-radius: 0.75rem;
-  padding: 1.25rem;
-  color: white;
-  transition: all 0.3s ease;
-  box-shadow: 0 0.25rem 0.75rem rgba(178, 65, 209, 0.2);
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  min-height: 9.375rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(178, 65, 209, 0.1);
+  border-left: 4px solid #ff9800;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .homework-card:hover {
-  transform: translateY(-0.125rem);
-  box-shadow: 0 0.375rem 1rem rgba(178, 65, 209, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(178, 65, 209, 0.15);
 }
 
-.homework-card.completed {
-  background-color: #f9f8ff;
-  color: #000000;
-  box-shadow: 0 0.25rem 0.75rem rgba(249, 248, 255, 0.3);
-}
+.homework-card.completed { border-left-color: #b241d1; }
 
-.homework-card.completed:hover {
-  box-shadow: 0 0.375rem 1rem rgba(249, 248, 255, 0.4);
+.homework-card.low-score {
+  border-left-color: #dc3545;
+  background-color: #fff5f5;
 }
 
 .homework-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 0.75rem;
-  gap: 0.625rem;
+  margin-bottom: 15px;
+  gap: 10px;
 }
 
-.homework-header h3 {
-  margin: 0;
-  font-size: clamp(1.1rem, 2.5vw, 1.3rem);
+.homework-header h4 { margin: 0; color: #5a2875; font-weight: 600; }
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 15px;
+  font-size: 12px;
   font-weight: 600;
-  flex: 1;
-  line-height: 1.4;
-  word-wrap: break-word;
-}
-
-.homework-card:not(.completed) .homework-header h3 {
-  color: #ffffff;
-}
-
-.homework-card.completed .homework-header h3 {
-  color: #000000;
-}
-
-.completion-status {
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.75rem;
-  font-size: clamp(0.75rem, 2vw, 0.8rem);
-  font-weight: 500;
+  text-transform: uppercase;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
-.homework-card:not(.completed) .completion-status {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+.status-badge.completed {
+  background-color: #f0e6f7;
+  color: #b241d1;
+  border: 1px solid #d8b4e7;
 }
 
-.homework-card.completed .completion-status {
-  background-color: rgba(178, 65, 209, 0.1);
-  color: #000000;
+.status-badge.not-completed {
+  background-color: #fff3e0;
+  color: #ff9800;
+  border: 1px solid #ffcc80;
 }
 
-.homework-card.completed .completion-status.scored {
-  background-color: rgba(178, 65, 209, 0.2);
+.homework-details { margin-bottom: 20px; }
+.homework-details p { margin: 8px 0; color: #6b7280; font-size: 14px; }
+
+.score { color: #b241d1; font-weight: 600; font-size: 15px; }
+
+.completion-percentage { font-size: 12px; color: #6b7280; margin-left: 5px; }
+.homework-card.low-score .completion-percentage { color: #dc3545; font-weight: 600; }
+
+.homework-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.lesson-info {
-  margin: 0 0 0.75rem 0;
-  font-size: clamp(0.85rem, 2vw, 0.95rem);
-  line-height: 1.4;
-  opacity: 0.9;
+.view-btn {
+  background: linear-gradient(135deg, #b241d1 0%, #9a30b8 100%);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
 }
 
-.homework-card:not(.completed) .lesson-info {
-  color: rgba(255, 255, 255, 0.9);
+.view-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(178, 65, 209, 0.3);
 }
 
-.homework-card.completed .lesson-info {
-  color: rgba(0, 0, 0, 0.8);
+.revision-btn {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
 }
 
-.lesson-date {
-  font-size: 0.8rem;
-  opacity: 0.8;
-  margin: 0.25rem 0 0.75rem 0;
+.revision-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
 }
 
-.homework-card:not(.completed) .lesson-date {
-  color: rgba(255, 255, 255, 0.8);
-}
+.revision-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.homework-card.completed .lesson-date {
-  color: rgba(0, 0, 0, 0.6);
-}
+.loading { text-align: center; padding: 40px; color: #b241d1; font-size: 16px; }
 
-.homework-details {
+.error {
+  background-color: #fef2f2;
+  color: #dc2626;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  margin: 20px 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.625rem;
-  flex-wrap: wrap;
 }
 
-.deadline {
-  font-weight: 600;
-  padding: 0.375rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: clamp(0.8rem, 2vw, 0.9rem);
+.retry-btn {
+  background-color: #b241d1;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
 }
+.retry-btn:hover { background-color: #9a30b8; }
 
-.homework-card:not(.completed) .deadline {
-  background-color: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
-}
-
-.homework-card.completed .deadline {
-  background-color: rgba(178, 65, 209, 0.1);
-  color: #000000;
-}
-
-.homework-card:not(.completed) .deadline.overdue {
-  background-color: rgba(255, 255, 255, 0.25);
-}
-
-.homework-card.completed .deadline.overdue {
-  background-color: rgba(178, 65, 209, 0.2);
-}
-
-.homework-card:not(.completed) .deadline.today {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-.homework-card.completed .deadline.today {
-  background-color: rgba(178, 65, 209, 0.15);
-}
-
-.homework-card:not(.completed) .deadline.future {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.homework-card.completed .deadline.future {
-  background-color: rgba(178, 65, 209, 0.05);
-}
-
-.homework-card:not(.completed) .deadline.no-deadline {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-.homework-card.completed .deadline.no-deadline {
-  background-color: rgba(178, 65, 209, 0.02);
-}
-
-.score {
-  font-weight: 600;
-  padding: 0.375rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: clamp(0.8rem, 2vw, 0.9rem);
-}
-
-.homework-card:not(.completed) .score {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
-}
-
-.homework-card.completed .score {
-  background-color: rgba(178, 65, 209, 0.2);
-  color: #000000;
-}
-
-.loading-message,
-.error-message,
-.no-homeworks,
-.select-subject-prompt,
-.no-access-message {
-  padding: 2.5rem;
+.no-data {
   text-align: center;
-  font-size: clamp(1.1rem, 3vw, 1.2rem);
-  color: #6c757d;
-}
-
-.error-message {
+  padding: 60px 20px;
   color: #b241d1;
-}
-
-.no-access-message {
-  color: #ff9800;
-  background-color: #fff3e0;
-  border-radius: 0.75rem;
-  border-left: 4px solid #ff9800;
-  margin-top: 1.25rem;
-}
-
-.select-subject-prompt {
-  background-color: rgba(178, 65, 209, 0.1);
-  border-radius: 0.75rem;
-  margin-top: 3.125rem;
-  color: #b241d1;
-  padding: 1.5rem;
-}
-
-/* Медиа-запросы для адаптивности */
-@media (max-width: 1200px) {
-  .homework-container {
-    padding: 1rem;
-    max-width: 90%;
-  }
-  
-  .homeworks-grid {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
-    gap: 1rem;
-  }
+  font-size: 18px;
+  background: linear-gradient(135deg, #f9f3fc 0%, #f0e6f7 100%);
+  border-radius: 12px;
+  border: 2px dashed #d8b4e7;
 }
 
 @media (max-width: 768px) {
-  .homework-container {
-    padding: 0.875rem;
-    max-width: 95%;
-  }
-  
-  .homeworks-grid {
-    grid-template-columns: 1fr;
-    gap: 0.875rem;
-  }
-  
-  .subject-selector {
-    max-width: 100%;
-    margin-bottom: 1.5rem;
-  }
-  
-  .homework-header {
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 0.625rem;
-  }
-  
-  .homework-details {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  
-  .homework-card {
-    padding: 1rem;
-    min-height: auto;
-  }
-  
-  .completion-status {
-    align-self: flex-start;
-  }
-}
-
-@media (max-width: 480px) {
-  .homework-container {
-    padding: 0.625rem;
-  }
-  
-  .homework-card {
-    padding: 0.875rem;
-    border-radius: 0.5rem;
-  }
-  
-  .homework-header h3 {
-    font-size: 1rem;
-  }
-  
-  .lesson-info {
-    font-size: 0.8rem;
-    margin-bottom: 0.5rem;
-  }
-  
-  .deadline,
-  .score {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-  }
-  
-  .loading-message,
-  .error-message,
-  .no-homeworks,
-  .select-subject-prompt,
-  .no-access-message {
-    padding: 1.5rem;
-    font-size: 1rem;
-  }
-  
-  .select-subject-prompt {
-    margin-top: 2rem;
-    padding: 1rem;
-  }
-}
-
-@media (max-width: 320px) {
-  .homework-container {
-    padding: 0.5rem;
-  }
-  
-  .homework-card {
-    padding: 0.75rem;
-  }
+  .student-details { grid-template-columns: 1fr; }
+  .homework-grid { grid-template-columns: 1fr; }
+  .homework-header { flex-direction: column; gap: 10px; }
+  .status-badge { align-self: flex-start; }
+  .homework-actions { justify-content: center; flex-direction: column; }
 }
 </style>
