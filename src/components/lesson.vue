@@ -798,7 +798,9 @@ const formattedDate = computed(() => {
   font-size: 14px;
   line-height: 1.5;
 }
-
+.download-button{
+  color: #b241d1;
+}
 /* ===== СООБЩЕНИЕ О НЕДОСТУПНОСТИ ===== */
 .no-homework-message {
   background: #fff3e0;
